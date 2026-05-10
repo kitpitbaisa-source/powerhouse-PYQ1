@@ -1,0 +1,1053 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Landmark, 
+  Trophy, 
+  Search, 
+  RotateCcw, 
+  Dice5, 
+  ChevronDown, 
+  ExternalLink,
+  MapPin,
+  Send,
+  Filter,
+  Calendar,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  FolderOpen,
+  Lock,
+  QrCode,
+  KeyRound,
+  Check,
+  Sun,
+  Moon,
+  UserPlus,
+  X
+} from 'lucide-react';
+import { mcqData } from './questions';
+import { Question, SubjectColorMap } from './types';
+import { cn } from './lib/utils';
+// import { isValidCode } from './authorizedCodes';
+
+const subjectColors: SubjectColorMap = {
+  "Polity": "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-purple-400/20",
+  "History": "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-500 ring-amber-500/20",
+  "Geography": "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-blue-400/20",
+  "Economy": "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-emerald-400/20",
+  "Environment": "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-green-400/20",
+  "Science & Technology": "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 ring-cyan-400/20",
+  "Art & Culture": "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400 ring-pink-400/20",
+  "Current Affairs": "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 ring-orange-400/20",
+  "International Relations": "bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 ring-sky-400/20",
+  "Default": "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-slate-400/20"
+};
+
+interface QuestionCardProps {
+  question: Question;
+  index: number;
+  attemptedOption: string | undefined;
+  isRevealed: boolean;
+  onOptionClick: (option: string) => void;
+  onToggleRevealed: () => void;
+}
+
+const QuestionCard: React.FC<QuestionCardProps> = ({ question, index, attemptedOption, isRevealed, onOptionClick, onToggleRevealed }) => {
+  const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
+
+  return (
+    <motion.div 
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ delay: Math.min(index * 0.05, 0.3) }}
+      className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full group"
+    >
+      <div className="flex justify-between items-start mb-3 gap-2">
+        <div className="flex gap-1.5 items-center flex-wrap">
+          <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+            <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
+          </span>
+          <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset", colorClasses)}>
+            {question.subject}
+          </span>
+          {question.topic && (
+            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 ring-1 ring-inset ring-blue-400/20">
+              {question.topic}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center">
+          <Calendar className="w-3 h-3 mr-1" />{question.year}
+        </span>
+      </div>
+      
+      <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
+        <span className="text-blue-600 dark:text-blue-400 mr-1 font-bold">Q{question.id}.</span> 
+        <span dangerouslySetInnerHTML={{ __html: question.question }} />
+      </h3>
+      
+      <div className="space-y-1.5 mb-5">
+        {question.options.map(opt => {
+          const isCorrectAnswer = opt === question.answer;
+          const isSelected = opt === attemptedOption;
+          const hasAttempted = !!attemptedOption;
+
+          return (
+            <button
+              key={opt}
+              disabled={hasAttempted}
+              onClick={() => onOptionClick(opt)}
+              className={cn(
+                "w-full text-left py-2.5 px-3 border rounded-lg text-[13px] transition-all flex justify-between items-center group/btn",
+                !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
+                hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-semibold",
+                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-100/50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400",
+                hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
+              )}
+            >
+              <span className="text-left pr-3">{opt}</span>
+              {hasAttempted && isCorrectAnswer && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />}
+              {hasAttempted && isSelected && !isCorrectAnswer && <XCircle className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+      
+      <div className={cn("flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700/50 mt-auto", isRevealed && "mb-3")}>
+        <button 
+          onClick={onToggleRevealed} 
+          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
+        >
+          <motion.div
+            animate={{ rotate: isRevealed ? 180 : 0 }}
+            className="mr-1.5"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </motion.div>
+          <span>{isRevealed ? "Hide Answer" : "Show Answer"}</span>
+        </button>
+        
+        <a 
+          href={`https://www.google.com/search?q=${encodeURIComponent(question.question.replace(/<[^>]*>?/gm, ' '))}`} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          title="Search Google for this question" 
+          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white flex items-center transition-colors px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
+        >
+          <ExternalLink className="w-3 h-3 mr-1.5" /> Search
+        </a>
+      </div>
+      
+      <AnimatePresence>
+        {isRevealed && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="pt-2">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Answer: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{question.answer}</span>
+              </p>
+              {question.explanation && (
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-2.5 rounded-r-lg shadow-sm">
+                  <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed italic">
+                    <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1 not-italic">Explanation</span>
+                    {question.explanation}
+                  </p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
+export default function App() {
+  const [questions, setQuestions] = useState<Question[]>(mcqData);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState("All");
+  const [examFilter, setExamFilter] = useState("All");
+  const [subjectFilter, setSubjectFilter] = useState("All");
+  const [topicFilter, setTopicFilter] = useState("All");
+  const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
+  const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
+  const [score, setScore] = useState({ correct: 0, total: 0 });
+  const [visibleCount, setVisibleCount] = useState(30);
+  const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
+  const [randomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
+  const [randomSelectLimit, setRandomSelectLimit] = useState(10);
+
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    // Default to dark mode (true) if nothing is saved
+    return saved === null ? true : saved === 'dark';
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+
+  // Admin configuration
+  const ADMIN_EMAILS = ['kitpitbaisa@gmail.com', 'admin@example.com'];
+
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminView, setIsAdminView] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    const saved = localStorage.getItem('user_session');
+    if (!saved) return null;
+    try {
+      const session = JSON.parse(saved);
+      const currentTime = Date.now();
+      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+      if (currentTime - session.loginTime < sevenDaysInMs) {
+        return session.email;
+      }
+      localStorage.removeItem('user_session');
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Check subscription and admin status
+  const checkUserStatus = async (email: string) => {
+    try {
+      const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
+      const data = await response.json();
+      setIsSubscribed(data.status === 'subscribed' || data.status === 'admin');
+      setIsAdmin(data.status === 'admin' || ADMIN_EMAILS.includes(email.toLowerCase().trim()));
+    } catch (error) {
+      console.error("Failed to check status:", error);
+      setIsSubscribed(false);
+      setIsAdmin(ADMIN_EMAILS.includes(email.toLowerCase().trim()));
+    }
+  };
+
+  const [showLoginModal, setShowLoginModal] = useState(!userEmail);
+  const [loginEmailInput, setLoginEmailInput] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [allUsers, setAllUsers] = useState<{email: string, status: string}[]>([]);
+  const [newAdminUserEmail, setNewAdminUserEmail] = useState("");
+  const [newAdminUserStatus, setNewAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
+
+  const fetchAllUsers = async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/admin/users');
+      const data = await response.json();
+      setAllUsers(data);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (userEmail) {
+      checkUserStatus(userEmail);
+      if (isAdmin) {
+        fetchAllUsers();
+      }
+    }
+  }, [userEmail, isAdmin]);
+
+  const handleUpdateUser = async (email: string, status: string) => {
+    try {
+      await fetch('/api/admin/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, status })
+      });
+      fetchAllUsers();
+      if (email === userEmail) checkUserStatus(email);
+    } catch (error) {
+      console.error("Failed to update user:", error);
+    }
+  };
+
+  const handleDeleteUser = async (email: string) => {
+    if (email === userEmail) return; // Don't delete self
+    try {
+      await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      fetchAllUsers();
+    } catch (error) {
+      console.error("Failed to delete user:", error);
+    }
+  };
+
+  const handleAddUserFromAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminUserEmail.trim()) return;
+    await handleUpdateUser(newAdminUserEmail.trim(), newAdminUserStatus);
+    setNewAdminUserEmail("");
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmailInput.trim() || !loginEmailInput.includes('@')) return;
+
+    setIsLoggingIn(true);
+    const email = loginEmailInput.trim().toLowerCase();
+    
+    // Store session
+    const session = {
+      email,
+      loginTime: Date.now()
+    };
+    localStorage.setItem('user_session', JSON.stringify(session));
+    setUserEmail(email);
+    
+    // Check status
+    await checkUserStatus(email);
+    
+    setIsLoggingIn(false);
+    setShowLoginModal(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user_session');
+    setUserEmail(null);
+    setIsSubscribed(false);
+    setShowLoginModal(true);
+  };
+
+  const yearsList = useMemo(() => {
+    const availableData = mcqData.filter(q => 
+      (examFilter === "All" || q.exam === examFilter) &&
+      (subjectFilter === "All" || q.subject === subjectFilter) &&
+      (topicFilter === "All" || q.topic === topicFilter)
+    );
+    const uniqueYears = [...new Set(availableData.map(q => q.year))].sort((a, b) => b.localeCompare(a));
+    
+    // Count questions for each year GIVEN current exam/subject/topic filters
+    const yearCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      yearCounts[q.year] = (yearCounts[q.year] || 0) + 1;
+    });
+
+    return { 
+      options: ["All", ...uniqueYears],
+      counts: yearCounts,
+      total: availableData.length
+    };
+  }, [examFilter, subjectFilter, topicFilter]);
+
+  const examsList = useMemo(() => {
+    const availableData = mcqData.filter(q => 
+      (yearFilter === "All" || q.year === yearFilter) &&
+      (subjectFilter === "All" || q.subject === subjectFilter) &&
+      (topicFilter === "All" || q.topic === topicFilter)
+    );
+    const uniqueExams = [...new Set(availableData.map(q => q.exam))].sort();
+    
+    const examCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      examCounts[q.exam] = (examCounts[q.exam] || 0) + 1;
+    });
+
+    return { 
+      options: ["All", ...uniqueExams],
+      counts: examCounts
+    };
+  }, [yearFilter, subjectFilter, topicFilter]);
+
+  const subjectsList = useMemo(() => {
+    const availableData = mcqData.filter(q => 
+      (yearFilter === "All" || q.year === yearFilter) &&
+      (examFilter === "All" || q.exam === examFilter) &&
+      (topicFilter === "All" || q.topic === topicFilter)
+    );
+    const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
+    
+    const subjectCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      subjectCounts[q.subject] = (subjectCounts[q.subject] || 0) + 1;
+    });
+
+    return { 
+      options: ["All", ...uniqueSubjects],
+      counts: subjectCounts
+    };
+  }, [yearFilter, examFilter, topicFilter]);
+
+  const topicsList = useMemo(() => {
+    const availableData = mcqData.filter(q => 
+      (yearFilter === "All" || q.year === yearFilter) &&
+      (examFilter === "All" || q.exam === examFilter) &&
+      (subjectFilter === "All" || q.subject === subjectFilter)
+    );
+    
+    const stats: Record<string, number> = {};
+    availableData.forEach(q => {
+      if (q.topic) {
+        stats[q.topic] = (stats[q.topic] || 0) + 1;
+      }
+    });
+
+    const sortedTopics = Object.entries(stats)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(entry => entry[0]);
+
+    return { 
+      options: ["All", ...sortedTopics],
+      counts: stats
+    };
+  }, [yearFilter, examFilter, subjectFilter]);
+
+  // Auto-reset filters if selected option is no longer available
+  useEffect(() => {
+    if (yearFilter !== "All" && !yearsList.options.includes(yearFilter)) {
+      setYearFilter("All");
+    }
+  }, [yearsList.options, yearFilter]);
+
+  useEffect(() => {
+    if (examFilter !== "All" && !examsList.options.includes(examFilter)) {
+      setExamFilter("All");
+    }
+  }, [examsList.options, examFilter]);
+
+  useEffect(() => {
+    if (subjectFilter !== "All" && !subjectsList.options.includes(subjectFilter)) {
+      setSubjectFilter("All");
+    }
+  }, [subjectsList.options, subjectFilter]);
+
+  useEffect(() => {
+    if (topicFilter !== "All" && !topicsList.options.includes(topicFilter)) {
+      setTopicFilter("All");
+    }
+  }, [topicsList.options, topicFilter]);
+
+  const filteredQuestions = useMemo(() => {
+    if (randomMode.active) {
+      return randomizedQuestions;
+    }
+
+    const list = questions.filter(q => {
+      const marchesYear = yearFilter === "All" || q.year === yearFilter;
+      const matchesExam = examFilter === "All" || q.exam === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
+      const matchesSearch = searchQuery === "" || 
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+    });
+
+    // If not subscribed, limit to first 5 questions of the filtered list
+    if (!isSubscribed) {
+      return list.slice(0, 5);
+    }
+    return list.slice(0, visibleCount);
+  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, isSubscribed, visibleCount, randomMode, randomizedQuestions]);
+
+  const isMoreToLoad = useMemo(() => {
+    if (!isSubscribed || randomMode.active) return false;
+    const totalFiltered = questions.filter(q => {
+      const marchesYear = yearFilter === "All" || q.year === yearFilter;
+      const matchesExam = examFilter === "All" || q.exam === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
+      const matchesSearch = searchQuery === "" || 
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+    }).length;
+    return totalFiltered > visibleCount;
+  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, isSubscribed, visibleCount, randomMode]);
+
+  const handleLoadMore = () => {
+    setVisibleCount(prev => prev + 30);
+  };
+
+  const handleOptionClick = (qid: number, option: string, isCorrect: boolean) => {
+    if (userAttempts[qid]) return;
+    setUserAttempts(prev => ({ ...prev, [qid]: option }));
+    setRevealedAnswers(prev => ({ ...prev, [qid]: true }));
+    setScore(prev => ({
+      correct: prev.correct + (isCorrect ? 1 : 0),
+      total: prev.total + 1
+    }));
+  };
+
+  const toggleAnswer = (qid: number) => {
+    setRevealedAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
+  };
+
+  const resetFilters = () => {
+    setYearFilter("All");
+    setExamFilter("All");
+    setSubjectFilter("All");
+    setTopicFilter("All");
+    setSearchQuery("");
+    setVisibleCount(30);
+    setRandomMode({ active: false, limit: 0 });
+  };
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [yearFilter, examFilter, subjectFilter, topicFilter, searchQuery]);
+
+  const resetQuiz = () => {
+    setUserAttempts({});
+    setRevealedAnswers({});
+    setScore({ correct: 0, total: 0 });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startRandomPractice = (limit: number) => {
+    const baseList = questions.filter(q => {
+      const marchesYear = yearFilter === "All" || q.year === yearFilter;
+      const matchesExam = examFilter === "All" || q.exam === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
+      return marchesYear && matchesExam && matchesSubject && matchesTopic;
+    });
+
+    const shuffled = [...baseList].sort(() => Math.random() - 0.5);
+    setRandomizedQuestions(shuffled.slice(0, limit));
+    setRandomMode({ active: true, limit });
+    resetQuiz();
+  };
+
+  return (
+    <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
+      <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
+        <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-600 text-white p-2 rounded-lg shadow-sm flex items-center justify-center w-9 h-9">
+                <Landmark className="w-5 h-5" />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">UPSC PYQ Powerhouse</h1>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Meticulously curated Previous Year Questions from UPSC Examinations.</p>
+              </div>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight sm:hidden">UPSC PYQ</h1>
+            </div>
+            
+            <div className="flex items-center gap-2 sm:gap-3">
+                {userEmail && (
+                <div className="hidden lg:flex flex-col items-end mr-2 text-right">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">Logged in as</span>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-white truncate max-w-[140px] leading-tight" title={userEmail}>{userEmail}</span>
+                  {isAdmin && (
+                    <button 
+                      onClick={() => setIsAdminView(!isAdminView)}
+                      className="text-[9px] font-extrabold text-blue-500 hover:text-blue-600 uppercase tracking-tighter mt-1 hover:underline"
+                    >
+                      {isAdminView ? "Exit Admin" : "Admin Panel"}
+                    </button>
+                  )}
+                </div>
+              )}
+              
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 group"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? (
+                  <Sun className="w-4 h-4 group-hover:rotate-45 transition-transform" />
+                ) : (
+                  <Moon className="w-4 h-4 group-hover:-rotate-12 transition-transform" />
+                )}
+              </button>
+
+              <div className="hidden md:flex items-center text-slate-600 dark:text-slate-300 text-xs font-medium bg-slate-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                <MapPin className="text-red-400 w-3.5 h-3.5 mr-1.5" /> India
+              </div>
+              
+              <div className="bg-emerald-900/30 text-emerald-400 px-3 py-1.5 rounded-lg text-sm font-bold border border-emerald-800/50 flex items-center shadow-sm">
+                <Trophy className="w-4 h-4 mr-2 text-emerald-500" /> 
+                <span>{score.correct}</span>
+                <span className="text-emerald-600 font-medium mx-1">/</span>
+                <span>{score.total}</span>
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                <select
+                  value={randomSelectLimit}
+                  onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
+                  className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                >
+                  {[10, 20, 50, 100].map(n => (
+                    <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => startRandomPractice(randomSelectLimit)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded-md transition-colors shadow-sm text-[11px] font-bold flex items-center gap-1.5"
+                >
+                  <span className="hidden xl:inline">Random PYQ</span>
+                  <span className="xl:hidden">Random</span>
+                </button>
+              </div>
+
+              <a 
+                href="https://t.me/upsc_pyq_powerhouse" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-105"
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5" /> <span className="hidden sm:inline">Join Telegram</span>
+              </a>
+
+              {userEmail && (
+                <button
+                  onClick={handleLogout}
+                  className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors border border-rose-200 dark:border-rose-800/50"
+                  title="Logout"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
+        {isAdmin && isAdminView ? (
+          <div className="w-full space-y-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Admin Dashboard</h2>
+                <p className="text-slate-500 dark:text-slate-400">Manage user subscriptions and access.</p>
+              </div>
+              <button 
+                onClick={() => setIsAdminView(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold"
+              >
+                Back to App
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              {/* Add New User */}
+              <div className="md:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
+                </h3>
+                <form onSubmit={handleAddUserFromAdmin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Email</label>
+                    <input 
+                      type="email"
+                      required
+                      placeholder="user@example.com"
+                      value={newAdminUserEmail}
+                      onChange={(e) => setNewAdminUserEmail(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Status</label>
+                    <select 
+                      value={newAdminUserStatus}
+                      onChange={(e) => setNewAdminUserStatus(e.target.value as "subscribed" | "not_subscribed" | "admin")}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none"
+                    >
+                      <option value="subscribed">Subscribed</option>
+                      <option value="not_subscribed">Not Subscribed</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20">
+                    Add/Update User
+                  </button>
+                </form>
+              </div>
+
+              {/* User List */}
+              <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-900 dark:text-white">All Registered Users ({allUsers.length})</h3>
+                  <button onClick={fetchAllUsers} className="text-xs font-bold text-blue-500 hover:underline">Refresh</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+                        <th className="px-6 py-3">Email</th>
+                        <th className="px-6 py-3 text-center">Status</th>
+                        <th className="px-6 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {allUsers.map((user) => (
+                        <tr key={user.email} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">{user.email}</div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex flex-col gap-1 items-center">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                user.status === 'admin'
+                                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50'
+                                  : user.status === 'subscribed' 
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' 
+                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600'
+                              }`}>
+                                {user.status}
+                              </span>
+                              <div className="flex gap-1 mt-1">
+                                <button onClick={() => handleUpdateUser(user.email, 'subscribed')} className="text-[8px] text-slate-400 hover:text-emerald-500 font-bold uppercase transition-colors">Sub</button>
+                                <button onClick={() => handleUpdateUser(user.email, 'not_subscribed')} className="text-[8px] text-slate-400 hover:text-slate-200 font-bold uppercase transition-colors">None</button>
+                                <button onClick={() => handleUpdateUser(user.email, 'admin')} className="text-[8px] text-slate-400 hover:text-blue-500 font-bold uppercase transition-colors">Admin</button>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {user.email !== userEmail ? (
+                              <button 
+                                onClick={() => handleDeleteUser(user.email)}
+                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] font-bold text-blue-500/50 uppercase tracking-tighter">You</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+              </h2>
+              <button 
+                onClick={resetFilters} 
+                className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label htmlFor="search-input" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  id="search-input"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Constitution, GDP..." 
+                  className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                />
+                <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam Year</label>
+              <select 
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+              >
+                {yearsList.options.map(y => (
+                  <option key={y} value={y}>
+                    {y === "All" ? "All Years" : `${y} (${yearsList.counts[y] || 0})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
+              <select 
+                value={examFilter}
+                onChange={(e) => setExamFilter(e.target.value)}
+                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+              >
+                {examsList.options.map(e => (
+                  <option key={e} value={e}>
+                    {e === "All" ? "All Exams" : `${e} (${examsList.counts[e] || 0})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
+              <select 
+                value={subjectFilter}
+                onChange={(e) => {
+                  setSubjectFilter(e.target.value);
+                  setTopicFilter("All");
+                }}
+                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+              >
+                {subjectsList.options.map(s => (
+                  <option key={s} value={s}>
+                    {s === "All" ? "All Subjects" : `${s} (${subjectsList.counts[s] || 0})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic (by frequency)</label>
+              <select 
+                value={topicFilter}
+                onChange={(e) => setTopicFilter(e.target.value)}
+                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+              >
+                {topicsList.options.map(t => (
+                  <option key={t} value={t}>
+                    {t === "All" ? "All Topics" : `${t} (${topicsList.counts[t] || 0})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredQuestions.length}</span> questions</p>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-center bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 border border-slate-200 dark:border-slate-600/50">
+              {userEmail && (
+                <div className="mb-4 pb-3 border-b border-slate-200 dark:border-slate-600/50">
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Signed in as</p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-white truncate" title={userEmail}>{userEmail}</p>
+                </div>
+              )}
+              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Your Score</p>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-3">{score.correct} <span className="text-xs text-slate-500 font-normal">/ {score.total}</span></p>
+              
+              <button 
+                onClick={resetQuiz}
+                className="text-xs bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-900/20 text-white py-2 px-3 rounded-full transition-all w-full font-bold mb-3 flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset Quiz Progress
+              </button>
+              
+              <div className="flex items-center gap-2 mb-3">
+                <select
+                  value={randomSelectLimit}
+                  onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
+                  className="flex-shrink-0 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-200 text-xs font-bold p-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {[10, 20, 50, 100].map(n => (
+                    <option key={n} value={n}>{n} Qs</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => startRandomPractice(randomSelectLimit)}
+                  className="flex-grow bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+                >
+                  Random PYQ
+                </button>
+              </div>
+
+              <a 
+                href="https://t.me/upsc_pyq_powerhouse" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="w-full justify-center bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 py-2 px-3 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-[1.02]"
+              >
+                <Send className="w-4 h-4 mr-1.5" /> Join Telegram
+              </a>
+            </div>
+          </div>
+        </aside>
+
+        <section className="flex-grow">
+          {filteredQuestions.length === 0 ? (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+              <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+              <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No questions found</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters to see more results.</p>
+            </motion.div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                <AnimatePresence mode="popLayout">
+                  {filteredQuestions.map((q, idx) => (
+                    <QuestionCard 
+                      key={q.id}
+                      question={q}
+                      index={idx}
+                      attemptedOption={userAttempts[q.id]}
+                      isRevealed={revealedAnswers[q.id]}
+                      onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                      onToggleRevealed={() => toggleAnswer(q.id)}
+                    />
+                  ))}
+                </AnimatePresence>
+
+                {isMoreToLoad && (
+                  <div className="col-span-full py-8 flex justify-center">
+                    <motion.button
+                      whileInView={{ opacity: 1 }}
+                      initial={{ opacity: 0 }}
+                      onViewportEnter={handleLoadMore}
+                      className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-2 rounded-full text-sm text-slate-500 dark:text-slate-400 font-medium hover:text-blue-600 dark:hover:text-white transition-colors shadow-sm"
+                    >
+                      Loading more questions...
+                    </motion.button>
+                  </div>
+                )}
+
+                {!isSubscribed && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-800 p-6 rounded-xl border-2 border-dashed border-indigo-200 dark:border-indigo-500/50 flex flex-col items-center justify-center text-center group"
+                  >
+                    <div className="bg-indigo-600 p-3 rounded-full mb-4 shadow-lg group-hover:scale-110 transition-transform">
+                      <Lock className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Unlock {mcqData.length}+ Questions</h3>
+                    <p className="text-slate-600 dark:text-slate-300 text-xs mb-6 max-w-[250px]">
+                      You're viewing the free preview. Get full access to all subjects, 2026 predictions, and future updates by subscribing.
+                    </p>
+                    
+                    <div className="w-full space-y-4">
+                      {/* Subscription Info */}
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
+                        <div className="flex items-center gap-2 mb-3">
+                          <QrCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          <span className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider">How to Subscribe</span>
+                        </div>
+                        <ol className="text-[11px] text-slate-500 dark:text-slate-400 space-y-2 list-decimal list-inside">
+                          <li>Contact us on Telegram <span className="text-blue-600 dark:text-blue-400">@upsc_pyq_admin</span></li>
+                          <li>Provide your registered email: <span className="font-bold text-slate-700 dark:text-white truncate block mt-1">{userEmail}</span></li>
+                          <li>Once your subscription is activated, refresh this page.</li>
+                        </ol>
+                        
+                        <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
+                           <p className="text-[10px] text-blue-800 dark:text-blue-300 font-medium text-center">Your subscription is managed via the backend list based on your email.</p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => userEmail && checkUserStatus(userEmail)}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition-colors shadow-lg flex items-center justify-center gap-2 active:scale-[0.98]"
+                      >
+                        <RotateCcw className="w-4 h-4" /> Check Subscription Status
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
+              {isSubscribed && (
+                <div className="mt-8 p-4 bg-emerald-100 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-center">
+                   <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
+                     <Trophy className="w-4 h-4 mr-2 text-emerald-500" /> Premium Access Active - Enjoy the full database!
+                   </p>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+        </>
+        )}
+      </main>
+
+      <footer className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 py-6 mt-auto transition-colors duration-300">
+        <div className="max-w-[1400px] mx-auto px-4 text-center flex flex-col sm:flex-row justify-between items-center gap-2">
+          <p className="text-xs text-slate-500 font-medium">&copy; 2026 UPSC PYQ Powerhouse. Education & Practice Platform.</p>
+          <p className="text-xs text-slate-500 font-medium">Built for Civil Service Aspirants.</p>
+        </div>
+      </footer>
+
+      {/* Login Modal */}
+      <AnimatePresence>
+        {showLoginModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700"
+            >
+              <div className="flex justify-center mb-6">
+                <div className="bg-blue-600 p-4 rounded-2xl shadow-lg shadow-blue-500/30">
+                  <KeyRound className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
+              
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
+                  <div className="relative">
+                    <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="email"
+                      type="email"
+                      required
+                      value={loginEmailInput}
+                      onChange={(e) => setLoginEmailInput(e.target.value)}
+                      placeholder="e.g. user@example.com"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
+                  {!isLoggingIn && <Check className="w-5 h-5" />}
+                </button>
+              </form>
+              
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
+                Your session will be remembered for 7 days.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  </div>
+  );
+}

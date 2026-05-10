@@ -1,0 +1,14 @@
+{
+  "admin@example.com": {
+    "email": "admin@example.com",
+    "status": "admin"
+  },
+  "user@example.com": {
+    "email": "user@example.com",
+    "status": "not_subscribed"
+  },
+  "kitpitbaisa@gmail.com": {
+    "email": "kitpitbaisa@gmail.com",
+    "status": "admin"
+  }
+}
