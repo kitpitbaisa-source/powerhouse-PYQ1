@@ -28,11 +28,14 @@ import {
   Sun,
   Moon,
   UserPlus,
-  X
+  X,
+  Database
 } from 'lucide-react';
 import { mcqData } from './questions';
 import { Question, SubjectColorMap } from './types';
 import { cn } from './lib/utils';
+import { db } from './firebase';
+import { collection, doc, setDoc } from 'firebase/firestore';
 // import { isValidCode } from './authorizedCodes';
 
 const subjectColors: SubjectColorMap = {
@@ -55,10 +58,85 @@ interface QuestionCardProps {
   isRevealed: boolean;
   onOptionClick: (option: string) => void;
   onToggleRevealed: () => void;
+  isLocked?: boolean;
+  userEmail?: string | null;
+  onCheckStatus?: () => void;
 }
 
-const QuestionCard: React.FC<QuestionCardProps> = ({ question, index, attemptedOption, isRevealed, onOptionClick, onToggleRevealed }) => {
+const QuestionCard: React.FC<QuestionCardProps> = ({ 
+  question, 
+  index, 
+  attemptedOption, 
+  isRevealed, 
+  onOptionClick, 
+  onToggleRevealed,
+  isLocked,
+  userEmail,
+  onCheckStatus
+}) => {
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
+
+  if (isLocked) {
+    return (
+      <motion.div 
+        layout
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ delay: Math.min(index * 0.05, 0.3) }}
+        className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden flex flex-col h-full"
+      >
+        <div className="absolute inset-0 bg-slate-50/10 dark:bg-slate-900/10 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
+          <div className="bg-indigo-600 p-2 rounded-full mb-3 shadow-lg">
+            <Lock className="w-4 h-4 text-white" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Premium Question</h4>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4 line-clamp-3">
+            Questions from {question.year} are available for subscribed members only. 
+          </p>
+          
+          <div className="w-full space-y-2">
+            <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
+              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
+                <QrCode className="w-3 h-3" /> Subscribe
+              </p>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+                Contact <span className="text-blue-500 font-bold">@upsc_pyq_admin</span> on Telegram to unlock all {question.year} questions.
+              </p>
+            </div>
+            <button 
+              onClick={onCheckStatus}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
+            >
+              <RotateCcw className="w-3 h-3" /> Refresh Status
+            </button>
+          </div>
+        </div>
+
+        {/* Blurred Background Content */}
+        <div className="opacity-20 pointer-events-none filter blur-[1px]">
+          <div className="flex justify-between items-start mb-3 gap-2">
+            <div className="flex gap-1.5 items-center">
+              <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                {question.exam}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50">
+              {question.year}
+            </span>
+          </div>
+          <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
+            {question.question.substring(0, 50)}...
+          </h3>
+          <div className="space-y-1.5 mb-5">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="w-full h-8 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div 
@@ -174,7 +252,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({ question, index, attemptedO
 };
 
 export default function App() {
-  const [questions, setQuestions] = useState<Question[]>(mcqData);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("All");
   const [examFilter, setExamFilter] = useState("All");
@@ -229,6 +308,52 @@ export default function App() {
     }
   });
 
+  const fetchQuestions = async () => {
+    setIsLoadingQuestions(true);
+    try {
+      console.log("Fetching questions from API...");
+      const response = await fetch('/api/questions');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`Loaded ${data.length} questions from API`);
+        setQuestions(data);
+      } else {
+        throw new Error("Empty data from API");
+      }
+    } catch (error) {
+      console.warn("Server API failed, attempting direct Firestore fetch:", error);
+      try {
+        const { getDocs, collection, query, orderBy } = await import('firebase/firestore');
+        const q = query(collection(db, "questions"), orderBy("id"));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const data = snapshot.docs.map(doc => doc.data() as Question);
+          console.log(`Loaded ${data.length} questions directly from Firestore`);
+          setQuestions(data);
+        } else {
+          throw new Error("Firestore is empty");
+        }
+      } catch (fsError) {
+        console.error("Direct Firestore fetch failed:", fsError);
+        // Fallback to local data
+        setQuestions(mcqData);
+      }
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQuestions();
+  }, []);
+
+  const latestTwoYears = useMemo(() => {
+    const years = [...new Set(questions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    return years.slice(0, 2);
+  }, [questions]);
+
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
     try {
@@ -243,12 +368,12 @@ export default function App() {
     }
   };
 
-  const [showLoginModal, setShowLoginModal] = useState(!userEmail);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string}[]>([]);
-  const [newAdminUserEmail, setNewAdminUserEmail] = useState("");
-  const [newAdminUserStatus, setNewAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
+  const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
+  const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
 
   const fetchAllUsers = async () => {
     if (!isAdmin) return;
@@ -296,9 +421,9 @@ export default function App() {
 
   const handleAddUserFromAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminUserEmail.trim()) return;
-    await handleUpdateUser(newAdminUserEmail.trim(), newAdminUserStatus);
-    setNewAdminUserEmail("");
+    if (!isAdminUserEmail.trim()) return;
+    await handleUpdateUser(isAdminUserEmail.trim(), isAdminUserStatus);
+    setIsAdminUserEmail("");
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -331,12 +456,12 @@ export default function App() {
   };
 
   const yearsList = useMemo(() => {
-    const availableData = mcqData.filter(q => 
+    const availableData = questions.filter(q => 
       (examFilter === "All" || q.exam === examFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
-    const uniqueYears = [...new Set(availableData.map(q => q.year))].sort((a, b) => b.localeCompare(a));
+    const uniqueYears = Array.from(new Set(availableData.map(q => q.year))).sort((a, b) => (b as string).localeCompare(a as string));
     
     // Count questions for each year GIVEN current exam/subject/topic filters
     const yearCounts: Record<string, number> = {};
@@ -349,10 +474,10 @@ export default function App() {
       counts: yearCounts,
       total: availableData.length
     };
-  }, [examFilter, subjectFilter, topicFilter]);
+  }, [questions, examFilter, subjectFilter, topicFilter]);
 
   const examsList = useMemo(() => {
-    const availableData = mcqData.filter(q => 
+    const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
@@ -368,10 +493,10 @@ export default function App() {
       options: ["All", ...uniqueExams],
       counts: examCounts
     };
-  }, [yearFilter, subjectFilter, topicFilter]);
+  }, [questions, yearFilter, subjectFilter, topicFilter]);
 
   const subjectsList = useMemo(() => {
-    const availableData = mcqData.filter(q => 
+    const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || q.exam === examFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
@@ -387,10 +512,10 @@ export default function App() {
       options: ["All", ...uniqueSubjects],
       counts: subjectCounts
     };
-  }, [yearFilter, examFilter, topicFilter]);
+  }, [questions, yearFilter, examFilter, topicFilter]);
 
   const topicsList = useMemo(() => {
-    const availableData = mcqData.filter(q => 
+    const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || q.exam === examFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter)
@@ -404,14 +529,14 @@ export default function App() {
     });
 
     const sortedTopics = Object.entries(stats)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .sort((a, b) => b[1] - a[1] || (a[0] as string).localeCompare(b[0] as string))
       .map(entry => entry[0]);
 
     return { 
       options: ["All", ...sortedTopics],
       counts: stats
     };
-  }, [yearFilter, examFilter, subjectFilter]);
+  }, [questions, yearFilter, examFilter, subjectFilter]);
 
   // Auto-reset filters if selected option is no longer available
   useEffect(() => {
@@ -454,17 +579,19 @@ export default function App() {
         q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+    }).sort((a, b) => {
+      // Sort by year descending
+      const yearComparison = String(b.year).localeCompare(String(a.year));
+      if (yearComparison !== 0) return yearComparison;
+      // If same year, sort by id descending
+      return b.id - a.id;
     });
 
-    // If not subscribed, limit to first 5 questions of the filtered list
-    if (!isSubscribed) {
-      return list.slice(0, 5);
-    }
     return list.slice(0, visibleCount);
-  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, isSubscribed, visibleCount, randomMode, randomizedQuestions]);
+  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode, randomizedQuestions]);
 
   const isMoreToLoad = useMemo(() => {
-    if (!isSubscribed || randomMode.active) return false;
+    if (randomMode.active) return false;
     const totalFiltered = questions.filter(q => {
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
@@ -478,7 +605,7 @@ export default function App() {
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
     return totalFiltered > visibleCount;
-  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, isSubscribed, visibleCount, randomMode]);
+  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
 
   const handleLoadMore = () => {
     setVisibleCount(prev => prev + 30);
@@ -522,6 +649,9 @@ export default function App() {
 
   const startRandomPractice = (limit: number) => {
     const baseList = questions.filter(q => {
+      // If not subscribed, only random from latest 2 years
+      if (!isSubscribed && !latestTwoYears.includes(q.year)) return false;
+
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
@@ -603,38 +733,59 @@ export default function App() {
                 </select>
                 <button
                   onClick={() => startRandomPractice(randomSelectLimit)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded-md transition-colors shadow-sm text-[11px] font-bold flex items-center gap-1.5"
+                  title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
+                  className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
                 >
+                  <Dice5 className="w-3 h-3" />
                   <span className="hidden xl:inline">Random PYQ</span>
                   <span className="xl:hidden">Random</span>
                 </button>
               </div>
 
-              <a 
-                href="https://t.me/upsc_pyq_powerhouse" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-105"
-              >
-                <Send className="w-3.5 h-3.5 mr-1.5" /> <span className="hidden sm:inline">Join Telegram</span>
-              </a>
-
-              {userEmail && (
-                <button
-                  onClick={handleLogout}
-                  className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors border border-rose-200 dark:border-rose-800/50"
-                  title="Logout"
+              <div className="flex items-center gap-2">
+                <a 
+                  href="https://t.me/upsc_pyq_powerhouse" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-[1.02] hidden sm:flex"
                 >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              )}
+                  <Send className="w-3.5 h-3.5 mr-1.5" /> <span>Join Telegram</span>
+                </a>
+
+                {!userEmail ? (
+                  <button
+                    onClick={() => setShowLoginModal(true)}
+                    className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800/50 flex items-center gap-2 px-3"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span className="text-xs font-bold hidden sm:inline">Login</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors border border-rose-200 dark:border-rose-800/50 flex items-center gap-2 px-3"
+                    title="Logout"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span className="text-xs font-bold hidden sm:inline">Logout</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
-        {isAdmin && isAdminView ? (
+        {isLoadingQuestions ? (
+          <div className="w-full flex flex-col items-center justify-center py-20 gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-blue-100 dark:border-blue-900/30 rounded-full animate-pulse"></div>
+              <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-blue-600 rounded-full animate-spin"></div>
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Loading Questions from Database...</p>
+          </div>
+        ) : isAdmin && isAdminView ? (
           <div className="w-full space-y-8">
             <div className="flex items-center justify-between">
               <div>
@@ -662,16 +813,16 @@ export default function App() {
                       type="email"
                       required
                       placeholder="user@example.com"
-                      value={newAdminUserEmail}
-                      onChange={(e) => setNewAdminUserEmail(e.target.value)}
+                      value={isAdminUserEmail}
+                      onChange={(e) => setIsAdminUserEmail(e.target.value)}
                       className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Status</label>
                     <select 
-                      value={newAdminUserStatus}
-                      onChange={(e) => setNewAdminUserStatus(e.target.value as "subscribed" | "not_subscribed" | "admin")}
+                      value={isAdminUserStatus}
+                      onChange={(e) => setIsAdminUserStatus(e.target.value as "subscribed" | "not_subscribed" | "admin")}
                       className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none"
                     >
                       <option value="subscribed">Subscribed</option>
@@ -870,9 +1021,17 @@ export default function App() {
                   ))}
                 </select>
                 <button
+                  disabled={!isSubscribed}
                   onClick={() => startRandomPractice(randomSelectLimit)}
-                  className="flex-grow bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+                  title={isSubscribed ? "Start Random Practice" : "Random Practice is for Subscribed Users only"}
+                  className={cn(
+                    "flex-grow py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm",
+                    isSubscribed 
+                      ? "bg-blue-600 hover:bg-blue-500 text-white active:scale-95" 
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60"
+                  )}
                 >
+                  <Dice5 className="w-3 h-3" />
                   Random PYQ
                 </button>
               </div>
@@ -900,17 +1059,24 @@ export default function App() {
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 <AnimatePresence mode="popLayout">
-                  {filteredQuestions.map((q, idx) => (
-                    <QuestionCard 
-                      key={q.id}
-                      question={q}
-                      index={idx}
-                      attemptedOption={userAttempts[q.id]}
-                      isRevealed={revealedAnswers[q.id]}
-                      onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
-                      onToggleRevealed={() => toggleAnswer(q.id)}
-                    />
-                  ))}
+                  {filteredQuestions.map((q, idx) => {
+                    const isLocked = !isSubscribed && !latestTwoYears.includes(q.year);
+                    
+                    return (
+                      <QuestionCard 
+                        key={q.id}
+                        question={q}
+                        index={idx}
+                        attemptedOption={userAttempts[q.id]}
+                        isRevealed={revealedAnswers[q.id]}
+                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                        onToggleRevealed={() => toggleAnswer(q.id)}
+                        isLocked={isLocked}
+                        userEmail={userEmail}
+                        onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                      />
+                    );
+                  })}
                 </AnimatePresence>
 
                 {isMoreToLoad && (
@@ -1002,8 +1168,15 @@ export default function App() {
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700"
+              className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
             >
+              <button 
+                onClick={() => setShowLoginModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
               <div className="flex justify-center mb-6">
                 <div className="bg-blue-600 p-4 rounded-2xl shadow-lg shadow-blue-500/30">
                   <KeyRound className="w-8 h-8 text-white" />

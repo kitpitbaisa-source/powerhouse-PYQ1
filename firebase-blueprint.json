@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User subscription and role status",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "status": { "enum": ["subscribed", "not_subscribed", "admin"] }
+      },
+      "required": ["email", "status"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "UPSC PYQ Question",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "year": { "type": "string" },
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "exam": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "answer": { "type": "string" },
+        "explanation": { "type": "string" }
+      },
+      "required": ["id", "year", "subject", "exam", "question", "options", "answer", "explanation"]
+    }
+  },
+  "firestore": {
+    "users/{email}": {
+      "schema": "User",
+      "description": "Collection of users keyed by their email address"
+    },
+    "questions/{questionId}": {
+      "schema": "Question",
+      "description": "Collection of all PYQ questions"
+    }
+  }
+}

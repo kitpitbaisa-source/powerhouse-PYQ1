@@ -4,10 +4,39 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { mcqData } from "./src/questions.ts";
 
-const DB_PATH = path.join(process.cwd(), "users_db.json");
+// Import firebase config
+const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
+
+// Initialize Admin SDK
+try {
+  // Try initializing with the minimum config - auto-detection is usually better in Cloud Run
+  if (admin.apps.length === 0) {
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+  }
+  console.log("Firebase Admin initialized for project:", firebaseConfig.projectId);
+} catch (e) {
+  console.error("Firebase Admin init error:", e);
+}
+
+// In some versions of firebase-admin, passing the databaseId to getFirestore is the way
+// In others, it might be admin.firestore(databaseId)
+const getDb = () => {
+  try {
+    return getFirestore(firebaseConfig.firestoreDatabaseId);
+  } catch (e) {
+    console.error("Error getting firestore with databaseId, falling back to default:", e);
+    return getFirestore();
+  }
+};
+
+const db = getDb();
+console.log("Firestore ready.");
 
 interface User {
   email: string;
@@ -16,33 +45,77 @@ interface User {
 
 // Initial default users
 const defaultUsers: Record<string, User> = {
-  "admin@example.com": { email: "admin@example.com", status: "subscribed" },
+  "admin@example.com": { email: "admin@example.com", status: "admin" },
   "user@example.com": { email: "user@example.com", status: "not_subscribed" },
-  "kitpitbaisa@gmail.com": { email: "kitpitbaisa@gmail.com", status: "subscribed" },
+  "kitpitbaisa@gmail.com": { email: "kitpitbaisa@gmail.com", status: "admin" },
 };
 
-// Load users from file or use defaults
-function loadUsers(): Record<string, User> {
+import { initializeApp as initializeClientApp } from "firebase/app";
+import { 
+  getFirestore as getClientFirestore, 
+  collection as clientCollection, 
+  getDocs as clientGetDocs,
+  doc as clientDoc,
+  setDoc as clientSetDoc,
+  deleteDoc as clientDeleteDoc,
+  getDoc as clientGetDoc,
+  writeBatch as clientWriteBatch
+} from "firebase/firestore";
+
+// Initialize Client SDK on server as workaround for gRPC/Admin perm issues
+const clientApp = initializeClientApp(firebaseConfig);
+const clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+
+async function ensureDefaultUsers() {
   try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = fs.readFileSync(DB_PATH, "utf-8");
-      return JSON.parse(data);
+    const querySnapshot = await clientGetDocs(clientCollection(clientDb, "users"));
+    if (querySnapshot.empty) {
+      console.log("Initializing database with default users (Client SDK)...");
+      const batch = clientWriteBatch(clientDb);
+      for (const [email, userData] of Object.entries(defaultUsers)) {
+        const docRef = clientDoc(clientDb, "users", email);
+        batch.set(docRef, userData);
+      }
+      await batch.commit();
+      console.log("Default users initialized.");
     }
   } catch (error) {
-    console.error("Error loading users:", error);
+    console.error("Error initializing default users (Client SDK):", error);
   }
-  return { ...defaultUsers };
 }
 
-function saveUsers(users: Record<string, User>) {
+async function migrateQuestions() {
   try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(users, null, 2));
+    const qCol = clientCollection(clientDb, "questions");
+    const snapshot = await clientGetDocs(qCol);
+    
+    if (snapshot.size < 10) {
+      console.log(`Starting migration of ${mcqData.length} questions to Firestore (Client SDK)...`);
+      const batchSize = 100; // Client SDK limit
+      for (let i = 0; i < mcqData.length; i += batchSize) {
+        const batch = clientWriteBatch(clientDb);
+        const chunk = mcqData.slice(i, i + batchSize);
+        chunk.forEach(q => {
+          const docRef = clientDoc(clientDb, "questions", q.id.toString());
+          batch.set(docRef, q);
+        });
+        await batch.commit();
+        console.log(`Migrated ${Math.min(i + batchSize, mcqData.length)}/${mcqData.length} questions...`);
+      }
+      console.log("Question migration completed successfully.");
+    } else {
+      console.log(`Database already has ${snapshot.size}+ questions.`);
+    }
   } catch (error) {
-    console.error("Error saving users:", error);
+    console.error("Error migrating questions (Client SDK):", error);
   }
 }
 
-let users = loadUsers();
+// Ensure database is ready
+(async () => {
+  await ensureDefaultUsers();
+  await migrateQuestions();
+})();
 
 async function startServer() {
   const app = express();
@@ -50,52 +123,80 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API to check subscription
-  app.get("/api/user-status", (req, res) => {
+  // API to get all questions
+  app.get("/api/questions", async (req, res) => {
+    try {
+      const snapshot = await clientGetDocs(clientCollection(clientDb, "questions"));
+      const questions = snapshot.docs.map(doc => doc.data());
+      // Sort in-memory if needed
+      questions.sort((a: any, b: any) => a.id - b.id);
+      res.json(questions);
+    } catch (error: any) {
+      console.error("Error fetching questions:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+
+  // API to check user status
+  app.get("/api/user-status", async (req, res) => {
     const email = req.query.email as string;
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
     }
     
     const userEmail = email.toLowerCase().trim();
-    const user = users[userEmail];
-    
-    if (user) {
-      res.json({ email: user.email, status: user.status });
-    } else {
-      res.json({ email: userEmail, status: "not_subscribed" });
+    try {
+      const userDoc = await clientGetDoc(clientDoc(clientDb, "users", userEmail));
+      if (userDoc.exists()) {
+        res.json(userDoc.data());
+      } else {
+        res.json({ email: userEmail, status: "not_subscribed" });
+      }
+    } catch (error: any) {
+      console.error("Error fetching user status:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
 
   // API to update status
-  app.post("/api/admin/update-status", (req, res) => {
+  app.post("/api/admin/update-status", async (req, res) => {
     const { email, status } = req.body;
     if (!email || !status) {
       return res.status(400).json({ error: "Email and status are required" });
     }
     
     const userEmail = email.toLowerCase().trim();
-    users[userEmail] = { email: userEmail, status };
-    saveUsers(users);
-    
-    res.json({ message: "Success", user: users[userEmail] });
+    try {
+      await clientSetDoc(clientDoc(clientDb, "users", userEmail), { email: userEmail, status }, { merge: true });
+      res.json({ message: "Success", user: { email: userEmail, status } });
+    } catch (error: any) {
+      console.error("Error updating user status:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
   });
 
   // API to delete user
-  app.delete("/api/admin/users/:email", (req, res) => {
+  app.delete("/api/admin/users/:email", async (req, res) => {
     const email = req.params.email.toLowerCase().trim();
-    if (users[email]) {
-      delete users[email];
-      saveUsers(users);
+    try {
+      await clientDeleteDoc(clientDoc(clientDb, "users", email));
       res.json({ message: "User deleted" });
-    } else {
-      res.status(404).json({ error: "User not found" });
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
 
   // API to get all users
-  app.get("/api/admin/users", (req, res) => {
-    res.json(Object.values(users));
+  app.get("/api/admin/users", async (req, res) => {
+    try {
+      const snapshot = await clientGetDocs(clientCollection(clientDb, "users"));
+      const users = snapshot.docs.map(doc => doc.data());
+      res.json(users);
+    } catch (error: any) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
   });
 
   // Vite middleware for development

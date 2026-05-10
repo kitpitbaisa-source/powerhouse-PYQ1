@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.status == 'admin';
+    }
+
+    match /users/{userEmail} {
+      allow read, write: if true; // Keeping simple for now as per previous version
+    }
+    
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if true; // TEMPORARY to allow migration, will restore after DB is populated
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

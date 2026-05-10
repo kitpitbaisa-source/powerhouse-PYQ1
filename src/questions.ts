@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Question } from './types';
+import { Question } from './types.ts';
 
 export const mcqData: Question[] = [
   {
