@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   Landmark, 
   Trophy, 
@@ -733,9 +733,26 @@ export default function App() {
     return totalFiltered > visibleCount;
   }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     setVisibleCount(prev => prev + 30);
-  };
+  }, []);
+
+  // Infinite scroll: auto-load more when sentinel is visible
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [handleLoadMore]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean) => {
     if (userAttempts[qid]) return;
@@ -1248,13 +1265,8 @@ export default function App() {
                   })}
 
                 {isMoreToLoad && (
-                  <div className="col-span-full py-8 flex justify-center">
-                    <button
-                      onClick={handleLoadMore}
-                      className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-2 rounded-full text-sm text-slate-500 dark:text-slate-400 font-medium hover:text-blue-600 dark:hover:text-white transition-colors shadow-sm"
-                    >
-                      Load more questions
-                    </button>
+                  <div ref={loadMoreRef} className="col-span-full py-8 flex justify-center">
+                    <span className="text-sm text-slate-400 dark:text-slate-500 animate-pulse">Loading more questions...</span>
                   </div>
                 )}
 

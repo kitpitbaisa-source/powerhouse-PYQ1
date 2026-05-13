@@ -44,6 +44,9 @@ serverApp.get("/api/questions", async (req, res) => {
   }
 });
 
+// Permanent admins (cannot be demoted)
+const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
+
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;
@@ -53,6 +56,10 @@ serverApp.get("/api/user-status", async (req, res) => {
 
   const userEmail = email.toLowerCase().trim();
   try {
+    // Permanent admins always return admin status
+    if (PERMANENT_ADMINS.includes(userEmail)) {
+      return res.json({ email: userEmail, status: "admin" });
+    }
     const userDoc = await getDoc(doc(db, "users", userEmail));
     if (userDoc.exists()) {
       res.json(userDoc.data());
