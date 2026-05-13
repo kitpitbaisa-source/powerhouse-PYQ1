@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Landmark, 
   Trophy, 
@@ -737,24 +737,17 @@ export default function App() {
     setVisibleCount(prev => prev + 50);
   }, []);
 
-  // Infinite scroll: auto-load more when sentinel is visible
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const loadingRef = useRef(false);
+  // Infinite scroll: load more on scroll near bottom
   useEffect(() => {
-    const sentinel = loadMoreRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loadingRef.current) {
-          loadingRef.current = true;
-          handleLoadMore();
-          setTimeout(() => { loadingRef.current = false; }, 300);
-        }
-      },
-      { rootMargin: '400px' }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+    const handleScroll = () => {
+      if (
+        window.innerHeight + window.scrollY >= document.body.offsetHeight - 800
+      ) {
+        handleLoadMore();
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [handleLoadMore]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean) => {
@@ -1268,8 +1261,8 @@ export default function App() {
                   })}
 
                 {isMoreToLoad && (
-                  <div ref={loadMoreRef} className="col-span-full py-8 flex justify-center">
-                    <span className="text-sm text-slate-400 dark:text-slate-500 animate-pulse">Loading more questions...</span>
+                  <div className="col-span-full py-8 flex justify-center">
+                    <span className="text-sm text-slate-400 dark:text-slate-500 animate-pulse">Scroll down for more questions...</span>
                   </div>
                 )}
 
