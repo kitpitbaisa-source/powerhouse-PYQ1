@@ -19,7 +19,16 @@ import {
 } from "firebase/firestore";
 import { mcqData } from "./src/questions";
 
-import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+const firebaseConfig = {
+  projectId: "ai-studio-applet-webapp-4fc9d",
+  appId: "1:809712558883:web:c08f0b98980b3e6fa1e296",
+  apiKey: "AIzaSyC-E3iPcVw8hCJ8r0tABGQEWf6sVI0AAZM",
+  authDomain: "ai-studio-applet-webapp-4fc9d.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-666e319f-be05-454b-9892-4be6e24bdca1",
+  storageBucket: "ai-studio-applet-webapp-4fc9d.firebasestorage.app",
+  messagingSenderId: "809712558883",
+  measurementId: ""
+};
 
 // Initialize Client SDK
 const app = initializeApp(firebaseConfig);
