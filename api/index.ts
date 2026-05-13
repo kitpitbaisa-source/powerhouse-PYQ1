@@ -11,9 +11,7 @@ import {
   writeBatch,
   query,
   limit,
-  getCountFromServer,
 } from "firebase/firestore";
-import { mcqData } from "../src/questions";
 
 const firebaseConfig = {
   projectId: "ai-studio-applet-webapp-4fc9d",
@@ -33,7 +31,7 @@ const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 const serverApp = express();
 serverApp.use(express.json());
 
-// API to get all questions
+// API to get all questions (from Firestore directly)
 serverApp.get("/api/questions", async (req, res) => {
   try {
     const snapshot = await getDocs(collection(db, "questions"));
@@ -104,34 +102,6 @@ serverApp.get("/api/admin/users", async (req, res) => {
     res.json(users);
   } catch (error: any) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
-  }
-});
-
-// API to sync questions (on-demand)
-serverApp.post("/api/admin/sync-questions", async (req, res) => {
-  try {
-    const qCol = collection(db, "questions");
-    const remoteCountSnapshot = await getCountFromServer(qCol);
-    const remoteCount = remoteCountSnapshot.data().count;
-
-    if (remoteCount >= mcqData.length) {
-      return res.json({ message: "Already synced", local: mcqData.length, remote: remoteCount });
-    }
-
-    for (let i = 0; i < mcqData.length; i += 500) {
-      const chunk = mcqData.slice(i, i + 500);
-      const batch = writeBatch(db);
-      chunk.forEach((q) => {
-        const docRef = doc(db, "questions", q.id.toString());
-        batch.set(docRef, q, { merge: true });
-      });
-      await batch.commit();
-    }
-
-    res.json({ message: "Sync completed", count: mcqData.length });
-  } catch (error: any) {
-    console.error("Error syncing questions:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
