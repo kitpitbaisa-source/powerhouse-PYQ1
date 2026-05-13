@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   Landmark, 
   Trophy, 
@@ -31,10 +30,10 @@ import {
   X,
   Database
 } from 'lucide-react';
-import { mcqData } from './questions';
-import { Question, SubjectColorMap } from './types';
-import { cn } from './lib/utils';
-import { db } from './firebase';
+import { mcqData } from './questions.ts';
+import { Question, SubjectColorMap } from './types.ts';
+import { cn } from './lib/utils.ts';
+import { db } from './firebase.ts';
 import { collection, doc, setDoc } from 'firebase/firestore';
 // import { isValidCode } from './authorizedCodes';
 
@@ -61,7 +60,50 @@ interface QuestionCardProps {
   isLocked?: boolean;
   userEmail?: string | null;
   onCheckStatus?: () => void;
+  onSubjectClick?: (subject: string) => void;
+  onTopicClick?: (topic: string) => void;
+  onExamClick?: (exam: string) => void;
+  onYearClick?: (year: string) => void;
+  searchQuery?: string;
 }
+
+const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query }) => {
+  if (!query.trim()) {
+    return <span dangerouslySetInnerHTML={{ __html: text }} />;
+  }
+
+  // Escape special regex characters
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, "gi");
+  
+  // Split by HTML tags to avoid highlighting inside tags
+  const parts = text.split(/(<[^>]*>)/g);
+  
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.startsWith("<") && part.endsWith(">")) {
+          return <span key={index} dangerouslySetInnerHTML={{ __html: part }} />;
+        }
+        
+        const subParts = part.split(regex);
+        return (
+          <React.Fragment key={index}>
+            {subParts.map((subPart, subIndex) => 
+              regex.test(subPart) ? (
+                <mark key={subIndex} className="bg-yellow-200 dark:bg-yellow-500/40 text-slate-900 dark:text-white px-0.5 rounded-sm font-bold border-b border-yellow-400 dark:border-yellow-300/30 shadow-sm">
+                  {subPart}
+                </mark>
+              ) : (
+                <span key={subIndex}>{subPart}</span>
+              )
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+};
 
 const QuestionCard: React.FC<QuestionCardProps> = ({ 
   question, 
@@ -72,18 +114,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onToggleRevealed,
   isLocked,
   userEmail,
-  onCheckStatus
+  onCheckStatus,
+  onSubjectClick,
+  onTopicClick,
+  onExamClick,
+  onYearClick,
+  searchQuery = ""
 }) => {
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
 
   if (isLocked) {
     return (
-      <motion.div 
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ delay: Math.min(index * 0.05, 0.3) }}
+      <div 
         className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden flex flex-col h-full"
       >
         <div className="absolute inset-0 bg-slate-50/10 dark:bg-slate-900/10 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
@@ -134,41 +176,48 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             ))}
           </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div 
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ delay: Math.min(index * 0.05, 0.3) }}
+    <div 
       className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full group"
     >
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
-          <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+          <span 
+            onClick={() => onExamClick?.(question.exam)}
+            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
-          <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset", colorClasses)}>
+          <span 
+            onClick={() => onSubjectClick?.(question.subject)}
+            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+          >
             {question.subject}
           </span>
           {question.topic && (
-            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 ring-1 ring-inset ring-blue-400/20">
+            <span 
+              onClick={() => onTopicClick?.(question.topic!)}
+              className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 ring-1 ring-inset ring-blue-400/20 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors"
+            >
               {question.topic}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center">
+        <span 
+          onClick={() => onYearClick?.(question.year)}
+          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+        >
           <Calendar className="w-3 h-3 mr-1" />{question.year}
         </span>
       </div>
       
       <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
         <span className="text-blue-600 dark:text-blue-400 mr-1 font-bold">Q{question.id}.</span> 
-        <span dangerouslySetInnerHTML={{ __html: question.question }} />
+        <HighlightText text={question.question} query={searchQuery} />
       </h3>
       
       <div className="space-y-1.5 mb-5">
@@ -190,7 +239,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
             >
-              <span className="text-left pr-3">{opt}</span>
+              <span className="text-left pr-3">
+                <HighlightText text={opt} query={searchQuery} />
+              </span>
               {hasAttempted && isCorrectAnswer && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />}
               {hasAttempted && isSelected && !isCorrectAnswer && <XCircle className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0" />}
             </button>
@@ -203,12 +254,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           onClick={onToggleRevealed} 
           className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
         >
-          <motion.div
-            animate={{ rotate: isRevealed ? 180 : 0 }}
-            className="mr-1.5"
+          <div
+            className={cn("mr-1.5 transition-transform duration-200", isRevealed ? "rotate-180" : "rotate-0")}
           >
             <ChevronDown className="w-3.5 h-3.5" />
-          </motion.div>
+          </div>
           <span>{isRevealed ? "Hide Answer" : "Show Answer"}</span>
         </button>
         
@@ -223,31 +273,22 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </a>
       </div>
       
-      <AnimatePresence>
-        {isRevealed && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="pt-2">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Answer: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{question.answer}</span>
+      {isRevealed && (
+        <div className="pt-2">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Answer: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{question.answer}</span>
+          </p>
+          {question.explanation && (
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-2.5 rounded-r-lg shadow-sm">
+              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed italic">
+                <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1 not-italic">Explanation</span>
+                <HighlightText text={question.explanation} query={searchQuery} />
               </p>
-              {question.explanation && (
-                <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-2.5 rounded-r-lg shadow-sm">
-                  <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed italic">
-                    <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1 not-italic">Explanation</span>
-                    {question.explanation}
-                  </p>
-                </div>
-              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -358,9 +399,23 @@ export default function App() {
   const checkUserStatus = async (email: string) => {
     try {
       const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.warn(`User status check failed (${response.status}):`, text);
+        return;
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType || 'text'}: ${text.substring(0, 50)}`);
+      }
+
       const data = await response.json();
       setIsSubscribed(data.status === 'subscribed' || data.status === 'admin');
-      setIsAdmin(data.status === 'admin' || ADMIN_EMAILS.includes(email.toLowerCase().trim()));
+      const adminStatus = data.status === 'admin' || ADMIN_EMAILS.includes(email.toLowerCase().trim());
+      setIsAdmin(adminStatus);
     } catch (error) {
       console.error("Failed to check status:", error);
       setIsSubscribed(false);
@@ -374,48 +429,82 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<{email: string, status: string}[]>([]);
   const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
   const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
+  const [adminMessage, setAdminMessage] = useState({ text: "", type: "" });
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   const fetchAllUsers = async () => {
     if (!isAdmin) return;
+    setIsLoadingUsers(true);
     try {
       const response = await fetch('/api/admin/users');
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Fetch failed (${response.status}): ${text}`);
+      }
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType || 'text'}: ${text.substring(0, 50)}`);
+      }
+
       const data = await response.json();
-      setAllUsers(data);
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
+      if (Array.isArray(data)) {
+        setAllUsers(data);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch users:", error.message || error);
+    } finally {
+      setIsLoadingUsers(false);
     }
   };
 
   useEffect(() => {
     if (userEmail) {
       checkUserStatus(userEmail);
-      if (isAdmin) {
-        fetchAllUsers();
-      }
     }
-  }, [userEmail, isAdmin]);
+  }, [userEmail]);
+
+  useEffect(() => {
+    if (isAdmin && userEmail) {
+      fetchAllUsers();
+    }
+  }, [isAdmin, userEmail]);
 
   const handleUpdateUser = async (email: string, status: string) => {
     try {
-      await fetch('/api/admin/update-status', {
+      const response = await fetch('/api/admin/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, status })
       });
+      if (response.ok) {
+        setAdminMessage({ text: `User ${email} updated to ${status}`, type: "success" });
+        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+      } else {
+        const err = await response.json();
+        setAdminMessage({ text: `Failed: ${err.details || err.error}`, type: "error" });
+      }
       fetchAllUsers();
       if (email === userEmail) checkUserStatus(email);
     } catch (error) {
       console.error("Failed to update user:", error);
+      setAdminMessage({ text: "Network error updating user", type: "error" });
     }
   };
 
   const handleDeleteUser = async (email: string) => {
     if (email === userEmail) return; // Don't delete self
     try {
-      await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      if (response.ok) {
+        setAdminMessage({ text: `User ${email} deleted`, type: "success" });
+        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+      }
       fetchAllUsers();
     } catch (error) {
       console.error("Failed to delete user:", error);
+      setAdminMessage({ text: "Network error deleting user", type: "error" });
     }
   };
 
@@ -677,7 +766,9 @@ export default function App() {
               </div>
               <div className="hidden sm:block">
                 <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">UPSC PYQ Powerhouse</h1>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Meticulously curated Previous Year Questions from UPSC Examinations.</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Meticulously curated PYQs • {questions.length} Total Loaded
+                </p>
               </div>
               <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight sm:hidden">UPSC PYQ</h1>
             </div>
@@ -806,6 +897,14 @@ export default function App() {
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
                 </h3>
+                {adminMessage.text && (
+                  <div className={cn(
+                    "mb-4 p-3 rounded-lg text-xs font-bold transition-all",
+                    adminMessage.type === "success" ? "bg-emerald-100/50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100/50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                  )}>
+                    {adminMessage.text}
+                  </div>
+                )}
                 <form onSubmit={handleAddUserFromAdmin} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Email</label>
@@ -852,7 +951,19 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                      {allUsers.map((user) => (
+                      {isLoadingUsers ? (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500 animate-pulse">
+                            Loading user database...
+                          </td>
+                        </tr>
+                      ) : allUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                            No users found in database.
+                          </td>
+                        </tr>
+                      ) : allUsers.map((user) => (
                         <tr key={user.email} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">{user.email}</div>
@@ -1050,16 +1161,15 @@ export default function App() {
 
         <section className="flex-grow">
           {filteredQuestions.length === 0 ? (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
               <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
               <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No questions found</h3>
               <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters to see more results.</p>
-            </motion.div>
+            </div>
           ) : (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                <AnimatePresence mode="popLayout">
-                  {filteredQuestions.map((q, idx) => {
+                {filteredQuestions.map((q, idx) => {
                     const isLocked = !isSubscribed && !latestTwoYears.includes(q.year);
                     
                     return (
@@ -1074,28 +1184,45 @@ export default function App() {
                         isLocked={isLocked}
                         userEmail={userEmail}
                         onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                        searchQuery={searchQuery}
+                        onSubjectClick={(subject) => {
+                          setSubjectFilter(subject);
+                          setTopicFilter("All");
+                          setRandomMode({ active: false, limit: 0 });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onTopicClick={(topic) => {
+                          setTopicFilter(topic);
+                          setRandomMode({ active: false, limit: 0 });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onExamClick={(exam) => {
+                          setExamFilter(exam);
+                          setRandomMode({ active: false, limit: 0 });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onYearClick={(year) => {
+                          setYearFilter(year);
+                          setRandomMode({ active: false, limit: 0 });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                       />
                     );
                   })}
-                </AnimatePresence>
 
                 {isMoreToLoad && (
                   <div className="col-span-full py-8 flex justify-center">
-                    <motion.button
-                      whileInView={{ opacity: 1 }}
-                      initial={{ opacity: 0 }}
-                      onViewportEnter={handleLoadMore}
+                    <button
+                      onClick={handleLoadMore}
                       className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-2 rounded-full text-sm text-slate-500 dark:text-slate-400 font-medium hover:text-blue-600 dark:hover:text-white transition-colors shadow-sm"
                     >
-                      Loading more questions...
-                    </motion.button>
+                      Load more questions
+                    </button>
                   </div>
                 )}
 
                 {!isSubscribed && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                  <div 
                     className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-800 p-6 rounded-xl border-2 border-dashed border-indigo-200 dark:border-indigo-500/50 flex flex-col items-center justify-center text-center group"
                   >
                     <div className="bg-indigo-600 p-3 rounded-full mb-4 shadow-lg group-hover:scale-110 transition-transform">
@@ -1131,7 +1258,7 @@ export default function App() {
                         <RotateCcw className="w-4 h-4" /> Check Subscription Status
                       </button>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
               </div>
 
@@ -1157,69 +1284,62 @@ export default function App() {
       </footer>
 
       {/* Login Modal */}
-      <AnimatePresence>
-        {showLoginModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+      {showLoginModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+        >
+          <div
+            className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
+            <button 
+              onClick={() => setShowLoginModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
             >
-              <button 
-                onClick={() => setShowLoginModal(false)}
-                className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <X className="w-5 h-5" />
+            </button>
 
-              <div className="flex justify-center mb-6">
-                <div className="bg-blue-600 p-4 rounded-2xl shadow-lg shadow-blue-500/30">
-                  <KeyRound className="w-8 h-8 text-white" />
+            <div className="flex justify-center mb-6">
+              <div className="bg-blue-600 p-4 rounded-2xl shadow-lg shadow-blue-500/30">
+                <KeyRound className="w-8 h-8 text-white" />
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
+            
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
+                <div className="relative">
+                  <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    value={loginEmailInput}
+                    onChange={(e) => setLoginEmailInput(e.target.value)}
+                    placeholder="e.g. user@example.com"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  />
                 </div>
               </div>
               
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
-              
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
-                  <div className="relative">
-                    <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      id="email"
-                      type="email"
-                      required
-                      value={loginEmailInput}
-                      onChange={(e) => setLoginEmailInput(e.target.value)}
-                      placeholder="e.g. user@example.com"
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                    />
-                  </div>
-                </div>
-                
-                <button
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                >
-                  {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
-                  {!isLoggingIn && <Check className="w-5 h-5" />}
-                </button>
-              </form>
-              
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
-                Your session will be remembered for 7 days.
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
+                {!isLoggingIn && <Check className="w-5 h-5" />}
+              </button>
+            </form>
+            
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
+              Your session will be remembered for 7 days.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   </div>
   );
