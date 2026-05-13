@@ -14,11 +14,12 @@ import {
   query,
   limit,
   getCountFromServer,
-  type Firestore
+  type Firestore,
+  terminate
 } from "firebase/firestore";
-import { mcqData } from "./src/questions.ts";
+import { mcqData } from "./src/questions";
 
-import firebaseConfig from "./firebase-applet-config.json" assert { type: "json" };
+import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 
 // Initialize Client SDK
 const app = initializeApp(firebaseConfig);
@@ -110,110 +111,122 @@ async function initializeData() {
   console.log("Data initialization completed.");
 }
 
-async function startServer() {
-  const serverApp = express();
-  const PORT = 3000;
+const serverApp = express();
+const PORT = 3000;
 
-  serverApp.use(express.json());
+serverApp.use(express.json());
 
-  // API to get all questions
-  serverApp.get("/api/questions", async (req, res) => {
+// Export for Vercel
+export default serverApp;
+
+// API to get all questions
+serverApp.get("/api/questions", async (req, res) => {
+  try {
+    const snapshot = await getDocs(collection(db, "questions"));
+    const questions = snapshot.docs.map(doc => doc.data());
+    questions.sort((a: any, b: any) => a.id - b.id);
+    res.json(questions);
+  } catch (error: any) {
+    console.error("Error fetching questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to check user status
+serverApp.get("/api/user-status", async (req, res) => {
+  const email = req.query.email as string;
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+  
+  const userEmail = email.toLowerCase().trim();
+  try {
+    const userDoc = await getDoc(doc(db, "users", userEmail));
+    if (userDoc.exists()) {
+      res.json(userDoc.data());
+    } else {
+      res.json({ email: userEmail, status: "not_subscribed" });
+    }
+  } catch (error: any) {
+    console.error("Error fetching user status:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to update status
+serverApp.post("/api/admin/update-status", async (req, res) => {
+  const { email, status } = req.body;
+  if (!email || !status) {
+    return res.status(400).json({ error: "Email and status are required" });
+  }
+  
+  const userEmail = email.toLowerCase().trim();
+  try {
+    await setDoc(doc(db, "users", userEmail), { email: userEmail, status }, { merge: true });
+    res.json({ message: "Success", user: { email: userEmail, status } });
+  } catch (error: any) {
+    console.error("Error updating user status:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to delete user
+serverApp.delete("/api/admin/users/:email", async (req, res) => {
+  const email = req.params.email.toLowerCase().trim();
+  try {
+    await deleteDoc(doc(db, "users", email));
+    res.json({ message: "User deleted" });
+  } catch (error: any) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to get all users
+serverApp.get("/api/admin/users", async (req, res) => {
+  try {
+    const snapshot = await getDocs(collection(db, "users"));
+    const users = snapshot.docs.map(doc => doc.data());
+    res.json(users);
+  } catch (error: any) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Vite middleware for development
+async function setupVite() {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     try {
-      const snapshot = await getDocs(collection(db, "questions"));
-      const questions = snapshot.docs.map(doc => doc.data());
-      questions.sort((a: any, b: any) => a.id - b.id);
-      res.json(questions);
-    } catch (error: any) {
-      console.error("Error fetching questions:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      serverApp.use(vite.middlewares);
+    } catch (e) {
+      console.warn("Vite not available, skipping middleware.");
     }
-  });
-
-  // API to check user status
-  serverApp.get("/api/user-status", async (req, res) => {
-    const email = req.query.email as string;
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-    
-    const userEmail = email.toLowerCase().trim();
-    try {
-      const userDoc = await getDoc(doc(db, "users", userEmail));
-      if (userDoc.exists()) {
-        res.json(userDoc.data());
-      } else {
-        res.json({ email: userEmail, status: "not_subscribed" });
-      }
-    } catch (error: any) {
-      console.error("Error fetching user status:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
-    }
-  });
-
-  // API to update status
-  serverApp.post("/api/admin/update-status", async (req, res) => {
-    const { email, status } = req.body;
-    if (!email || !status) {
-      return res.status(400).json({ error: "Email and status are required" });
-    }
-    
-    const userEmail = email.toLowerCase().trim();
-    try {
-      await setDoc(doc(db, "users", userEmail), { email: userEmail, status }, { merge: true });
-      res.json({ message: "Success", user: { email: userEmail, status } });
-    } catch (error: any) {
-      console.error("Error updating user status:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
-    }
-  });
-
-  // API to delete user
-  serverApp.delete("/api/admin/users/:email", async (req, res) => {
-    const email = req.params.email.toLowerCase().trim();
-    try {
-      await deleteDoc(doc(db, "users", email));
-      res.json({ message: "User deleted" });
-    } catch (error: any) {
-      console.error("Error deleting user:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
-    }
-  });
-
-  // API to get all users
-  serverApp.get("/api/admin/users", async (req, res) => {
-    try {
-      const snapshot = await getDocs(collection(db, "users"));
-      const users = snapshot.docs.map(doc => doc.data());
-      res.json(users);
-    } catch (error: any) {
-      console.error("Error fetching users:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    serverApp.use(vite.middlewares);
   } else {
     // Production serving
     const distPath = path.join(process.cwd(), "dist");
     serverApp.use(express.static(distPath));
     serverApp.get("*", (req, res) => {
+      // In production, we assume dist/index.html is the entry point
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+}
 
-  // Start initialization immediately
-  initializeData().catch(err => console.error("Initialization error:", err));
+// Start initialization
+if (!process.env.VERCEL) {
+  setupVite();
+  
+  initializeData().catch(err => {
+    console.error("Initialization error:", err);
+  });
 
   serverApp.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
 }
-
-startServer();

@@ -436,16 +436,16 @@ export default function App() {
     if (!isAdmin) return;
     setIsLoadingUsers(true);
     try {
+      console.log("Fetching users from API...");
       const response = await fetch('/api/admin/users');
+      
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Fetch failed (${response.status}): ${text}`);
+        throw new Error(`API fetch failed with status ${response.status}`);
       }
       
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        throw new Error(`Expected JSON but got ${contentType || 'text'}: ${text.substring(0, 50)}`);
+        throw new Error("API did not return JSON");
       }
 
       const data = await response.json();
@@ -453,7 +453,17 @@ export default function App() {
         setAllUsers(data);
       }
     } catch (error: any) {
-      console.error("Failed to fetch users:", error.message || error);
+      console.warn("Server API failed for users, attempting direct Firestore fetch:", error.message || error);
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const snapshot = await getDocs(collection(db, "users"));
+        if (!snapshot.empty) {
+          const users = snapshot.docs.map(doc => doc.data() as {email: string, status: string});
+          setAllUsers(users);
+        }
+      } catch (fsError) {
+        console.error("Direct Firestore fetch for users failed:", fsError);
+      }
     } finally {
       setIsLoadingUsers(false);
     }
@@ -472,39 +482,66 @@ export default function App() {
   }, [isAdmin, userEmail]);
 
   const handleUpdateUser = async (email: string, status: string) => {
+    const userEmailToUpdate = email.toLowerCase().trim();
     try {
+      console.log(`Updating user ${userEmailToUpdate} to ${status}...`);
       const response = await fetch('/api/admin/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, status })
+        body: JSON.stringify({ email: userEmailToUpdate, status })
       });
+
       if (response.ok) {
-        setAdminMessage({ text: `User ${email} updated to ${status}`, type: "success" });
+        setAdminMessage({ text: `User ${userEmailToUpdate} updated to ${status}`, type: "success" });
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+        fetchAllUsers();
+        if (userEmailToUpdate === userEmail) checkUserStatus(userEmailToUpdate);
+        return;
       } else {
-        const err = await response.json();
-        setAdminMessage({ text: `Failed: ${err.details || err.error}`, type: "error" });
+        const err = await response.json().catch(() => ({ error: "Unknown server error" }));
+        throw new Error(err.details || err.error || "Server failed");
       }
-      fetchAllUsers();
-      if (email === userEmail) checkUserStatus(email);
-    } catch (error) {
-      console.error("Failed to update user:", error);
-      setAdminMessage({ text: "Network error updating user", type: "error" });
+    } catch (error: any) {
+      console.warn("Server update failed, attempting direct Firestore write:", error.message || error);
+      try {
+        const { doc, setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, "users", userEmailToUpdate), { email: userEmailToUpdate, status }, { merge: true });
+        setAdminMessage({ text: `User ${userEmailToUpdate} updated (Direct)`, type: "success" });
+        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+        fetchAllUsers();
+        if (userEmailToUpdate === userEmail) checkUserStatus(userEmailToUpdate);
+      } catch (fsError: any) {
+        console.error("Direct Firestore update failed:", fsError);
+        setAdminMessage({ text: `Failed: ${fsError.message || "Permissions denied"}`, type: "error" });
+      }
     }
   };
 
   const handleDeleteUser = async (email: string) => {
     if (email === userEmail) return; // Don't delete self
+    const userEmailToDelete = email.toLowerCase().trim();
     try {
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE' });
       if (response.ok) {
-        setAdminMessage({ text: `User ${email} deleted`, type: "success" });
+        setAdminMessage({ text: `User ${userEmailToDelete} deleted`, type: "success" });
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+        fetchAllUsers();
+        return;
+      } else {
+        throw new Error("Server delete failed");
       }
-      fetchAllUsers();
-    } catch (error) {
-      console.error("Failed to delete user:", error);
-      setAdminMessage({ text: "Network error deleting user", type: "error" });
+    } catch (error: any) {
+      console.warn("Server delete failed, attempting direct Firestore delete:", error.message || error);
+      try {
+        const { doc, deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, "users", userEmailToDelete));
+        setAdminMessage({ text: `User ${userEmailToDelete} deleted (Direct)`, type: "success" });
+        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
+        fetchAllUsers();
+      } catch (fsError: any) {
+        console.error("Direct Firestore delete failed:", fsError);
+        setAdminMessage({ text: "Failed to delete user", type: "error" });
+      }
     }
   };
 
