@@ -734,21 +734,24 @@ export default function App() {
   }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
 
   const handleLoadMore = useCallback(() => {
-    setVisibleCount(prev => prev + 30);
+    setVisibleCount(prev => prev + 50);
   }, []);
 
   // Infinite scroll: auto-load more when sentinel is visible
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadingRef = useRef(false);
   useEffect(() => {
     const sentinel = loadMoreRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0].isIntersecting && !loadingRef.current) {
+          loadingRef.current = true;
           handleLoadMore();
+          setTimeout(() => { loadingRef.current = false; }, 300);
         }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '400px' }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
