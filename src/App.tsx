@@ -143,7 +143,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 <QrCode className="w-3 h-3" /> Subscribe
               </p>
               <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                Contact <span className="text-blue-500 font-bold">@upsc_pyq_admin</span> on Telegram to unlock all {question.year} questions.
+                Contact <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@INDIAN4</a> on Telegram to unlock all {question.year} questions.
               </p>
             </div>
             <button 
@@ -1290,11 +1290,17 @@ export default function App() {
                           <span className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider">How to Subscribe</span>
                         </div>
                         <ol className="text-[11px] text-slate-500 dark:text-slate-400 space-y-2 list-decimal list-inside">
-                          <li>Contact us on Telegram <span className="text-blue-600 dark:text-blue-400">@upsc_pyq_admin</span></li>
+                          <li>Contact us on Telegram <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 font-bold hover:underline">@INDIAN4</a></li>
                           <li>Provide your registered email: <span className="font-bold text-slate-700 dark:text-white truncate block mt-1">{userEmail}</span></li>
                           <li>Once your subscription is activated, refresh this page.</li>
                         </ol>
                         
+                        <div className="mt-4 flex justify-center">
+                          <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer">
+                            <img src="/telegram-qr.png" alt="Telegram QR Code @INDIAN4" className="w-40 h-40 rounded-lg shadow-md" />
+                          </a>
+                        </div>
+
                         <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
                            <p className="text-[10px] text-blue-800 dark:text-blue-300 font-medium text-center">Your subscription is managed via the backend list based on your email.</p>
                         </div>
