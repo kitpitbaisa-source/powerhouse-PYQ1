@@ -13,27 +13,39 @@ import {
   writeBatch,
   query,
   limit,
+  orderBy,
   getCountFromServer,
   type Firestore,
   terminate
 } from "firebase/firestore";
 import { mcqData } from "./src/questions";
 
-const firebaseConfig = {
-  projectId: "ai-studio-applet-webapp-4fc9d",
-  appId: "1:809712558883:web:c08f0b98980b3e6fa1e296",
-  apiKey: "AIzaSyC-E3iPcVw8hCJ8r0tABGQEWf6sVI0AAZM",
-  authDomain: "ai-studio-applet-webapp-4fc9d.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-666e319f-be05-454b-9892-4be6e24bdca1",
-  storageBucket: "ai-studio-applet-webapp-4fc9d.firebasestorage.app",
-  messagingSenderId: "809712558883",
-  measurementId: ""
+import fs from "fs";
+
+// Helper to load config safely
+const getConfig = () => {
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (!fs.existsSync(configPath)) {
+       console.warn("firebase-applet-config.json not found.");
+       return null;
+    }
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    console.error("Failed to load firebase-applet-config.json:", error);
+    return null;
+  }
 };
 
-// Initialize Client SDK
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-console.log("Firebase Client SDK initialized with Database ID:", firebaseConfig.firestoreDatabaseId);
+const firebaseConfig = getConfig();
+const app = firebaseConfig ? initializeApp(firebaseConfig) : null;
+const db = app && firebaseConfig ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : null;
+
+if (db) {
+  console.log("Firebase initialized successfully with Database ID:", firebaseConfig.firestoreDatabaseId);
+} else {
+  console.warn("Firebase could not be initialized. API routes may fail.");
+}
 
 interface User {
   email: string;
@@ -48,6 +60,7 @@ const defaultUsers: Record<string, User> = {
 };
 
 async function ensureDefaultUsers() {
+  if (!db) return;
   try {
     const usersCol = collection(db, "users");
     const q = query(usersCol, limit(1));
@@ -68,10 +81,39 @@ async function ensureDefaultUsers() {
   }
 }
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: any;
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: "server-side-admin", // On server we typically use admin access or at least we don't have request.auth easily here
+    operationType,
+    path
+  };
+  const errorMessage = JSON.stringify(errInfo);
+  console.error('Firestore Error: ', errorMessage);
+  throw new Error(errorMessage);
+}
+
 /**
  * Migration using Client SDK
  */
 async function migrateQuestions() {
+  if (!db) return;
   try {
     const qCol = collection(db, "questions");
     
@@ -81,32 +123,93 @@ async function migrateQuestions() {
     
     console.log(`Question Sync Check: Local=${mcqData.length}, Remote=${remoteCount}`);
     
-    if (remoteCount >= mcqData.length) {
-      console.log("Remote database has equal or more questions. Skipping full sync.");
-      return;
+    let missingQuestions = mcqData;
+
+    if (remoteCount > 0) {
+      console.log("Fetching existing IDs to identify missing questions and deletions...");
+      
+      // Fetch all existing IDs (This costs N reads, but saves 20x vs full sync writes)
+      const remoteDocs = await getDocs(qCol);
+      const remoteIds = new Set(remoteDocs.docs.map(doc => doc.id));
+      
+      const localIds = new Set(mcqData.map(q => q.id.toString()));
+      
+      // Identify questions to add/update
+      const remoteData = new Map(remoteDocs.docs.map(doc => [doc.id, doc.data()]));
+      missingQuestions = mcqData.filter(q => {
+        const remote = remoteData.get(q.id.toString()) as any;
+        if (!remote) return true;
+        // Update if question or any other key field changed
+        return remote.question !== q.question || 
+               remote.subject !== q.subject || 
+               remote.topic !== q.topic ||
+               JSON.stringify(remote.options) !== JSON.stringify(q.options);
+      });
+      
+      console.log(`Identified ${missingQuestions.length} questions that need update/creation.`);
+      
+      // Identify questions to delete
+      const staleQuestionIds = remoteDocs.docs
+        .map(doc => doc.id)
+        .filter(id => !localIds.has(id));
+
+      if (staleQuestionIds.length > 0) {
+        console.log(`Identified ${staleQuestionIds.length} stale questions to delete.`);
+        const deleteBatches = [];
+        for (let i = 0; i < staleQuestionIds.length; i += 500) {
+          deleteBatches.push(staleQuestionIds.slice(i, i + 500));
+        }
+
+        for (const chunk of deleteBatches) {
+          const batch = writeBatch(db);
+          chunk.forEach(id => {
+            batch.delete(doc(db, "questions", id));
+          });
+          await batch.commit();
+          console.log(`Deleted batch of ${chunk.length} stale questions.`);
+        }
+      }
+
+      if (missingQuestions.length === 0 && staleQuestionIds.length === 0) {
+        console.log("No missing or stale questions found despite count mismatch. This is unusual.");
+        return;
+      }
     }
 
-    console.log("Remote count is lower. Commencing synchronization...");
+    console.log(`Identified ${missingQuestions.length} missing questions. Commencing surgical sync...`);
     
     // Process in batches of 500 (Firestore limit)
     const batches = [];
-    for (let i = 0; i < mcqData.length; i += 500) {
-      batches.push(mcqData.slice(i, i + 500));
+    for (let i = 0; i < missingQuestions.length; i += 500) {
+      batches.push(missingQuestions.slice(i, i + 500));
     }
 
     for (const chunk of batches) {
-      const batch = writeBatch(db);
-      chunk.forEach(q => {
-        const docRef = doc(db, "questions", q.id.toString());
-        batch.set(docRef, q, { merge: true });
-      });
-      await batch.commit();
-      console.log(`Upserted batch of ${chunk.length} questions...`);
+      try {
+        const batch = writeBatch(db);
+        chunk.forEach(q => {
+          const docRef = doc(db, "questions", q.id.toString());
+          batch.set(docRef, q, { merge: true });
+        });
+        await batch.commit();
+        console.log(`Upserted batch of ${chunk.length} questions...`);
+      } catch (batchError: any) {
+        if (batchError.code === 'resource-exhausted' || batchError.message?.includes('quota')) {
+          console.error("CRITICAL: Firestore Quota Exhausted during batch write. Stopping sync for now.");
+          return; // Stop processing further batches
+        }
+        throw batchError; // Re-throw other errors
+      }
     }
     
     console.log("Sync completed.");
-  } catch (error) {
-    console.error("Error migrating questions:", error);
+  } catch (error: any) {
+    if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
+      console.error("CRITICAL: Firestore Quota Exhausted. Synchronization will resume tomorrow.");
+    } else {
+      console.error("Error migrating questions:", error);
+    }
+    // We don't throw here to avoid crashing the server on start if sync fails
   }
 }
 
@@ -130,19 +233,32 @@ export default serverApp;
 
 // API to get all questions
 serverApp.get("/api/questions", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not initialized" });
   try {
     const snapshot = await getDocs(collection(db, "questions"));
     const questions = snapshot.docs.map(doc => doc.data());
+    
+    // If database is empty, fallback to local data
+    if (questions.length === 0) {
+      return res.json(mcqData);
+    }
+    
     questions.sort((a: any, b: any) => a.id - b.id);
     res.json(questions);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
+    // If quota is exhausted or any other error, fallback to local data for resilience
+    if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
+      console.warn("Falling back to local data due to Firestore error");
+      return res.json(mcqData);
+    }
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not initialized" });
   const email = req.query.email as string;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
@@ -164,6 +280,7 @@ serverApp.get("/api/user-status", async (req, res) => {
 
 // API to update status
 serverApp.post("/api/admin/update-status", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not initialized" });
   const { email, status } = req.body;
   if (!email || !status) {
     return res.status(400).json({ error: "Email and status are required" });
@@ -181,6 +298,7 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
 
 // API to delete user
 serverApp.delete("/api/admin/users/:email", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not initialized" });
   const email = req.params.email.toLowerCase().trim();
   try {
     await deleteDoc(doc(db, "users", email));
@@ -193,6 +311,7 @@ serverApp.delete("/api/admin/users/:email", async (req, res) => {
 
 // API to get all users
 serverApp.get("/api/admin/users", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not initialized" });
   try {
     const snapshot = await getDocs(collection(db, "users"));
     const users = snapshot.docs.map(doc => doc.data());

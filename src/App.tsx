@@ -12,7 +12,6 @@ import {
   Dice5, 
   ChevronDown, 
   ExternalLink,
-  MapPin,
   Send,
   Filter,
   Calendar,
@@ -91,7 +90,7 @@ const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query 
           <React.Fragment key={index}>
             {subParts.map((subPart, subIndex) => 
               regex.test(subPart) ? (
-                <mark key={subIndex} className="bg-yellow-200 dark:bg-yellow-500/40 text-slate-900 dark:text-white px-0.5 rounded-sm font-bold border-b border-yellow-400 dark:border-yellow-300/30 shadow-sm">
+                <mark key={subIndex} className="bg-yellow-200 dark:bg-yellow-500/40 text-slate-900 dark:text-white px-0.5 rounded-sm border-b border-yellow-400 dark:border-yellow-300/30 shadow-sm">
                   {subPart}
                 </mark>
               ) : (
@@ -132,7 +131,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="bg-indigo-600 p-2 rounded-full mb-3 shadow-lg">
             <Lock className="w-4 h-4 text-white" />
           </div>
-          <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Premium Question</h4>
+          <h4 className="text-[13px] font-bold text-slate-900 dark:text-white mb-2">Premium Question</h4>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4 line-clamp-3">
             Questions from {question.year} are available for subscribed members only. 
           </p>
@@ -167,7 +166,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               {question.year}
             </span>
           </div>
-          <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
+          <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
             {question.question.substring(0, 50)}...
           </h3>
           <div className="space-y-1.5 mb-5">
@@ -215,8 +214,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </span>
       </div>
       
-      <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
-        <span className="text-blue-600 dark:text-blue-400 mr-1 font-bold">Q{question.id}.</span> 
+      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-3 leading-[18px] whitespace-pre-wrap">
+        <span className="text-blue-600 dark:text-blue-400 mr-1 font-normal">Q{question.id}.</span> 
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
       
@@ -232,9 +231,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               disabled={hasAttempted}
               onClick={() => onOptionClick(opt)}
               className={cn(
-                "w-full text-left py-2.5 px-3 border rounded-lg text-[13px] transition-all flex justify-between items-center group/btn",
-                !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
-                hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-semibold",
+                "w-full text-left py-2.5 px-3 border rounded-lg text-[13px] font-normal transition-all flex justify-between items-center group/btn",
+                !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
+                hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400",
                 hasAttempted && isSelected && !isCorrectAnswer && "bg-red-100/50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400",
                 hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
@@ -275,8 +274,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       
       {isRevealed && (
         <div className="pt-2">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-            Answer: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{question.answer}</span>
+          <p className="text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5">
+            Answer: <span className="text-emerald-600 dark:text-emerald-400 font-normal">{question.answer}</span>
           </p>
           {question.explanation && (
             <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-2.5 rounded-r-lg shadow-sm">
@@ -300,6 +299,7 @@ export default function App() {
   const [examFilter, setExamFilter] = useState("All");
   const [subjectFilter, setSubjectFilter] = useState("All");
   const [topicFilter, setTopicFilter] = useState("All");
+  const [excludeSciMath, setExcludeSciMath] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
   const [score, setScore] = useState({ correct: 0, total: 0 });
@@ -697,17 +697,20 @@ export default function App() {
     const list = questions.filter(q => {
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
+                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
+      // Sort by year descending
       const yearComparison = String(b.year).localeCompare(String(a.year));
       if (yearComparison !== 0) return yearComparison;
+      // If same year, sort by id descending
       return b.id - a.id;
     });
 
@@ -719,12 +722,13 @@ export default function App() {
     const totalFiltered = questions.filter(q => {
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
+                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -767,6 +771,7 @@ export default function App() {
     setExamFilter("All");
     setSubjectFilter("All");
     setTopicFilter("All");
+    setExcludeSciMath(false);
     setSearchQuery("");
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
@@ -791,9 +796,15 @@ export default function App() {
 
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
+                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
-      return marchesYear && matchesExam && matchesSubject && matchesTopic;
+      const matchesSearch = searchQuery === "" || 
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     });
 
     const shuffled = [...baseList].sort(() => Math.random() - 0.5);
@@ -849,15 +860,43 @@ export default function App() {
                 )}
               </button>
 
-              <div className="hidden md:flex items-center text-slate-600 dark:text-slate-300 text-xs font-medium bg-slate-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
-                <MapPin className="text-red-400 w-3.5 h-3.5 mr-1.5" /> India
-              </div>
+
               
-              <div className="bg-emerald-900/30 text-emerald-400 px-3 py-1.5 rounded-lg text-sm font-bold border border-emerald-800/50 flex items-center shadow-sm">
-                <Trophy className="w-4 h-4 mr-2 text-emerald-500" /> 
+              <div className={cn(
+                "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
+                score.total > 0 && (score.correct / score.total) < 0.5
+                  ? "bg-red-900/30 text-red-400 border-red-800/50"
+                  : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
+              )}>
+                <Trophy className={cn(
+                  "w-4 h-4 mr-2",
+                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
+                )} /> 
                 <span>{score.correct}</span>
-                <span className="text-emerald-600 font-medium mx-1">/</span>
+                <span className={cn(
+                  "font-medium mx-1",
+                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
+                )}>/</span>
                 <span>{score.total}</span>
+                {score.total > 0 && (
+                  <span className={cn(
+                    "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
+                    (score.correct / score.total) < 0.5 
+                      ? "bg-red-500/20 text-red-400" 
+                      : "bg-emerald-500/20 text-emerald-400"
+                  )}>
+                    {Math.round((score.correct / score.total) * 100)}%
+                  </span>
+                )}
+                {score.total > 0 && (
+                  <button 
+                    onClick={resetQuiz}
+                    title="Reset Score"
+                    className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
@@ -1078,7 +1117,6 @@ export default function App() {
                   id="search-input"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                   placeholder="Constitution, GDP..." 
                   className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                 />
@@ -1132,6 +1170,22 @@ export default function App() {
                   </option>
                 ))}
               </select>
+              
+              <button
+                onClick={() => setExcludeSciMath(!excludeSciMath)}
+                className={cn(
+                  "mt-2 w-full flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all border shadow-sm",
+                  excludeSciMath 
+                    ? "bg-rose-100 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400" 
+                    : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600"
+                )}
+              >
+                {excludeSciMath ? (
+                  <><XCircle className="w-3 h-3" /> Science & Math Removed</>
+                ) : (
+                  <><Filter className="w-3 h-3" /> Remove Science & Math</>
+                )}
+              </button>
             </div>
 
             <div className="mb-4">
@@ -1161,49 +1215,24 @@ export default function App() {
                 </div>
               )}
               <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Your Score</p>
-              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-3">{score.correct} <span className="text-xs text-slate-500 font-normal">/ {score.total}</span></p>
-              
-              <button 
-                onClick={resetQuiz}
-                className="text-xs bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-900/20 text-white py-2 px-3 rounded-full transition-all w-full font-bold mb-3 flex items-center justify-center gap-1.5 active:scale-95"
-              >
-                <RotateCcw className="w-3 h-3" /> Reset Quiz Progress
-              </button>
-              
-              <div className="flex items-center gap-2 mb-3">
-                <select
-                  value={randomSelectLimit}
-                  onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
-                  className="flex-shrink-0 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-200 text-xs font-bold p-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  {[10, 20, 50, 100].map(n => (
-                    <option key={n} value={n}>{n} Qs</option>
-                  ))}
-                </select>
-                <button
-                  disabled={!isSubscribed}
-                  onClick={() => startRandomPractice(randomSelectLimit)}
-                  title={isSubscribed ? "Start Random Practice" : "Random Practice is for Subscribed Users only"}
-                  className={cn(
-                    "flex-grow py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm",
-                    isSubscribed 
-                      ? "bg-blue-600 hover:bg-blue-500 text-white active:scale-95" 
-                      : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60"
-                  )}
-                >
-                  <Dice5 className="w-3 h-3" />
-                  Random PYQ
-                </button>
-              </div>
-
-              <a 
-                href="https://t.me/upsc_pyq_powerhouse" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="w-full justify-center bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 py-2 px-3 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-[1.02]"
-              >
-                <Send className="w-4 h-4 mr-1.5" /> Join Telegram
-              </a>
+              <p className={cn(
+                "text-2xl font-bold mb-3",
+                score.total > 0 && (score.correct / score.total) < 0.5
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-emerald-600 dark:text-emerald-400"
+              )}>
+                {score.correct} <span className="text-xs text-slate-500 font-normal">/ {score.total}</span>
+                {score.total > 0 && (
+                  <span className={cn(
+                    "ml-2 text-xs px-2 py-0.5 rounded-full",
+                    (score.correct / score.total) < 0.5
+                      ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                      : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                  )}>
+                    {Math.round((score.correct / score.total) * 100)}%
+                  </span>
+                )}
+              </p>
             </div>
           </div>
         </aside>

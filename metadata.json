@@ -1,6 +1,8 @@
 {
   "name": "UPSC PYQ Powerhouse",
-  "description": "A comprehensive practice platform for UPSC Previous Year Questions, featuring exams like CSE Prelims and CDS with detailed explanations.",
+  "description": "A comprehensive practice platform for UPSC Previous Year Questions, featuring exams like CSE Prelims (up to 2025), CDS, and CAPF (AC) with detailed explanations.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
