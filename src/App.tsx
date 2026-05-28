@@ -700,16 +700,14 @@ export default function App() {
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
-      // Sort by year descending
       const yearComparison = String(b.year).localeCompare(String(a.year));
       if (yearComparison !== 0) return yearComparison;
-      // If same year, sort by id descending
       return b.id - a.id;
     });
 
@@ -724,9 +722,9 @@ export default function App() {
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -1080,6 +1078,7 @@ export default function App() {
                   id="search-input"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                   placeholder="Constitution, GDP..." 
                   className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                 />
