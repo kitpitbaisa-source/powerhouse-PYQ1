@@ -701,9 +701,9 @@ export default function App() {
                             (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
@@ -726,9 +726,9 @@ export default function App() {
                             (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -800,9 +800,9 @@ export default function App() {
                             (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.explanation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     });
