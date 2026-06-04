@@ -32,8 +32,6 @@ import {
 import { mcqData } from './questions.ts';
 import { Question, SubjectColorMap } from './types.ts';
 import { cn } from './lib/utils.ts';
-import { db } from './firebase.ts';
-import { collection, doc, setDoc } from 'firebase/firestore';
 // import { isValidCode } from './authorizedCodes';
 
 const subjectColors: SubjectColorMap = {
@@ -364,23 +362,9 @@ export default function App() {
         throw new Error("Empty data from API");
       }
     } catch (error) {
-      console.warn("Server API failed, attempting direct Firestore fetch:", error);
-      try {
-        const { getDocs, collection, query, orderBy } = await import('firebase/firestore');
-        const q = query(collection(db, "questions"), orderBy("id"));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const data = snapshot.docs.map(doc => doc.data() as Question);
-          console.log(`Loaded ${data.length} questions directly from Firestore`);
-          setQuestions(data);
-        } else {
-          throw new Error("Firestore is empty");
-        }
-      } catch (fsError) {
-        console.error("Direct Firestore fetch failed:", fsError);
-        // Fallback to local data
-        setQuestions(mcqData);
-      }
+      console.warn("Server API failed, falling back to local data:", error);
+      console.log(`Loaded ${mcqData.length} questions from local fallback`);
+      setQuestions(mcqData as Question[]);
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -453,17 +437,7 @@ export default function App() {
         setAllUsers(data);
       }
     } catch (error: any) {
-      console.warn("Server API failed for users, attempting direct Firestore fetch:", error.message || error);
-      try {
-        const { getDocs, collection } = await import('firebase/firestore');
-        const snapshot = await getDocs(collection(db, "users"));
-        if (!snapshot.empty) {
-          const users = snapshot.docs.map(doc => doc.data() as {email: string, status: string});
-          setAllUsers(users);
-        }
-      } catch (fsError) {
-        console.error("Direct Firestore fetch for users failed:", fsError);
-      }
+      console.error("Failed to fetch users:", error.message || error);
     } finally {
       setIsLoadingUsers(false);
     }
@@ -502,18 +476,8 @@ export default function App() {
         throw new Error(err.details || err.error || "Server failed");
       }
     } catch (error: any) {
-      console.warn("Server update failed, attempting direct Firestore write:", error.message || error);
-      try {
-        const { doc, setDoc } = await import('firebase/firestore');
-        await setDoc(doc(db, "users", userEmailToUpdate), { email: userEmailToUpdate, status }, { merge: true });
-        setAdminMessage({ text: `User ${userEmailToUpdate} updated (Direct)`, type: "success" });
-        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
-        fetchAllUsers();
-        if (userEmailToUpdate === userEmail) checkUserStatus(userEmailToUpdate);
-      } catch (fsError: any) {
-        console.error("Direct Firestore update failed:", fsError);
-        setAdminMessage({ text: `Failed: ${fsError.message || "Permissions denied"}`, type: "error" });
-      }
+      console.error("Failed to update user:", error.message || error);
+      setAdminMessage({ text: `Failed: ${error.message || "Server error"}`, type: "error" });
     }
   };
 
@@ -531,17 +495,8 @@ export default function App() {
         throw new Error("Server delete failed");
       }
     } catch (error: any) {
-      console.warn("Server delete failed, attempting direct Firestore delete:", error.message || error);
-      try {
-        const { doc, deleteDoc } = await import('firebase/firestore');
-        await deleteDoc(doc(db, "users", userEmailToDelete));
-        setAdminMessage({ text: `User ${userEmailToDelete} deleted (Direct)`, type: "success" });
-        setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
-        fetchAllUsers();
-      } catch (fsError: any) {
-        console.error("Direct Firestore delete failed:", fsError);
-        setAdminMessage({ text: "Failed to delete user", type: "error" });
-      }
+      console.error("Failed to delete user:", error.message || error);
+      setAdminMessage({ text: "Failed to delete user", type: "error" });
     }
   };
 

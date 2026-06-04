@@ -1,51 +1,34 @@
+import "dotenv/config";
 import express from "express";
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDoc,
-  writeBatch,
-  query,
-  limit,
-} from "firebase/firestore";
+import { CosmosClient } from "@azure/cosmos";
 
-const firebaseConfig = {
-  projectId: "ai-studio-applet-webapp-4fc9d",
-  appId: "1:809712558883:web:c08f0b98980b3e6fa1e296",
-  apiKey: "AIzaSyC-E3iPcVw8hCJ8r0tABGQEWf6sVI0AAZM",
-  authDomain: "ai-studio-applet-webapp-4fc9d.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-666e319f-be05-454b-9892-4be6e24bdca1",
-  storageBucket: "ai-studio-applet-webapp-4fc9d.firebasestorage.app",
-  messagingSenderId: "809712558883",
-  measurementId: "",
-};
+const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
+const key = process.env.COSMOS_KEY || "";
+const databaseId = "pyqpowerhouse";
 
-// Singleton Firebase initialization (survives warm starts)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const client = new CosmosClient({ endpoint, key });
+const database = client.database(databaseId);
+const questionsContainer = database.container("questions");
+const usersContainer = database.container("users");
 
 const serverApp = express();
 serverApp.use(express.json());
 
-// API to get all questions (from Firestore directly)
+// Permanent admins (cannot be demoted)
+const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
+
+// API to get all questions
 serverApp.get("/api/questions", async (req, res) => {
   try {
-    const snapshot = await getDocs(collection(db, "questions"));
-    const questions = snapshot.docs.map((d) => d.data());
-    questions.sort((a: any, b: any) => a.id - b.id);
-    res.json(questions);
+    const { resources } = await questionsContainer.items
+      .query("SELECT * FROM c ORDER BY c.id")
+      .fetchAll();
+    res.json(resources);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
-
-// Permanent admins (cannot be demoted)
-const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
@@ -56,17 +39,19 @@ serverApp.get("/api/user-status", async (req, res) => {
 
   const userEmail = email.toLowerCase().trim();
   try {
-    // Permanent admins always return admin status
     if (PERMANENT_ADMINS.includes(userEmail)) {
       return res.json({ email: userEmail, status: "admin" });
     }
-    const userDoc = await getDoc(doc(db, "users", userEmail));
-    if (userDoc.exists()) {
-      res.json(userDoc.data());
+    const { resource } = await usersContainer.item(userEmail, userEmail).read();
+    if (resource) {
+      res.json({ email: resource.email, status: resource.status });
     } else {
       res.json({ email: userEmail, status: "not_subscribed" });
     }
   } catch (error: any) {
+    if (error.code === 404) {
+      return res.json({ email: userEmail, status: "not_subscribed" });
+    }
     console.error("Error fetching user status:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
@@ -81,7 +66,7 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
 
   const userEmail = email.toLowerCase().trim();
   try {
-    await setDoc(doc(db, "users", userEmail), { email: userEmail, status }, { merge: true });
+    await usersContainer.items.upsert({ id: userEmail, email: userEmail, status });
     res.json({ message: "Success", user: { email: userEmail, status } });
   } catch (error: any) {
     console.error("Error updating user status:", error);
@@ -93,9 +78,12 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
 serverApp.delete("/api/admin/users/:email", async (req, res) => {
   const email = req.params.email.toLowerCase().trim();
   try {
-    await deleteDoc(doc(db, "users", email));
+    await usersContainer.item(email, email).delete();
     res.json({ message: "User deleted" });
   } catch (error: any) {
+    if (error.code === 404) {
+      return res.json({ message: "User deleted" });
+    }
     console.error("Error deleting user:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
@@ -104,9 +92,10 @@ serverApp.delete("/api/admin/users/:email", async (req, res) => {
 // API to get all users
 serverApp.get("/api/admin/users", async (req, res) => {
   try {
-    const snapshot = await getDocs(collection(db, "users"));
-    const users = snapshot.docs.map((d) => d.data());
-    res.json(users);
+    const { resources } = await usersContainer.items
+      .query("SELECT c.id, c.email, c.status FROM c")
+      .fetchAll();
+    res.json(resources);
   } catch (error: any) {
     console.error("Error fetching users:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
