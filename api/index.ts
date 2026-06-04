@@ -17,13 +17,31 @@ serverApp.use(express.json());
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
-// API to get all questions
+// In-memory cache for questions (refreshes every 5 minutes)
+let questionsCache: any[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function getQuestions() {
+  const now = Date.now();
+  if (questionsCache && (now - cacheTimestamp) < CACHE_TTL) {
+    return questionsCache;
+  }
+  const { resources } = await questionsContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  questionsCache = resources;
+  cacheTimestamp = now;
+  return resources;
+}
+
+// API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
-    const { resources } = await questionsContainer.items
-      .query("SELECT * FROM c ORDER BY c.id")
-      .fetchAll();
-    res.json(resources);
+    const questions = await getQuestions();
+    questions.sort((a: any, b: any) => a.id - b.id);
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(questions);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
