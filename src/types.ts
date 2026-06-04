@@ -15,6 +15,19 @@ export interface Question {
   explanation: string;
 }
 
+export interface MainsQuestion {
+  id: string;
+  question: string;
+  year: string;
+  exam: string;
+  subject: string;
+  topic?: string;
+  paper?: string;
+  modelAnswer?: string;
+  model_answer?: string;
+  keywords?: string[];
+}
+
 export type SubjectColorMap = {
   [key: string]: string;
 };

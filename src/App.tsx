@@ -30,7 +30,7 @@ import {
   Database
 } from 'lucide-react';
 import { mcqData } from './questions.ts';
-import { Question, SubjectColorMap } from './types.ts';
+import { MainsQuestion, Question, SubjectColorMap } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
@@ -289,17 +289,128 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   );
 };
 
+interface MainsQuestionCardProps {
+  question: MainsQuestion;
+  isAnswerVisible: boolean;
+  onToggleAnswer: () => void;
+  searchQuery?: string;
+  onSubjectClick?: (subject: string) => void;
+  onExamClick?: (exam: string) => void;
+  onYearClick?: (year: string) => void;
+}
+
+const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
+  question,
+  isAnswerVisible,
+  onToggleAnswer,
+  searchQuery = "",
+  onSubjectClick,
+  onExamClick,
+  onYearClick,
+}) => {
+  const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
+  const answer = question.modelAnswer || question.model_answer || "";
+  const hasModelAnswer = !!answer.trim();
+
+  return (
+    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full">
+      <div className="flex justify-between items-start mb-3 gap-2">
+        <div className="flex gap-1.5 items-center flex-wrap">
+          <span
+            onClick={() => onExamClick?.(question.exam)}
+            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          >
+            <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
+          </span>
+          <span
+            onClick={() => onSubjectClick?.(question.subject)}
+            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+          >
+            {question.subject}
+          </span>
+          {question.paper && (
+            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800">
+              {question.paper}
+            </span>
+          )}
+          {question.topic && (
+            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+              {question.topic}
+            </span>
+          )}
+        </div>
+        <span
+          onClick={() => onYearClick?.(question.year)}
+          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+        >
+          <Calendar className="w-3 h-3 mr-1" />{question.year}
+        </span>
+      </div>
+
+      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-4 leading-[20px] whitespace-pre-wrap flex-grow">
+        <HighlightText text={question.question} query={searchQuery} />
+      </h3>
+
+      {question.keywords && question.keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {question.keywords.map((kw, i) => (
+            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-800/50 font-medium">
+              {kw}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50", isAnswerVisible && "mb-3")}>
+        <button
+          onClick={onToggleAnswer}
+          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
+        >
+          <div className={cn("mr-1.5 transition-transform duration-200", isAnswerVisible ? "rotate-180" : "rotate-0")}>
+            <ChevronDown className="w-3.5 h-3.5" />
+          </div>
+          <span>{isAnswerVisible ? "Hide Model Answer" : "Show Model Answer"}</span>
+        </button>
+      </div>
+
+      {isAnswerVisible && (
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-3 rounded-r-lg shadow-sm">
+          <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-2">Model Answer</p>
+          {hasModelAnswer ? (
+            <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed whitespace-pre-wrap">
+              <HighlightText text={answer} query={searchQuery} />
+            </p>
+          ) : (
+            <p className="text-[12px] text-slate-600 dark:text-slate-300 italic">Model answer not available yet</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'prelims' | 'mains'>('prelims');
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
+  const [isLoadingMains, setIsLoadingMains] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("All");
   const [examFilter, setExamFilter] = useState("All");
   const [subjectFilter, setSubjectFilter] = useState("All");
   const [topicFilter, setTopicFilter] = useState("All");
+  const [mainsYearFilter, setMainsYearFilter] = useState("All");
+  const [mainsExamFilter, setMainsExamFilter] = useState("All");
+  const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
+  const [mainsSearchQuery, setMainsSearchQuery] = useState("");
   const [excludeSciMath, setExcludeSciMath] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
+  const [revealedMainsAnswers, setRevealedMainsAnswers] = useState<Record<string, boolean>>({});
+  const [mainsRandomMode, setMainsRandomMode] = useState(false);
+  const [mainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
+  const [mainsRandomSelectLimit, setMainsRandomSelectLimit] = useState(10);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [visibleCount, setVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
@@ -370,14 +481,107 @@ export default function App() {
     }
   };
 
+  const fetchMainsQuestions = async () => {
+    setIsLoadingMains(true);
+    try {
+      console.log("Fetching mains questions from API...");
+      const response = await fetch('/api/mains-questions');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      setMainsQuestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Failed to fetch mains questions:", error);
+      setMainsQuestions([]);
+    } finally {
+      setIsLoadingMains(false);
+    }
+  };
+
   useEffect(() => {
     fetchQuestions();
+    fetchMainsQuestions();
   }, []);
 
   const latestTwoYears = useMemo(() => {
     const years = [...new Set(questions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
     return years.slice(0, 2);
   }, [questions]);
+
+  const mainsYearsList = useMemo(() => {
+    const availableData = mainsQuestions.filter(q =>
+      (mainsExamFilter === "All" || q.exam === mainsExamFilter) &&
+      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter)
+    );
+    const uniqueYears = Array.from(new Set(availableData.map(q => q.year))).sort((a, b) => (b as string).localeCompare(a as string));
+
+    const yearCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      yearCounts[q.year] = (yearCounts[q.year] || 0) + 1;
+    });
+
+    return {
+      options: ["All", ...uniqueYears],
+      counts: yearCounts,
+    };
+  }, [mainsQuestions, mainsExamFilter, mainsSubjectFilter]);
+
+  const mainsExamsList = useMemo(() => {
+    const availableData = mainsQuestions.filter(q =>
+      (mainsYearFilter === "All" || q.year === mainsYearFilter) &&
+      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter)
+    );
+    const uniqueExams = [...new Set(availableData.map(q => q.exam))].sort();
+
+    const examCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      examCounts[q.exam] = (examCounts[q.exam] || 0) + 1;
+    });
+
+    return {
+      options: ["All", ...uniqueExams],
+      counts: examCounts,
+    };
+  }, [mainsQuestions, mainsYearFilter, mainsSubjectFilter]);
+
+  const mainsSubjectsList = useMemo(() => {
+    const availableData = mainsQuestions.filter(q =>
+      (mainsYearFilter === "All" || q.year === mainsYearFilter) &&
+      (mainsExamFilter === "All" || q.exam === mainsExamFilter)
+    );
+    const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
+
+    const subjectCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      subjectCounts[q.subject] = (subjectCounts[q.subject] || 0) + 1;
+    });
+
+    return {
+      options: ["All", ...uniqueSubjects],
+      counts: subjectCounts,
+    };
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter]);
+
+  const filteredMainsQuestions = useMemo(() => {
+    if (mainsRandomMode) {
+      return mainsRandomizedQuestions;
+    }
+    return mainsQuestions
+      .filter(q => {
+        const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
+        const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
+        const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
+        const matchesSearch = mainsSearchQuery === "" ||
+          (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+          (q.model_answer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+          (q.modelAnswer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+          (q.subject || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+          (q.exam || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+          (q.year || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
+
+        return matchesYear && matchesExam && matchesSubject && matchesSearch;
+      })
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -644,6 +848,24 @@ export default function App() {
     }
   }, [topicsList.options, topicFilter]);
 
+  useEffect(() => {
+    if (mainsYearFilter !== "All" && !mainsYearsList.options.includes(mainsYearFilter)) {
+      setMainsYearFilter("All");
+    }
+  }, [mainsYearsList.options, mainsYearFilter]);
+
+  useEffect(() => {
+    if (mainsExamFilter !== "All" && !mainsExamsList.options.includes(mainsExamFilter)) {
+      setMainsExamFilter("All");
+    }
+  }, [mainsExamsList.options, mainsExamFilter]);
+
+  useEffect(() => {
+    if (mainsSubjectFilter !== "All" && !mainsSubjectsList.options.includes(mainsSubjectFilter)) {
+      setMainsSubjectFilter("All");
+    }
+  }, [mainsSubjectsList.options, mainsSubjectFilter]);
+
   const filteredQuestions = useMemo(() => {
     if (randomMode.active) {
       return randomizedQuestions;
@@ -721,6 +943,10 @@ export default function App() {
     setRevealedAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
   };
 
+  const toggleMainsAnswer = (qid: string) => {
+    setRevealedMainsAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
+  };
+
   const resetFilters = () => {
     setYearFilter("All");
     setExamFilter("All");
@@ -730,6 +956,29 @@ export default function App() {
     setSearchQuery("");
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
+  };
+
+  const resetMainsFilters = () => {
+    setMainsYearFilter("All");
+    setMainsExamFilter("All");
+    setMainsSubjectFilter("All");
+    setMainsSearchQuery("");
+    setMainsRandomMode(false);
+  };
+
+  const startMainsRandomPractice = (limit: number) => {
+    const baseList = mainsQuestions.filter(q => {
+      const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
+      const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
+      const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
+      const matchesSearch = mainsSearchQuery === "" ||
+        (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
+      return matchesYear && matchesExam && matchesSubject && matchesSearch;
+    });
+    const shuffled = [...baseList].sort(() => Math.random() - 0.5);
+    setMainsRandomizedQuestions(shuffled.slice(0, limit));
+    setMainsRandomMode(true);
+    setRevealedMainsAnswers({});
   };
 
   // Reset pagination when filters change
@@ -743,6 +992,8 @@ export default function App() {
     setScore({ correct: 0, total: 0 });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const isAppLoading = isLoadingQuestions || isLoadingMains;
 
   const startRandomPractice = (limit: number) => {
     const baseList = questions.filter(q => {
@@ -781,7 +1032,7 @@ export default function App() {
               <div className="hidden sm:block">
                 <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">UPSC PYQ Powerhouse</h1>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Meticulously curated PYQs • {questions.length} Total Loaded
+                  Meticulously curated PYQs • {(activeTab === 'mains' ? mainsQuestions.length : questions.length)} Total Loaded
                 </p>
               </div>
               <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight sm:hidden">UPSC PYQ</h1>
@@ -817,63 +1068,98 @@ export default function App() {
 
 
               
-              <div className={cn(
-                "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
-                score.total > 0 && (score.correct / score.total) < 0.5
-                  ? "bg-red-900/30 text-red-400 border-red-800/50"
-                  : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
-              )}>
-                <Trophy className={cn(
-                  "w-4 h-4 mr-2",
-                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
-                )} /> 
-                <span>{score.correct}</span>
-                <span className={cn(
-                  "font-medium mx-1",
-                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
-                )}>/</span>
-                <span>{score.total}</span>
-                {score.total > 0 && (
-                  <span className={cn(
-                    "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
-                    (score.correct / score.total) < 0.5 
-                      ? "bg-red-500/20 text-red-400" 
-                      : "bg-emerald-500/20 text-emerald-400"
+              {activeTab === 'prelims' && (
+                <>
+                  <div className={cn(
+                    "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
+                    score.total > 0 && (score.correct / score.total) < 0.5
+                      ? "bg-red-900/30 text-red-400 border-red-800/50"
+                      : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
                   )}>
-                    {Math.round((score.correct / score.total) * 100)}%
-                  </span>
-                )}
-                {score.total > 0 && (
-                  <button 
-                    onClick={resetQuiz}
-                    title="Reset Score"
-                    className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+                    <Trophy className={cn(
+                      "w-4 h-4 mr-2",
+                      score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
+                    )} /> 
+                    <span>{score.correct}</span>
+                    <span className={cn(
+                      "font-medium mx-1",
+                      score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
+                    )}>/</span>
+                    <span>{score.total}</span>
+                    {score.total > 0 && (
+                      <span className={cn(
+                        "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
+                        (score.correct / score.total) < 0.5 
+                          ? "bg-red-500/20 text-red-400" 
+                          : "bg-emerald-500/20 text-emerald-400"
+                      )}>
+                        {Math.round((score.correct / score.total) * 100)}%
+                      </span>
+                    )}
+                    {score.total > 0 && (
+                      <button 
+                        onClick={resetQuiz}
+                        title="Reset Score"
+                        className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                <select
-                  value={randomSelectLimit}
-                  onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
-                  className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                >
-                  {[10, 20, 50, 100].map(n => (
-                    <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => startRandomPractice(randomSelectLimit)}
-                  title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
-                  className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
-                >
-                  <Dice5 className="w-3 h-3" />
-                  <span className="hidden xl:inline">Random PYQ</span>
-                  <span className="xl:hidden">Random</span>
-                </button>
-              </div>
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                    <select
+                      value={randomSelectLimit}
+                      onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
+                      className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                    >
+                      {[10, 20, 50, 100].map(n => (
+                        <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => startRandomPractice(randomSelectLimit)}
+                      title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
+                      className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    >
+                      <Dice5 className="w-3 h-3" />
+                      <span className="hidden xl:inline">Random PYQ</span>
+                      <span className="xl:hidden">Random</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'mains' && (
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                  <select
+                    value={mainsRandomSelectLimit}
+                    onChange={(e) => setMainsRandomSelectLimit(Number(e.target.value))}
+                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                  >
+                    {[5, 10, 20, 50].map(n => (
+                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
+                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                  >
+                    <Dice5 className="w-3 h-3" />
+                    <span className="hidden xl:inline">Random Mains</span>
+                    <span className="xl:hidden">Random</span>
+                  </button>
+                  {mainsRandomMode && (
+                    <button
+                      onClick={() => setMainsRandomMode(false)}
+                      title="Exit Random Mode"
+                      className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <a 
@@ -909,8 +1195,37 @@ export default function App() {
         </div>
       </header>
 
+      {!isAppLoading && !(isAdmin && isAdminView) && (
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full">
+          <div className="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <button
+              onClick={() => setActiveTab('prelims')}
+              className={cn(
+                "px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all",
+                activeTab === 'prelims'
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+              )}
+            >
+              Prelims (MCQ)
+            </button>
+            <button
+              onClick={() => setActiveTab('mains')}
+              className={cn(
+                "px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all",
+                activeTab === 'mains'
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+              )}
+            >
+              Mains (Descriptive)
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
-        {isLoadingQuestions ? (
+        {isAppLoading ? (
           <div className="w-full flex flex-col items-center justify-center py-20 gap-4">
             <div className="relative">
               <div className="w-16 h-16 border-4 border-blue-100 dark:border-blue-900/30 rounded-full animate-pulse"></div>
@@ -946,8 +1261,9 @@ export default function App() {
                     const res = await fetch('/api/admin/refresh-questions', { method: 'POST' });
                     const data = await res.json();
                     if (res.ok) {
-                      setAdminMessage({ text: `✓ Cache refreshed! ${data.count} questions loaded.`, type: "success" });
+                      setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
                       fetchQuestions();
+                      fetchMainsQuestions();
                     } else {
                       throw new Error(data.error);
                     }
@@ -1077,7 +1393,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'prelims' ? (
           <>
             <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
@@ -1336,6 +1652,129 @@ export default function App() {
           )}
         </section>
         </>
+        ) : (
+          <>
+            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                  </h2>
+                  <button
+                    onClick={resetMainsFilters}
+                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="mains-search-input" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      id="mains-search-input"
+                      value={mainsSearchQuery}
+                      onChange={(e) => setMainsSearchQuery(e.target.value)}
+                      placeholder="Essay, governance..."
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                    />
+                    <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam Year</label>
+                  <select
+                    value={mainsYearFilter}
+                    onChange={(e) => setMainsYearFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {mainsYearsList.options.map(y => (
+                      <option key={y} value={y}>
+                        {y === "All" ? "All Years" : `${y} (${mainsYearsList.counts[y] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
+                  <select
+                    value={mainsExamFilter}
+                    onChange={(e) => setMainsExamFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {mainsExamsList.options.map(exam => (
+                      <option key={exam} value={exam}>
+                        {exam === "All" ? "All Exams" : `${exam} (${mainsExamsList.counts[exam] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
+                  <select
+                    value={mainsSubjectFilter}
+                    onChange={(e) => setMainsSubjectFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {mainsSubjectsList.options.map(subject => (
+                      <option key={subject} value={subject}>
+                        {subject === "All" ? "All Subjects" : `${subject} (${mainsSubjectsList.counts[subject] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredMainsQuestions.length}</span> questions</p>
+                </div>
+
+              </div>
+            </aside>
+
+            <section className="flex-grow">
+              {mainsQuestions.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+                  <Database className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+                  <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">Mains questions coming soon!</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">Check back later.</p>
+                </div>
+              ) : filteredMainsQuestions.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+                  <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+                  <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No mains questions found</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters to see more results.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredMainsQuestions.map((q) => (
+                    <MainsQuestionCard
+                      key={q.id}
+                      question={q}
+                      isAnswerVisible={revealedMainsAnswers[q.id]}
+                      onToggleAnswer={() => toggleMainsAnswer(q.id)}
+                      searchQuery={mainsSearchQuery}
+                      onSubjectClick={(subject) => {
+                        setMainsSubjectFilter(subject);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      onExamClick={(exam) => {
+                        setMainsExamFilter(exam);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      onYearClick={(year) => {
+                        setMainsYearFilter(year);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </main>
 

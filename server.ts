@@ -10,6 +10,7 @@ const databaseId = "pyqpowerhouse";
 const client = new CosmosClient({ endpoint, key });
 const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
+const mainsQuestionsContainer = database.container("mains-questions");
 const usersContainer = database.container("users");
 
 console.log("Cosmos DB client initialized for:", endpoint);
@@ -28,6 +29,8 @@ export default serverApp;
 // In-memory cache for questions (refreshes every 5 minutes)
 let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
+let mainsCache: any[] | null = null;
+let mainsCacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
 async function getQuestions() {
@@ -43,6 +46,19 @@ async function getQuestions() {
   return resources;
 }
 
+async function getMainsQuestions() {
+  const now = Date.now();
+  if (mainsCache && (now - mainsCacheTimestamp) < CACHE_TTL) {
+    return mainsCache;
+  }
+  const { resources } = await mainsQuestionsContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  mainsCache = resources;
+  mainsCacheTimestamp = now;
+  return resources;
+}
+
 // API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
@@ -55,13 +71,32 @@ serverApp.get("/api/questions", async (req, res) => {
   }
 });
 
+// API to get all mains questions (cached)
+serverApp.get("/api/mains-questions", async (req, res) => {
+  try {
+    const mainsQuestions = await getMainsQuestions();
+    mainsQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(mainsQuestions);
+  } catch (error: any) {
+    console.error("Error fetching mains questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to refresh questions cache (admin only)
 serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   try {
     questionsCache = null;
     cacheTimestamp = 0;
-    const questions = await getQuestions();
-    res.json({ message: "Cache refreshed", count: questions.length });
+    mainsCache = null;
+    mainsCacheTimestamp = 0;
+    const [questions, mainsQuestions] = await Promise.all([getQuestions(), getMainsQuestions()]);
+    res.json({
+      message: "Cache refreshed",
+      count: questions.length,
+      mainsCount: mainsQuestions.length,
+    });
   } catch (error: any) {
     console.error("Error refreshing cache:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
