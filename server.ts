@@ -55,6 +55,19 @@ serverApp.get("/api/questions", async (req, res) => {
   }
 });
 
+// API to refresh questions cache (admin only)
+serverApp.post("/api/admin/refresh-questions", async (req, res) => {
+  try {
+    questionsCache = null;
+    cacheTimestamp = 0;
+    const questions = await getQuestions();
+    res.json({ message: "Cache refreshed", count: questions.length });
+  } catch (error: any) {
+    console.error("Error refreshing cache:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;

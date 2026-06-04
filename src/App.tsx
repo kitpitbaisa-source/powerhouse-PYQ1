@@ -933,6 +933,35 @@ export default function App() {
               </button>
             </div>
 
+            {/* Refresh Questions Cache Button */}
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Questions Cache</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
+              </div>
+              <button 
+                onClick={async () => {
+                  try {
+                    setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
+                    const res = await fetch('/api/admin/refresh-questions', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok) {
+                      setAdminMessage({ text: `✓ Cache refreshed! ${data.count} questions loaded.`, type: "success" });
+                      fetchQuestions();
+                    } else {
+                      throw new Error(data.error);
+                    }
+                  } catch (err: any) {
+                    setAdminMessage({ text: `Failed to refresh: ${err.message}`, type: "error" });
+                  }
+                  setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
+              >
+                🔄 Refresh Questions
+              </button>
+            </div>
+
             <div className="grid md:grid-cols-3 gap-8">
               {/* Add New User */}
               <div className="md:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
