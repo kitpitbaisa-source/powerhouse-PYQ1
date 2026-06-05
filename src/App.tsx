@@ -1076,22 +1076,32 @@ export default function App() {
               {/* Compact tab pills inline */}
               <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
                 {([
-                  { id: 'prelims', label: 'Prelims' },
-                  { id: 'mains', label: 'Mains' },
-                  { id: 'essay', label: 'Essay' },
-                  { id: 'toppers', label: "Topper's Copy" },
+                  { id: 'prelims', label: 'Prelims', count: questions.length },
+                  { id: 'mains', label: 'Mains', count: mainsQuestions.length },
+                  { id: 'essay', label: 'Essay', count: 0 },
+                  { id: 'toppers', label: "Topper's Copy", count: 0 },
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap",
+                      "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1",
                       activeTab === tab.id
                         ? "bg-blue-600 text-white shadow-sm"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     )}
                   >
                     {tab.label}
+                    {tab.count > 0 && (
+                      <span className={cn(
+                        "text-[8px] px-1 py-px rounded font-bold hidden sm:inline",
+                        activeTab === tab.id
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                      )}>
+                        {tab.count}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
