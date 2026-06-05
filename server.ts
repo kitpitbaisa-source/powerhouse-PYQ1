@@ -167,8 +167,28 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
   }
 
   const userEmail = email.toLowerCase().trim();
+  const now = new Date().toISOString();
   try {
-    await usersContainer.items.upsert({ id: userEmail, email: userEmail, status });
+    // Check if user already exists
+    let existing: any = null;
+    try {
+      const { resource } = await usersContainer.item(userEmail, userEmail).read();
+      existing = resource;
+    } catch (e: any) {}
+
+    const expiryDate = status === "subscribed"
+      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+      : existing?.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    await usersContainer.items.upsert({
+      id: userEmail,
+      email: userEmail,
+      status,
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      expiryDate,
+      isActive: true,
+    });
     res.json({ message: "Success", user: { email: userEmail, status } });
   } catch (error: any) {
     console.error("Error updating user status:", error);
@@ -176,30 +196,68 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
   }
 });
 
-// API to delete user
+// API to delete user (soft delete)
 serverApp.delete("/api/admin/users/:email", async (req, res) => {
   const email = req.params.email.toLowerCase().trim();
+  const now = new Date().toISOString();
   try {
-    await usersContainer.item(email, email).delete();
-    res.json({ message: "User deleted" });
-  } catch (error: any) {
-    if (error.code === 404) {
-      return res.json({ message: "User deleted" });
+    let existing: any = null;
+    try {
+      const { resource } = await usersContainer.item(email, email).read();
+      existing = resource;
+    } catch (e: any) {}
+
+    if (existing) {
+      await usersContainer.items.upsert({
+        ...existing,
+        isActive: false,
+        modifiedAt: now,
+      });
     }
-    console.error("Error deleting user:", error);
+    res.json({ message: "User deactivated" });
+  } catch (error: any) {
+    console.error("Error deactivating user:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
-// API to get all users
+// API to get all users (only active)
 serverApp.get("/api/admin/users", async (req, res) => {
   try {
     const { resources } = await usersContainer.items
-      .query("SELECT c.id, c.email, c.status FROM c")
+      .query("SELECT c.id, c.email, c.status, c.expiryDate, c.createdAt, c.isActive FROM c WHERE NOT IS_DEFINED(c.isActive) OR c.isActive = true")
       .fetchAll();
     res.json(resources);
   } catch (error: any) {
     console.error("Error fetching users:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to backfill existing users with audit fields
+serverApp.post("/api/admin/users/backfill", async (req, res) => {
+  try {
+    const { resources } = await usersContainer.items
+      .query("SELECT * FROM c WHERE NOT IS_DEFINED(c.isActive) OR c.isActive = true")
+      .fetchAll();
+    const now = new Date().toISOString();
+    const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    let updated = 0;
+    for (const user of resources) {
+      if (!user.expiryDate || !user.createdAt) {
+        await usersContainer.items.upsert({
+          ...user,
+          createdAt: user.createdAt || now,
+          modifiedAt: now,
+          expiryDate: user.expiryDate || oneYearFromNow,
+          isActive: true,
+        });
+        updated++;
+      }
+    }
+    res.json({ message: `Backfilled ${updated} users`, total: resources.length });
+  } catch (error: any) {
+    console.error("Error backfilling users:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });

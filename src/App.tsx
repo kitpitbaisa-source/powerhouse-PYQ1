@@ -27,7 +27,8 @@ import {
   Moon,
   UserPlus,
   X,
-  Database
+  Database,
+  Trash2
 } from 'lucide-react';
 import { mcqData } from './questions.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -768,11 +769,12 @@ export default function App() {
 
   const handleDeleteUser = async (email: string) => {
     if (email === userEmail) return; // Don't delete self
+    if (!window.confirm(`Are you sure you want to deactivate "${email}"? This user will no longer have access.`)) return;
     const userEmailToDelete = email.toLowerCase().trim();
     try {
       const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE' });
       if (response.ok) {
-        setAdminMessage({ text: `User ${userEmailToDelete} deleted`, type: "success" });
+        setAdminMessage({ text: `User ${userEmailToDelete} deactivated`, type: "success" });
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
         fetchAllUsers();
         return;
@@ -780,8 +782,8 @@ export default function App() {
         throw new Error("Server delete failed");
       }
     } catch (error: any) {
-      console.error("Failed to delete user:", error.message || error);
-      setAdminMessage({ text: "Failed to delete user", type: "error" });
+      console.error("Failed to deactivate user:", error.message || error);
+      setAdminMessage({ text: "Failed to deactivate user", type: "error" });
     }
   };
 
@@ -1421,59 +1423,74 @@ export default function App() {
                       <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
                         <th className="px-6 py-3">Email</th>
                         <th className="px-6 py-3 text-center">Status</th>
-                        <th className="px-6 py-3 text-right">Actions</th>
-                      </tr>
+                       <th className="px-6 py-3 text-center">Expiry Date</th>
+                       <th className="px-6 py-3 text-right">Actions</th>
+                     </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                      {isLoadingUsers ? (
-                        <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500 animate-pulse">
-                            Loading user database...
-                          </td>
-                        </tr>
-                      ) : allUsers.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
-                            No users found in database.
-                          </td>
-                        </tr>
-                      ) : allUsers.map((user) => (
-                        <tr key={user.email} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">{user.email}</div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="flex flex-col gap-1 items-center">
-                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                user.status === 'admin'
-                                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50'
-                                  : user.status === 'subscribed' 
-                                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' 
-                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600'
-                              }`}>
-                                {user.status}
-                              </span>
-                              <div className="flex gap-1 mt-1">
-                                <button onClick={() => handleUpdateUser(user.email, 'subscribed')} className="text-[8px] text-slate-400 hover:text-emerald-500 font-bold uppercase transition-colors">Sub</button>
-                                <button onClick={() => handleUpdateUser(user.email, 'not_subscribed')} className="text-[8px] text-slate-400 hover:text-slate-200 font-bold uppercase transition-colors">None</button>
-                                <button onClick={() => handleUpdateUser(user.email, 'admin')} className="text-[8px] text-slate-400 hover:text-blue-500 font-bold uppercase transition-colors">Admin</button>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {user.email !== userEmail ? (
-                              <button 
-                                onClick={() => handleDeleteUser(user.email)}
-                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <span className="text-[10px] font-bold text-blue-500/50 uppercase tracking-tighter">You</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                     {isLoadingUsers ? (
+                       <tr>
+                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500 animate-pulse">
+                           Loading user database...
+                         </td>
+                       </tr>
+                     ) : allUsers.length === 0 ? (
+                       <tr>
+                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                           No users found in database.
+                         </td>
+                       </tr>
+                     ) : allUsers.map((user) => (
+                       <tr key={user.email} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
+                         <td className="px-6 py-4">
+                           <div className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">{user.email}</div>
+                         </td>
+                         <td className="px-6 py-4 text-center">
+                           <div className="flex flex-col gap-1 items-center">
+                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                               user.status === 'admin'
+                                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50'
+                                 : user.status === 'subscribed' 
+                                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' 
+                                 : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600'
+                             }`}>
+                               {user.status}
+                             </span>
+                             <div className="flex gap-1 mt-1">
+                               <button onClick={() => handleUpdateUser(user.email, 'subscribed')} className="text-[8px] text-slate-400 hover:text-emerald-500 font-bold uppercase transition-colors">Sub</button>
+                               <button onClick={() => handleUpdateUser(user.email, 'not_subscribed')} className="text-[8px] text-slate-400 hover:text-slate-200 font-bold uppercase transition-colors">None</button>
+                               <button onClick={() => handleUpdateUser(user.email, 'admin')} className="text-[8px] text-slate-400 hover:text-blue-500 font-bold uppercase transition-colors">Admin</button>
+                             </div>
+                           </div>
+                         </td>
+                         <td className="px-6 py-4 text-center">
+                           {user.expiryDate ? (
+                             <span className={`text-[11px] font-medium ${
+                               new Date(user.expiryDate) < new Date()
+                                 ? 'text-rose-500'
+                                 : 'text-emerald-600 dark:text-emerald-400'
+                             }`}>
+                               {new Date(user.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                             </span>
+                           ) : (
+                             <span className="text-[10px] text-slate-400">—</span>
+                           )}
+                         </td>
+                         <td className="px-6 py-4 text-right">
+                           {user.email !== userEmail ? (
+                             <button 
+                               onClick={() => handleDeleteUser(user.email)}
+                               className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                               title="Deactivate user"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </button>
+                           ) : (
+                             <span className="text-[10px] font-bold text-blue-500/50 uppercase tracking-tighter">You</span>
+                           )}
+                         </td>
+                       </tr>
+                     ))}
                     </tbody>
                   </table>
                 </div>
