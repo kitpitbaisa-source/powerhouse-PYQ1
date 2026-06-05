@@ -412,6 +412,7 @@ export default function App() {
   const [mainsYearFilter, setMainsYearFilter] = useState("All");
   const [mainsExamFilter, setMainsExamFilter] = useState("All");
   const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
+  const [mainsTopicFilter, setMainsTopicFilter] = useState("All");
   const [mainsSearchQuery, setMainsSearchQuery] = useState("");
   const [excludeSciMath, setExcludeSciMath] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
@@ -519,7 +520,8 @@ export default function App() {
   const mainsYearsList = useMemo(() => {
     const availableData = mainsQuestions.filter(q =>
       (mainsExamFilter === "All" || q.exam === mainsExamFilter) &&
-      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter)
+      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter) &&
+      (mainsTopicFilter === "All" || q.topic === mainsTopicFilter)
     );
     const uniqueYears = Array.from(new Set(availableData.map(q => q.year))).sort((a, b) => (b as string).localeCompare(a as string));
 
@@ -532,12 +534,13 @@ export default function App() {
       options: ["All", ...uniqueYears],
       counts: yearCounts,
     };
-  }, [mainsQuestions, mainsExamFilter, mainsSubjectFilter]);
+  }, [mainsQuestions, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter]);
 
   const mainsExamsList = useMemo(() => {
     const availableData = mainsQuestions.filter(q =>
       (mainsYearFilter === "All" || q.year === mainsYearFilter) &&
-      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter)
+      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter) &&
+      (mainsTopicFilter === "All" || q.topic === mainsTopicFilter)
     );
     const uniqueExams = [...new Set(availableData.map(q => q.exam))].sort();
 
@@ -550,12 +553,13 @@ export default function App() {
       options: ["All", ...uniqueExams],
       counts: examCounts,
     };
-  }, [mainsQuestions, mainsYearFilter, mainsSubjectFilter]);
+  }, [mainsQuestions, mainsYearFilter, mainsSubjectFilter, mainsTopicFilter]);
 
   const mainsSubjectsList = useMemo(() => {
     const availableData = mainsQuestions.filter(q =>
       (mainsYearFilter === "All" || q.year === mainsYearFilter) &&
-      (mainsExamFilter === "All" || q.exam === mainsExamFilter)
+      (mainsExamFilter === "All" || q.exam === mainsExamFilter) &&
+      (mainsTopicFilter === "All" || q.topic === mainsTopicFilter)
     );
     const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
 
@@ -568,7 +572,27 @@ export default function App() {
       options: ["All", ...uniqueSubjects],
       counts: subjectCounts,
     };
-  }, [mainsQuestions, mainsYearFilter, mainsExamFilter]);
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsTopicFilter]);
+
+  const mainsTopicsList = useMemo(() => {
+    const availableData = mainsQuestions.filter(q =>
+      (mainsYearFilter === "All" || q.year === mainsYearFilter) &&
+      (mainsExamFilter === "All" || q.exam === mainsExamFilter) &&
+      (mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter)
+    );
+
+    const topicCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      if (q.topic) topicCounts[q.topic] = (topicCounts[q.topic] || 0) + 1;
+    });
+
+    const uniqueTopics = ([...new Set(availableData.map(q => q.topic).filter(Boolean))] as string[]).sort((a, b) => (topicCounts[b] || 0) - (topicCounts[a] || 0));
+
+    return {
+      options: ["All", ...uniqueTopics],
+      counts: topicCounts,
+    };
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter]);
 
   const filteredMainsQuestions = useMemo(() => {
     if (mainsRandomMode) {
@@ -579,6 +603,7 @@ export default function App() {
         const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
         const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
         const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
+        const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
         const matchesSearch = mainsSearchQuery === "" ||
           (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
           (q.model_answer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
@@ -587,10 +612,10 @@ export default function App() {
           (q.exam || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
           (q.year || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
 
-        return matchesYear && matchesExam && matchesSubject && matchesSearch;
+        return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions]);
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -875,6 +900,12 @@ export default function App() {
     }
   }, [mainsSubjectsList.options, mainsSubjectFilter]);
 
+  useEffect(() => {
+    if (mainsTopicFilter !== "All" && !mainsTopicsList.options.includes(mainsTopicFilter)) {
+      setMainsTopicFilter("All");
+    }
+  }, [mainsTopicsList.options, mainsTopicFilter]);
+
   const filteredQuestions = useMemo(() => {
     if (randomMode.active) {
       return randomizedQuestions;
@@ -971,6 +1002,7 @@ export default function App() {
     setMainsYearFilter("All");
     setMainsExamFilter("All");
     setMainsSubjectFilter("All");
+    setMainsTopicFilter("All");
     setMainsSearchQuery("");
     setMainsRandomMode(false);
   };
@@ -1721,6 +1753,21 @@ export default function App() {
                     {mainsSubjectsList.options.map(subject => (
                       <option key={subject} value={subject}>
                         {subject === "All" ? "All Subjects" : `${subject} (${mainsSubjectsList.counts[subject] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic (by frequency)</label>
+                  <select
+                    value={mainsTopicFilter}
+                    onChange={(e) => setMainsTopicFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {mainsTopicsList.options.map(topic => (
+                      <option key={topic} value={topic}>
+                        {topic === "All" ? "All Topics" : `${topic} (${mainsTopicsList.counts[topic] || 0})`}
                       </option>
                     ))}
                   </select>
