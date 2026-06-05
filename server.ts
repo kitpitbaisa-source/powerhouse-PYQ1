@@ -35,7 +35,7 @@ let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
 let toppersCache: any[] | null = null;
 let toppersCacheTimestamp = 0;
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour (use /api/admin/refresh-questions to force clear)
 
 async function getQuestions() {
   const now = Date.now();

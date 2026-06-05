@@ -1479,7 +1479,7 @@ export default function App() {
               <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
                   <h3 className="font-bold text-slate-900 dark:text-white">All Registered Users ({allUsers.length})</h3>
-                  <button onClick={fetchAllUsers} className="text-xs font-bold text-blue-500 hover:underline">Refresh</button>
+                  <button onClick={() => { fetchAllUsers(); fetchActiveSessions(); }} className="text-xs font-bold text-blue-500 hover:underline">Refresh</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
