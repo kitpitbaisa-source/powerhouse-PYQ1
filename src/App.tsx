@@ -354,23 +354,32 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
       {question.keywords && question.keywords.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
           {question.keywords.map((kw, i) => (
-            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-800/50 font-medium">
+            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/15 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-700/40 font-medium">
               {kw}
             </span>
           ))}
         </div>
       )}
 
-      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50", isAnswerVisible && "mb-3")}>
-        <button
+      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between", isAnswerVisible && "mb-3")}>
+        <div
           onClick={onToggleAnswer}
-          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
+          className="flex-grow cursor-pointer flex items-center py-1 -my-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 focus:outline-none"
         >
           <div className={cn("mr-1.5 transition-transform duration-200", isAnswerVisible ? "rotate-180" : "rotate-0")}>
             <ChevronDown className="w-3.5 h-3.5" />
           </div>
           <span>{isAnswerVisible ? "Hide Model Answer" : "Show Model Answer"}</span>
-        </button>
+        </div>
+        <a
+          href={`https://www.google.com/search?q=${encodeURIComponent(question.question)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-2 p-1.5 rounded-md text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+          title="Search on Google"
+        >
+          <Search className="w-3.5 h-3.5" />
+        </a>
       </div>
 
       {isAnswerVisible && (
@@ -1024,18 +1033,36 @@ export default function App() {
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
         <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-3">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-600 text-white p-2 rounded-lg shadow-sm flex items-center justify-center w-9 h-9">
-                <Landmark className="w-5 h-5" />
+          <div className="flex justify-between items-center py-2.5">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8">
+                <Landmark className="w-4 h-4" />
               </div>
-              <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">UPSC PYQ Powerhouse</h1>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Meticulously curated PYQs • {(activeTab === 'mains' ? mainsQuestions.length : questions.length)} Total Loaded
-                </p>
+              <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
+              <h1 className="text-sm font-bold text-slate-900 dark:text-white leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
+
+              {/* Compact tab pills inline */}
+              <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
+                {([
+                  { id: 'prelims', label: 'Prelims' },
+                  { id: 'mains', label: 'Mains' },
+                  { id: 'essay', label: 'Essay' },
+                  { id: 'toppers', label: "Topper's Copy" },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap",
+                      activeTab === tab.id
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight sm:hidden">UPSC PYQ</h1>
             </div>
             
             <div className="flex items-center gap-2 sm:gap-3">
@@ -1146,7 +1173,7 @@ export default function App() {
                     className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
                   >
                     <Dice5 className="w-3 h-3" />
-                    <span className="hidden xl:inline">Random Mains</span>
+                    <span className="hidden xl:inline">Random PYQ</span>
                     <span className="xl:hidden">Random</span>
                   </button>
                   {mainsRandomMode && (
@@ -1194,38 +1221,6 @@ export default function App() {
           </div>
         </div>
       </header>
-
-      {!isAppLoading && !(isAdmin && isAdminView) && (
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full">
-          <nav className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-x-auto scrollbar-hide">
-            {([
-              { id: 'prelims', label: 'Prelims', sublabel: 'MCQ' },
-              { id: 'mains', label: 'Mains', sublabel: 'Descriptive' },
-              { id: 'essay', label: 'Essay', sublabel: 'Writing' },
-              { id: 'toppers', label: "Topper's Copy", sublabel: 'Answers' },
-            ] as const).map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "px-3 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1.5",
-                  activeTab === tab.id
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
-                )}
-              >
-                <span>{tab.label}</span>
-                <span className={cn(
-                  "hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-md",
-                  activeTab === tab.id
-                    ? "bg-blue-500/30 text-blue-100"
-                    : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-                )}>{tab.sublabel}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-      )}
 
       <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
         {isAppLoading ? (
