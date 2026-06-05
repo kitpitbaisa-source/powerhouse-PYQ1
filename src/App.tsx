@@ -662,6 +662,10 @@ export default function App() {
       const matchesTopper = toppersTopperFilter === "All" || 
         q.answers?.some(a => a.topperName === toppersTopperFilter);
       return matchesYear && matchesSubject && matchesTopper;
+    }).sort((a, b) => {
+      // Sort by Year (desc) → Question Number (asc)
+      if (a.year !== b.year) return b.year.localeCompare(a.year);
+      return (a.questionNumber || 0) - (b.questionNumber || 0);
     });
   }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter]);
 
@@ -2100,7 +2104,10 @@ export default function App() {
                             {q.words && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.words} words</span>}
                           </div>
                         </div>
-                        <p className="text-sm text-slate-900 dark:text-slate-100 leading-relaxed">{q.question}</p>
+                        <p className="text-sm text-slate-900 dark:text-slate-100 leading-relaxed">
+                          {q.questionNumber && <span className="font-bold text-indigo-600 dark:text-indigo-400">Q{q.questionNumber}. </span>}
+                          {q.question}
+                        </p>
                       </div>
 
                       {/* Topper answers - horizontal toggle */}
