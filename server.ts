@@ -13,6 +13,7 @@ const questionsContainer = database.container("questions");
 const mainsQuestionsContainer = database.container("mains-questions");
 const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
+const loginHistoryContainer = database.container("login-history");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -259,6 +260,87 @@ serverApp.post("/api/admin/users/backfill", async (req, res) => {
   } catch (error: any) {
     console.error("Error backfilling users:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to track user login
+serverApp.post("/api/auth/track-login", async (req, res) => {
+  const { email, device, browser, os, screenWidth } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required" });
+
+  const userEmail = email.toLowerCase().trim();
+  const now = new Date().toISOString();
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  const sessionId = `${userEmail}-${Date.now()}`;
+
+  try {
+    await loginHistoryContainer.items.create({
+      id: sessionId,
+      email: userEmail,
+      device: device || "unknown",
+      browser: browser || "unknown",
+      os: os || "unknown",
+      screenWidth: screenWidth || null,
+      ip,
+      loginAt: now,
+      isActive: true,
+    });
+    res.json({ message: "Login tracked", sessionId });
+  } catch (error: any) {
+    console.error("Error tracking login:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to track logout (mark session inactive)
+serverApp.post("/api/auth/track-logout", async (req, res) => {
+  const { email, sessionId } = req.body;
+  if (!email || !sessionId) return res.status(400).json({ error: "Email and sessionId required" });
+
+  const userEmail = email.toLowerCase().trim();
+  try {
+    const { resource } = await loginHistoryContainer.item(sessionId, userEmail).read();
+    if (resource) {
+      await loginHistoryContainer.items.upsert({
+        ...resource,
+        isActive: false,
+        logoutAt: new Date().toISOString(),
+      });
+    }
+    res.json({ message: "Logout tracked" });
+  } catch (error: any) {
+    console.error("Error tracking logout:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to get login history for a user
+serverApp.get("/api/admin/login-history/:email", async (req, res) => {
+  const email = req.params.email.toLowerCase().trim();
+  try {
+    const { resources } = await loginHistoryContainer.items
+      .query({
+        query: "SELECT * FROM c WHERE c.email = @email ORDER BY c.loginAt DESC OFFSET 0 LIMIT 20",
+        parameters: [{ name: "@email", value: email }]
+      })
+      .fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching login history:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to get active sessions count per user
+serverApp.get("/api/admin/active-sessions", async (req, res) => {
+  try {
+    const { resources } = await loginHistoryContainer.items
+      .query("SELECT c.email, COUNT(1) as count FROM c WHERE c.isActive = true GROUP BY c.email")
+      .fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching active sessions:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

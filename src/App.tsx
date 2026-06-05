@@ -696,11 +696,46 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [allUsers, setAllUsers] = useState<{email: string, status: string}[]>([]);
+  const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
   const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
   const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
   const [adminMessage, setAdminMessage] = useState({ text: "", type: "" });
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [expandedUserHistory, setExpandedUserHistory] = useState<string | null>(null);
+  const [loginHistory, setLoginHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [activeSessionsMap, setActiveSessionsMap] = useState<Record<string, number>>({});
+
+  const fetchLoginHistory = async (email: string) => {
+    if (expandedUserHistory === email) {
+      setExpandedUserHistory(null);
+      return;
+    }
+    setExpandedUserHistory(email);
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/admin/login-history/${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLoginHistory(data);
+      }
+    } catch (e) {
+      setLoginHistory([]);
+    }
+    setIsLoadingHistory(false);
+  };
+
+  const fetchActiveSessions = async () => {
+    try {
+      const response = await fetch('/api/admin/active-sessions');
+      if (response.ok) {
+        const data = await response.json();
+        const map: Record<string, number> = {};
+        data.forEach((item: { email: string, count: number }) => { map[item.email] = item.count; });
+        setActiveSessionsMap(map);
+      }
+    } catch {}
+  };
 
   const fetchAllUsers = async () => {
     if (!isAdmin) return;
@@ -738,6 +773,7 @@ export default function App() {
   useEffect(() => {
     if (isAdmin && userEmail) {
       fetchAllUsers();
+      fetchActiveSessions();
     }
   }, [isAdmin, userEmail]);
 
@@ -809,6 +845,22 @@ export default function App() {
     localStorage.setItem('user_session', JSON.stringify(session));
     setUserEmail(email);
     
+    // Track login device info
+    try {
+      const ua = navigator.userAgent;
+      const screenWidth = window.innerWidth;
+      const device = screenWidth < 768 ? "Mobile" : screenWidth < 1024 ? "Tablet" : "Desktop";
+      const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Safari") ? "Safari" : ua.includes("Firefox") ? "Firefox" : "Other";
+      const os = ua.includes("Android") ? "Android" : ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : ua.includes("Win") ? "Windows" : ua.includes("Mac") ? "macOS" : ua.includes("Linux") ? "Linux" : "Other";
+      fetch("/api/auth/track-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, device, browser, os, screenWidth })
+      }).then(r => r.json()).then(data => {
+        if (data.sessionId) localStorage.setItem('login_session_id', data.sessionId);
+      }).catch(() => {});
+    } catch {}
+
     // Check status
     await checkUserStatus(email);
     
@@ -817,7 +869,19 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    // Mark login session as inactive
+    const sessionId = localStorage.getItem('login_session_id');
+    const session = localStorage.getItem('user_session');
+    const email = session ? JSON.parse(session).email : null;
+    if (sessionId && email) {
+      fetch("/api/auth/track-logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, sessionId })
+      }).catch(() => {});
+    }
     localStorage.removeItem('user_session');
+    localStorage.removeItem('login_session_id');
     setUserEmail(null);
     setIsSubscribed(false);
     setShowLoginModal(true);
@@ -1424,26 +1488,30 @@ export default function App() {
                         <th className="px-6 py-3">Email</th>
                         <th className="px-6 py-3 text-center">Status</th>
                        <th className="px-6 py-3 text-center">Expiry Date</th>
+                       <th className="px-6 py-3 text-center">Active</th>
                        <th className="px-6 py-3 text-right">Actions</th>
                      </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                      {isLoadingUsers ? (
                        <tr>
-                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500 animate-pulse">
+                        <td colSpan={5} className="px-6 py-12 text-center text-slate-500 animate-pulse">
                            Loading user database...
                          </td>
                        </tr>
                      ) : allUsers.length === 0 ? (
                        <tr>
-                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                         <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                            No users found in database.
                          </td>
                        </tr>
                      ) : allUsers.map((user) => (
-                       <tr key={user.email} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
+                       <React.Fragment key={user.email}>
+                       <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
                          <td className="px-6 py-4">
-                           <div className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">{user.email}</div>
+                           <button onClick={() => fetchLoginHistory(user.email)} className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate hover:text-blue-500 transition-colors text-left" title="Click to view login history">
+                             {user.email}
+                           </button>
                          </td>
                          <td className="px-6 py-4 text-center">
                            <div className="flex flex-col gap-1 items-center">
@@ -1476,6 +1544,16 @@ export default function App() {
                              <span className="text-[10px] text-slate-400">—</span>
                            )}
                          </td>
+                         <td className="px-6 py-4 text-center">
+                           {activeSessionsMap[user.email] ? (
+                             <span className="inline-flex items-center gap-1.5">
+                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{activeSessionsMap[user.email]}</span>
+                             </span>
+                           ) : (
+                             <span className="text-[10px] text-slate-400">—</span>
+                           )}
+                         </td>
                          <td className="px-6 py-4 text-right">
                            {user.email !== userEmail ? (
                              <button 
@@ -1490,6 +1568,36 @@ export default function App() {
                            )}
                          </td>
                        </tr>
+                       {expandedUserHistory === user.email && (
+                         <tr>
+                           <td colSpan={5} className="px-6 py-3 bg-slate-50/50 dark:bg-slate-900/40">
+                             {isLoadingHistory ? (
+                               <p className="text-[11px] text-slate-400 animate-pulse">Loading login history...</p>
+                             ) : loginHistory.length === 0 ? (
+                               <p className="text-[11px] text-slate-400">No login history recorded yet.</p>
+                             ) : (
+                               <div className="space-y-1.5">
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Login History (Last {loginHistory.length})</p>
+                                 <div className="grid gap-1.5 max-h-[200px] overflow-y-auto">
+                                   {loginHistory.map((log: any, i: number) => (
+                                     <div key={i} className="flex items-center gap-3 text-[11px] px-3 py-1.5 rounded bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${log.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} title={log.isActive ? 'Active' : 'Logged out'}></span>
+                                       <span className="font-medium text-slate-600 dark:text-slate-300 min-w-[70px]">{log.device}</span>
+                                       <span className="text-slate-500">{log.browser}</span>
+                                       <span className="text-slate-400">{log.os}</span>
+                                       <span className="text-slate-400 font-mono text-[10px]">{log.ip}</span>
+                                       <span className="ml-auto text-slate-400 text-[10px]">
+                                         {new Date(log.loginAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date(log.loginAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                       </span>
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>
+                             )}
+                           </td>
+                         </tr>
+                       )}
+                       </React.Fragment>
                      ))}
                     </tbody>
                   </table>
