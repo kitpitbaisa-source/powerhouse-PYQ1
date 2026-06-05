@@ -390,7 +390,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'prelims' | 'mains'>('prelims');
+  const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers'>('prelims');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
@@ -1197,30 +1197,33 @@ export default function App() {
 
       {!isAppLoading && !(isAdmin && isAdminView) && (
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full">
-          <div className="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-            <button
-              onClick={() => setActiveTab('prelims')}
-              className={cn(
-                "px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all",
-                activeTab === 'prelims'
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Prelims (MCQ)
-            </button>
-            <button
-              onClick={() => setActiveTab('mains')}
-              className={cn(
-                "px-4 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all",
-                activeTab === 'mains'
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Mains (Descriptive)
-            </button>
-          </div>
+          <nav className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-x-auto scrollbar-hide">
+            {([
+              { id: 'prelims', label: 'Prelims', sublabel: 'MCQ' },
+              { id: 'mains', label: 'Mains', sublabel: 'Descriptive' },
+              { id: 'essay', label: 'Essay', sublabel: 'Writing' },
+              { id: 'toppers', label: "Topper's Copy", sublabel: 'Answers' },
+            ] as const).map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "px-3 sm:px-5 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1.5",
+                  activeTab === tab.id
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                )}
+              >
+                <span>{tab.label}</span>
+                <span className={cn(
+                  "hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-md",
+                  activeTab === tab.id
+                    ? "bg-blue-500/30 text-blue-100"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                )}>{tab.sublabel}</span>
+              </button>
+            ))}
+          </nav>
         </div>
       )}
 
@@ -1652,7 +1655,7 @@ export default function App() {
           )}
         </section>
         </>
-        ) : (
+        ) : activeTab === 'mains' ? (
           <>
             <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
@@ -1775,7 +1778,43 @@ export default function App() {
               )}
             </section>
           </>
-        )}
+        ) : activeTab === 'essay' ? (
+          <div className="w-full">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-10 text-center">
+              <div className="max-w-md mx-auto">
+                <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Essay Section</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
+                  UPSC Essay papers with model essays, topic analysis, and writing frameworks — coming soon!
+                </p>
+                <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 px-4 py-2 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800/50">
+                  <Lock className="w-3.5 h-3.5" />
+                  Under Development
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'toppers' ? (
+          <div className="w-full">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-10 text-center">
+              <div className="max-w-md mx-auto">
+                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Trophy className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Topper's Copy</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
+                  Curated answer copies from UPSC toppers with annotations, scoring insights, and writing strategies — coming soon!
+                </p>
+                <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-800/50">
+                  <Lock className="w-3.5 h-3.5" />
+                  Under Development
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
 
       <footer className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 py-6 mt-auto transition-colors duration-300">
