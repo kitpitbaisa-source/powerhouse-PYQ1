@@ -12,3 +12,11 @@
 }
 
 @variant dark (&:where(.dark, .dark *));
+
+/* Ensure pointer cursor on all interactive elements */
+button,
+a,
+select,
+[role="button"] {
+  cursor: pointer;
+}
