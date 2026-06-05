@@ -30,7 +30,7 @@ import {
   Database
 } from 'lucide-react';
 import { mcqData } from './questions.ts';
-import { MainsQuestion, Question, SubjectColorMap } from './types.ts';
+import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
@@ -421,6 +421,12 @@ export default function App() {
   const [mainsRandomMode, setMainsRandomMode] = useState(false);
   const [mainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
   const [mainsRandomSelectLimit, setMainsRandomSelectLimit] = useState(10);
+  const [toppersQuestions, setToppersQuestions] = useState<ToppersCopyQuestion[]>([]);
+  const [isLoadingToppers, setIsLoadingToppers] = useState(false);
+  const [toppersYearFilter, setToppersYearFilter] = useState("All");
+  const [toppersTopperFilter, setToppersTopperFilter] = useState("All");
+  const [toppersSubjectFilter, setToppersSubjectFilter] = useState("All");
+  const [activeTopperIndex, setActiveTopperIndex] = useState<Record<string, number>>({});
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [visibleCount, setVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
@@ -507,9 +513,25 @@ export default function App() {
     }
   };
 
+  const fetchToppersQuestions = async () => {
+    setIsLoadingToppers(true);
+    try {
+      const response = await fetch('/api/toppers-copy');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      setToppersQuestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Failed to fetch toppers copy questions:", error);
+      setToppersQuestions([]);
+    } finally {
+      setIsLoadingToppers(false);
+    }
+  };
+
   useEffect(() => {
     fetchQuestions();
     fetchMainsQuestions();
+    fetchToppersQuestions();
   }, []);
 
   const latestTwoYears = useMemo(() => {
@@ -616,6 +638,31 @@ export default function App() {
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
   }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions]);
+
+  // Toppers copy filter lists
+  const toppersYearsList = useMemo(() => {
+    return [...new Set(toppersQuestions.map(q => q.year))].sort((a, b) => b.localeCompare(a));
+  }, [toppersQuestions]);
+
+  const toppersToppersList = useMemo(() => {
+    const toppers = new Set<string>();
+    toppersQuestions.forEach(q => q.answers?.forEach(a => toppers.add(a.topperName)));
+    return [...toppers].sort();
+  }, [toppersQuestions]);
+
+  const toppersSubjectsList = useMemo(() => {
+    return [...new Set(toppersQuestions.map(q => q.subject))].sort();
+  }, [toppersQuestions]);
+
+  const filteredToppersQuestions = useMemo(() => {
+    return toppersQuestions.filter(q => {
+      const matchesYear = toppersYearFilter === "All" || q.year === toppersYearFilter;
+      const matchesSubject = toppersSubjectFilter === "All" || q.subject === toppersSubjectFilter;
+      const matchesTopper = toppersTopperFilter === "All" || 
+        q.answers?.some(a => a.topperName === toppersTopperFilter);
+      return matchesYear && matchesSubject && matchesTopper;
+    });
+  }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -1079,7 +1126,7 @@ export default function App() {
                   { id: 'prelims', label: 'Prelims', count: questions.length },
                   { id: 'mains', label: 'Mains', count: mainsQuestions.length },
                   { id: 'essay', label: 'Essay', count: 0 },
-                  { id: 'toppers', label: "Topper's Copy", count: 0 },
+                  { id: 'toppers', label: "Topper's Copy", count: toppersQuestions.length },
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
@@ -1850,21 +1897,147 @@ export default function App() {
           </div>
         ) : activeTab === 'toppers' ? (
           <div className="w-full">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-10 text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Trophy className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+            {isLoadingToppers ? (
+              <div className="text-center py-10">
+                <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-3"></div>
+                <p className="text-slate-500 text-sm">Loading Topper's Copy...</p>
+              </div>
+            ) : toppersQuestions.length === 0 ? (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-10 text-center">
+                <Trophy className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
+                <p className="text-slate-500">No topper's copy questions available yet.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Filters sidebar */}
+                <div className="lg:w-64 flex-shrink-0">
+                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm sticky top-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Filters</h3>
+                      <button
+                        onClick={() => { setToppersYearFilter("All"); setToppersTopperFilter("All"); setToppersSubjectFilter("All"); }}
+                        className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold"
+                      >Reset</button>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
+                      <select value={toppersYearFilter} onChange={(e) => setToppersYearFilter(e.target.value)}
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
+                        <option value="All">All Years</option>
+                        {toppersYearsList.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
+                      <select value={toppersSubjectFilter} onChange={(e) => setToppersSubjectFilter(e.target.value)}
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
+                        <option value="All">All Subjects</option>
+                        {toppersSubjectsList.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topper</label>
+                      <select value={toppersTopperFilter} onChange={(e) => setToppersTopperFilter(e.target.value)}
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
+                        <option value="All">All Toppers</option>
+                        {toppersToppersList.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="text-xs text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-700">
+                      Showing {filteredToppersQuestions.length} of {toppersQuestions.length} questions
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Topper's Copy</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
-                  Curated answer copies from UPSC toppers with annotations, scoring insights, and writing strategies — coming soon!
-                </p>
-                <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-800/50">
-                  <Lock className="w-3.5 h-3.5" />
-                  Under Development
+
+                {/* Questions grid - two columns */}
+                <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  {filteredToppersQuestions.map((q) => {
+                    const visibleAnswers = toppersTopperFilter === "All" ? q.answers : q.answers?.filter(a => a.topperName === toppersTopperFilter);
+                    const currentIdx = activeTopperIndex[q.id] ?? -1;
+                    const currentAnswer = currentIdx >= 0 ? visibleAnswers?.[currentIdx] : null;
+                    return (
+                    <div key={q.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
+                      {/* Question header */}
+                      <div className="p-4 border-b border-slate-100 dark:border-slate-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-semibold">{q.year}</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-semibold">{q.exam}</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-semibold">{q.subject}</span>
+                            {q.topic && <span className="text-[10px] px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-semibold">{q.topic}</span>}
+                          </div>
+                          <div className="flex gap-1.5">
+                            {q.marks && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.marks} marks</span>}
+                            {q.words && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.words} words</span>}
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-900 dark:text-slate-100 leading-relaxed">{q.question}</p>
+                      </div>
+
+                      {/* Topper answers - horizontal toggle */}
+                      {visibleAnswers && visibleAnswers.length > 0 && (
+                        <div className="flex-1 p-4">
+                          {/* Topper tabs */}
+                          <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+                            {visibleAnswers.map((answer, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setActiveTopperIndex(prev => {
+                                  const isClosing = prev[q.id] === idx;
+                                  if (isClosing) {
+                                    const next = { ...prev };
+                                    delete next[q.id];
+                                    return next;
+                                  }
+                                  // Count currently open answers (excluding this question)
+                                  const openCount = Object.values(prev).filter(v => v >= 0).length - (prev[q.id] >= 0 ? 1 : 0);
+                                  if (openCount >= 2) {
+                                    // Close all others, only keep this one
+                                    return { [q.id]: idx };
+                                  }
+                                  return { ...prev, [q.id]: idx };
+                                })}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all",
+                                  currentIdx === idx
+                                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm"
+                                    : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                                )}
+                              >
+                                <div className={cn(
+                                  "w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold",
+                                  currentIdx === idx ? "bg-gradient-to-br from-blue-400 to-indigo-500" : "bg-slate-400 dark:bg-slate-500"
+                                )}>
+                                  {answer.topperName.charAt(0)}
+                                </div>
+                                {answer.topperName}
+                                <span className="text-[9px] text-blue-500 dark:text-blue-400 font-bold">AIR {answer.rank}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Active topper's answer */}
+                          {currentAnswer && (
+                            <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] border border-emerald-100 dark:border-emerald-800/30">
+                              {currentAnswer.topperAnswerText.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+                                part.startsWith('**') && part.endsWith('**')
+                                  ? <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>
+                                  : <span key={i}>{part}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         ) : null}
       </main>

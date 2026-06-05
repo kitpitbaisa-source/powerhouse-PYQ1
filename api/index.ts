@@ -11,6 +11,7 @@ const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
 const mainsQuestionsContainer = database.container("mains-questions");
 const usersContainer = database.container("users");
+const toppersContainer = database.container("toppers-copy");
 
 const serverApp = express();
 serverApp.use(express.json());
@@ -23,6 +24,8 @@ let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
+let toppersCache: any[] | null = null;
+let toppersCacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
 async function getQuestions() {
@@ -51,6 +54,19 @@ async function getMainsQuestions() {
   return resources;
 }
 
+async function getToppersQuestions() {
+  const now = Date.now();
+  if (toppersCache && (now - toppersCacheTimestamp) < CACHE_TTL) {
+    return toppersCache;
+  }
+  const { resources } = await toppersContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  toppersCache = resources;
+  toppersCacheTimestamp = now;
+  return resources;
+}
+
 // API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
@@ -73,6 +89,19 @@ serverApp.get("/api/mains-questions", async (req, res) => {
     res.json(mainsQuestions);
   } catch (error: any) {
     console.error("Error fetching mains questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to get all toppers copy questions (cached)
+serverApp.get("/api/toppers-copy", async (req, res) => {
+  try {
+    const toppersQuestions = await getToppersQuestions();
+    toppersQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(toppersQuestions);
+  } catch (error: any) {
+    console.error("Error fetching toppers copy questions:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });

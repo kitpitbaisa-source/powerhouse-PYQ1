@@ -12,6 +12,7 @@ const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
 const mainsQuestionsContainer = database.container("mains-questions");
 const usersContainer = database.container("users");
+const toppersContainer = database.container("toppers-copy");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -31,6 +32,8 @@ let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
+let toppersCache: any[] | null = null;
+let toppersCacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
 async function getQuestions() {
@@ -59,6 +62,19 @@ async function getMainsQuestions() {
   return resources;
 }
 
+async function getToppersQuestions() {
+  const now = Date.now();
+  if (toppersCache && (now - toppersCacheTimestamp) < CACHE_TTL) {
+    return toppersCache;
+  }
+  const { resources } = await toppersContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  toppersCache = resources;
+  toppersCacheTimestamp = now;
+  return resources;
+}
+
 // API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
@@ -84,6 +100,17 @@ serverApp.get("/api/mains-questions", async (req, res) => {
   }
 });
 
+serverApp.get("/api/toppers-copy", async (req, res) => {
+  try {
+    const toppersQuestions = await getToppersQuestions();
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(toppersQuestions);
+  } catch (error: any) {
+    console.error("Error fetching toppers copy questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to refresh questions cache (admin only)
 serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   try {
@@ -91,6 +118,8 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     cacheTimestamp = 0;
     mainsCache = null;
     mainsCacheTimestamp = 0;
+    toppersCache = null;
+    toppersCacheTimestamp = 0;
     const [questions, mainsQuestions] = await Promise.all([getQuestions(), getMainsQuestions()]);
     res.json({
       message: "Cache refreshed",

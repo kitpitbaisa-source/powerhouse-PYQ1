@@ -28,6 +28,24 @@ export interface MainsQuestion {
   keywords?: string[];
 }
 
+export interface TopperAnswer {
+  topperName: string;
+  rank: string;
+  topperAnswerText: string;
+}
+
+export interface ToppersCopyQuestion {
+  id: string;
+  year: string;
+  subject: string;
+  topic?: string;
+  exam: string;
+  question: string;
+  marks?: number;
+  words?: number;
+  answers: TopperAnswer[];
+}
+
 export type SubjectColorMap = {
   [key: string]: string;
 };
