@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Landmark, 
   Trophy, 
@@ -398,6 +398,86 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
     </div>
   );
 };
+
+// Topper scroll tabs - items in view show full name, items at edges collapse to circles
+function TopperScrollTabs({ answers, activeIdx, onSelect }: { answers: any[]; activeIdx: number; onSelect: (idx: number) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [visibleItems, setVisibleItems] = useState<Set<number>>(new Set());
+
+  const updateVisibility = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const newVisible = new Set<number>();
+    const children = container.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as HTMLElement;
+      const childRect = child.getBoundingClientRect();
+      const childCenter = childRect.left + childRect.width / 2;
+      // Consider visible if center is within container bounds with some padding
+      if (childCenter >= rect.left + 10 && childCenter <= rect.right - 10) {
+        newVisible.add(i);
+      }
+    }
+    setVisibleItems(newVisible);
+  }, []);
+
+  useEffect(() => {
+    updateVisibility();
+    const container = scrollRef.current;
+    if (container) {
+      container.addEventListener('scroll', updateVisibility);
+      const observer = new ResizeObserver(updateVisibility);
+      observer.observe(container);
+      return () => { container.removeEventListener('scroll', updateVisibility); observer.disconnect(); };
+    }
+  }, [updateVisibility, answers.length]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="flex items-center gap-1.5 mb-3 overflow-x-auto scrollbar-hide py-1 px-0.5"
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >
+      {answers.map((answer, idx) => {
+        const isExpanded = visibleItems.has(idx);
+        const isActive = activeIdx === idx;
+        return (
+          <button
+            key={idx}
+            title={answer.topperName + (answer.rank ? ` (AIR ${answer.rank})` : '')}
+            onClick={() => onSelect(idx)}
+            className={cn(
+              "flex items-center rounded-full font-semibold whitespace-nowrap transition-all duration-300 ease-in-out shrink-0",
+              isActive
+                ? "gap-1.5 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm ring-2 ring-blue-300 dark:ring-blue-600"
+                : isExpanded
+                  ? "gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  : "w-8 h-8 justify-center bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+            )}
+          >
+            <div className={cn(
+              "rounded-full flex items-center justify-center text-white font-bold shrink-0 transition-all duration-300",
+              isActive ? "w-5 h-5 text-[9px] bg-gradient-to-br from-blue-400 to-indigo-500"
+                : isExpanded ? "w-5 h-5 text-[9px] bg-slate-400 dark:bg-slate-500"
+                : "w-8 h-8 text-[11px] bg-slate-400 dark:bg-slate-500"
+            )}>
+              {answer.topperName.charAt(0)}
+            </div>
+            {(isExpanded || isActive) && (
+              <span className={cn("text-[11px] transition-opacity duration-300", isActive ? "font-bold" : "")}>
+                {answer.topperName}
+              </span>
+            )}
+            {(isExpanded || isActive) && answer.rank && (
+              <span className="text-[9px] text-blue-500 dark:text-blue-400 font-bold">AIR {answer.rank}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers'>('prelims');
@@ -2113,44 +2193,22 @@ export default function App() {
                       {/* Topper answers - horizontal toggle */}
                       {visibleAnswers && visibleAnswers.length > 0 && (
                         <div className="flex-1 p-4">
-                          {/* Topper tabs */}
-                          <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
-                            {visibleAnswers.map((answer, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => setActiveTopperIndex(prev => {
-                                  const isClosing = prev[q.id] === idx;
-                                  if (isClosing) {
-                                    const next = { ...prev };
-                                    delete next[q.id];
-                                    return next;
-                                  }
-                                  // Count currently open answers (excluding this question)
-                                  const openCount = Object.values(prev).filter(v => v >= 0).length - (prev[q.id] >= 0 ? 1 : 0);
-                                  if (openCount >= 2) {
-                                    // Close all others, only keep this one
-                                    return { [q.id]: idx };
-                                  }
-                                  return { ...prev, [q.id]: idx };
-                                })}
-                                className={cn(
-                                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all",
-                                  currentIdx === idx
-                                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shadow-sm"
-                                    : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-                                )}
-                              >
-                                <div className={cn(
-                                  "w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold",
-                                  currentIdx === idx ? "bg-gradient-to-br from-blue-400 to-indigo-500" : "bg-slate-400 dark:bg-slate-500"
-                                )}>
-                                  {answer.topperName.charAt(0)}
-                                </div>
-                                {answer.topperName}
-                                <span className="text-[9px] text-blue-500 dark:text-blue-400 font-bold">AIR {answer.rank}</span>
-                              </button>
-                            ))}
-                          </div>
+                          {/* Topper tabs - scroll to expand/collapse */}
+                          <TopperScrollTabs
+                            answers={visibleAnswers}
+                            activeIdx={currentIdx}
+                            onSelect={(idx) => setActiveTopperIndex(prev => {
+                              const isClosing = prev[q.id] === idx;
+                              if (isClosing) {
+                                const next = { ...prev };
+                                delete next[q.id];
+                                return next;
+                              }
+                              const openCount = Object.values(prev).filter(v => v >= 0).length - (prev[q.id] >= 0 ? 1 : 0);
+                              if (openCount >= 2) return { [q.id]: idx };
+                              return { ...prev, [q.id]: idx };
+                            })}
+                          />
 
                           {/* Active topper's answer */}
                           {currentAnswer && (
