@@ -133,6 +133,288 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   }
 });
 
+// GET /api/admin/upload-questions/schema - Returns unified API documentation for AI consumers
+serverApp.get("/api/admin/upload-questions/schema", (req, res) => {
+  res.json({
+    endpoint: "POST /api/admin/upload-questions",
+    description: "Unified API to upload UPSC questions (Prelims MCQs, Mains descriptive, or Topper's Copy answers). Handles deduplication: if a question with the same year + exam + question text exists, it updates (adds topper answers for toppers type, skips for prelims/mains). Otherwise creates a new document.",
+    request: {
+      method: "POST",
+      contentType: "application/json",
+      body: {
+        type: { type: "string", required: true, enum: ["prelims", "mains", "toppers"], description: "Type of questions being uploaded. Determines which database container and schema to use." },
+        questions: {
+          type: "array",
+          required: true,
+          description: "Array of question objects. Schema depends on 'type' field above.",
+          schemas: {
+            prelims: {
+              description: "MCQ questions for Prelims exams (CSE Prelims, CDS, NDA, CAPF, etc.)",
+              fields: {
+                year: { type: "string", required: true, example: "2024", description: "Exam year" },
+                exam: { type: "string", required: true, example: "CSE Prelims 2024", description: "Full exam name with year" },
+                subject: { type: "string", required: true, example: "History", description: "Subject (History, Geography, Polity, Economics, Science & Technology, Environment, Art & Culture, Current Affairs)" },
+                question: { type: "string", required: true, description: "Full question text" },
+                options: { type: "array of strings", required: true, example: ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"], description: "MCQ options prefixed with A. B. C. D." },
+                answer: { type: "string", required: true, example: "B. Option 2", description: "Correct answer (must match one of the options exactly)" },
+                explanation: { type: "string", required: false, description: "Explanation of why the answer is correct" }
+              }
+            },
+            mains: {
+              description: "Descriptive questions for Mains exam (GS1-GS4, Essay, Optional papers)",
+              fields: {
+                year: { type: "string", required: true, example: "2024", description: "Exam year" },
+                exam: { type: "string", required: true, example: "CSE Mains", description: "Exam name" },
+                subject: { type: "string", required: true, example: "History", description: "Subject category" },
+                topic: { type: "string", required: false, example: "Modern Indian History", description: "Specific topic" },
+                paper: { type: "string", required: false, example: "GS1", description: "Paper name (GS1, GS2, GS3, GS4, Essay)" },
+                question: { type: "string", required: true, description: "Full question text including word limit if mentioned" },
+                keywords: { type: "array of strings", required: false, example: ["Non-Cooperation", "Gandhi", "Civil Disobedience"], description: "Key topics/concepts in the question" }
+              }
+            },
+            toppers: {
+              description: "Questions with topper's handwritten answer transcriptions",
+              fields: {
+                year: { type: "string", required: true, example: "2023", description: "Exam year" },
+                exam: { type: "string", required: true, example: "CSE Mains", description: "Exam name" },
+                subject: { type: "string", required: false, example: "History", description: "Subject category" },
+                topic: { type: "string", required: false, example: "Modern Indian History", description: "Specific topic" },
+                questionNumber: { type: "number", required: false, example: 1, description: "Question number in the paper" },
+                question: { type: "string", required: true, description: "Full question text" },
+                marks: { type: "number", required: false, example: 10, description: "Maximum marks" },
+                words: { type: "number", required: false, example: 150, description: "Word limit" },
+                answers: {
+                  type: "array",
+                  required: true,
+                  description: "Topper answer transcriptions",
+                  items: {
+                    topperName: { type: "string", required: true, example: "Aditya Srivastava", description: "Full name of the topper" },
+                    rank: { type: "string", required: false, example: "1", description: "UPSC rank" },
+                    toppers_copy_section: { type: "string", required: false, example: "Aditya Srivastava GSI 2023", description: "Section/booklet identifier" },
+                    topperAnswerText: { type: "string", required: true, description: "Full transcription of handwritten answer. Use \\n for newlines, **bold** for emphasis, > for highlighted points, * for bullets." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    response: {
+      success: { message: "string", created: "number", updated: "number", skipped: "number", errors: "string[]", totalInDb: "number" },
+      error: { error: "string", details: "string" }
+    },
+    behavior: {
+      deduplication: "Matches by normalized question text (trimmed, lowercased, collapsed whitespace) + same year + same exam",
+      prelims: "If duplicate found, skips. New questions get auto-generated IDs.",
+      mains: "If duplicate found, skips. New questions get auto-generated IDs.",
+      toppers: "If duplicate found, appends new topper answers (skips if topperName already exists). New questions get auto-generated IDs.",
+      cache: "Clears relevant cache after upload so changes are immediately visible"
+    },
+    examples: {
+      prelims: {
+        type: "prelims",
+        questions: [{
+          year: "2024", exam: "CSE Prelims 2024", subject: "Geography",
+          question: "Which of the following is the largest plateau in the world?",
+          options: ["A. Deccan Plateau", "B. Tibetan Plateau", "C. Colorado Plateau", "D. Antarctic Plateau"],
+          answer: "B. Tibetan Plateau",
+          explanation: "The Tibetan Plateau, also known as the Qinghai-Tibet Plateau, is the largest and highest plateau in the world, with an average elevation exceeding 4,500 meters."
+        }]
+      },
+      mains: {
+        type: "mains",
+        questions: [{
+          year: "2024", exam: "CSE Mains", subject: "History", topic: "Freedom Struggle",
+          paper: "GS1",
+          question: "Discuss the role of peasant movements in India's national movement. (250 words)",
+          keywords: ["Peasant Movements", "Champaran", "Kheda", "Tebhaga"]
+        }]
+      },
+      toppers: {
+        type: "toppers",
+        questions: [{
+          year: "2023", exam: "CSE Mains", subject: "History", topic: "Modern Indian History",
+          questionNumber: 1, question: "Discuss the role of the Non-Cooperation Movement.", marks: 15, words: 200,
+          answers: [{
+            topperName: "Aditya Srivastava", rank: "1",
+            topperAnswerText: "The Non-Cooperation Movement (1920-22)...\n* Mass participation\n* British administration paralyzed"
+          }]
+        }]
+      }
+    }
+  });
+});
+
+// Unified API to upload questions (prelims, mains, toppers)
+serverApp.post("/api/admin/upload-questions", async (req, res) => {
+  try {
+    const { type, questions } = req.body;
+    if (!type || !["prelims", "mains", "toppers"].includes(type)) {
+      return res.status(400).json({ error: "type is required and must be 'prelims', 'mains', or 'toppers'" });
+    }
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: "questions array is required and must not be empty" });
+    }
+
+    const container = type === "prelims" ? questionsContainer : type === "mains" ? mainsQuestionsContainer : toppersContainer;
+    const results = { created: 0, updated: 0, skipped: 0, errors: [] as string[] };
+
+    // Get existing questions for deduplication
+    const { resources: existing } = await container.items.query("SELECT * FROM c").fetchAll();
+    let maxId = existing.reduce((max, q) => Math.max(max, parseInt(q.id) || 0), 0);
+    const normalizeText = (t: string) => t.trim().replace(/\s+/g, ' ').toLowerCase();
+
+    for (const q of questions) {
+      try {
+        if (!q.year || !q.exam || !q.question) {
+          results.errors.push(`Skipped: missing required fields (year/exam/question)`);
+          continue;
+        }
+
+        // Find existing match
+        const match = existing.find(e =>
+          e.year === q.year &&
+          e.exam === q.exam &&
+          normalizeText(e.question) === normalizeText(q.question)
+        );
+
+        if (match) {
+          if (type === "toppers" && q.answers?.length > 0) {
+            // For toppers: append new answers
+            const existingNames = new Set(match.answers?.map((a: any) => a.topperName) || []);
+            const newAnswers = q.answers.filter((a: any) => !existingNames.has(a.topperName));
+            if (newAnswers.length > 0) {
+              match.answers = [...(match.answers || []), ...newAnswers];
+              const { _rid, _self, _etag, _attachments, _ts, ...cleanDoc } = match;
+              await container.items.upsert(cleanDoc);
+              results.updated++;
+            } else {
+              results.skipped++;
+            }
+          } else {
+            results.skipped++;
+          }
+        } else {
+          // Create new document based on type
+          maxId++;
+          let newDoc: any;
+
+          if (type === "prelims") {
+            if (!q.options || !q.answer) {
+              results.errors.push(`Skipped: prelims question missing options or answer`);
+              continue;
+            }
+            newDoc = {
+              id: String(maxId),
+              year: q.year,
+              exam: q.exam,
+              subject: q.subject || "",
+              question: q.question,
+              options: q.options,
+              answer: q.answer,
+              explanation: q.explanation || ""
+            };
+          } else if (type === "mains") {
+            newDoc = {
+              id: String(maxId),
+              year: q.year,
+              exam: q.exam,
+              subject: q.subject || "",
+              topic: q.topic || "",
+              paper: q.paper || "",
+              question: q.question,
+              keywords: q.keywords || []
+            };
+          } else {
+            // toppers
+            if (!q.answers || q.answers.length === 0) {
+              results.errors.push(`Skipped: toppers question missing answers array`);
+              continue;
+            }
+            newDoc = {
+              id: String(maxId),
+              questionNumber: q.questionNumber || maxId - 30000,
+              year: q.year,
+              exam: q.exam,
+              subject: q.subject || "",
+              topic: q.topic || "",
+              question: q.question,
+              marks: q.marks || null,
+              words: q.words || null,
+              answers: q.answers
+            };
+          }
+
+          await container.items.upsert(newDoc);
+          existing.push(newDoc);
+          results.created++;
+        }
+      } catch (itemError: any) {
+        results.errors.push(`Error: ${itemError.message}`);
+      }
+    }
+
+    // Clear relevant caches
+    if (type === "prelims") { questionsCache = null; cacheTimestamp = 0; }
+    else if (type === "mains") { mainsCache = null; mainsCacheTimestamp = 0; }
+    else { toppersCache = null; toppersCacheTimestamp = 0; }
+
+    res.json({ message: "Upload complete", type, ...results, totalInDb: existing.length });
+  } catch (error: any) {
+    console.error("Error uploading questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Keep old endpoint for backward compatibility
+serverApp.post("/api/admin/upload-toppers", async (req, res) => {
+  // Redirect to unified endpoint
+  req.body.type = "toppers";
+  const url = `${req.protocol}://${req.get('host')}/api/admin/upload-questions`;
+  try {
+    const { type, questions } = req.body;
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: "questions array is required" });
+    }
+
+    const results = { created: 0, updated: 0, skipped: 0, errors: [] as string[] };
+    const { resources: existing } = await toppersContainer.items.query("SELECT * FROM c").fetchAll();
+    let maxId = existing.reduce((max, q) => Math.max(max, parseInt(q.id) || 0), 0);
+    const normalizeText = (t: string) => t.trim().replace(/\s+/g, ' ').toLowerCase();
+
+    for (const q of questions) {
+      try {
+        if (!q.year || !q.exam || !q.question || !q.answers || q.answers.length === 0) {
+          results.errors.push(`Skipped: missing required fields`);
+          continue;
+        }
+        const match = existing.find(e => e.year === q.year && e.exam === q.exam && normalizeText(e.question) === normalizeText(q.question));
+        if (match) {
+          const existingNames = new Set(match.answers?.map((a: any) => a.topperName) || []);
+          const newAnswers = q.answers.filter((a: any) => !existingNames.has(a.topperName));
+          if (newAnswers.length > 0) {
+            match.answers = [...(match.answers || []), ...newAnswers];
+            const { _rid, _self, _etag, _attachments, _ts, ...cleanDoc } = match;
+            await toppersContainer.items.upsert(cleanDoc);
+            results.updated++;
+          } else { results.skipped++; }
+        } else {
+          maxId++;
+          const newDoc = { id: String(maxId), questionNumber: q.questionNumber || maxId - 30000, year: q.year, exam: q.exam, subject: q.subject || "", topic: q.topic || "", question: q.question, marks: q.marks || null, words: q.words || null, answers: q.answers };
+          await toppersContainer.items.upsert(newDoc);
+          existing.push(newDoc);
+          results.created++;
+        }
+      } catch (itemError: any) { results.errors.push(`Error: ${itemError.message}`); }
+    }
+    toppersCache = null; toppersCacheTimestamp = 0;
+    res.json({ message: "Upload complete", ...results, totalInDb: existing.length });
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;

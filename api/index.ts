@@ -126,6 +126,106 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   }
 });
 
+// GET /api/admin/upload-questions/schema - Returns unified API documentation for AI consumers
+serverApp.get("/api/admin/upload-questions/schema", (req, res) => {
+  res.json({
+    endpoint: "POST /api/admin/upload-questions",
+    description: "Unified API to upload UPSC questions (Prelims MCQs, Mains descriptive, or Topper's Copy answers). Handles deduplication: if a question with the same year + exam + question text exists, it updates (adds topper answers for toppers type, skips for prelims/mains). Otherwise creates a new document.",
+    request: {
+      method: "POST",
+      contentType: "application/json",
+      body: {
+        type: { type: "string", required: true, enum: ["prelims", "mains", "toppers"], description: "Type of questions being uploaded." },
+        questions: {
+          type: "array", required: true, description: "Array of question objects. Schema depends on 'type'.",
+          schemas: {
+            prelims: { fields: { year: "string (required)", exam: "string (required)", subject: "string (required)", question: "string (required)", options: "string[] (required, A./B./C./D. prefixed)", answer: "string (required, must match an option)", explanation: "string (optional)" } },
+            mains: { fields: { year: "string (required)", exam: "string (required)", subject: "string (required)", topic: "string (optional)", paper: "string (optional, GS1-GS4/Essay)", question: "string (required)", keywords: "string[] (optional)" } },
+            toppers: { fields: { year: "string (required)", exam: "string (required)", subject: "string (optional)", topic: "string (optional)", questionNumber: "number (optional)", question: "string (required)", marks: "number (optional)", words: "number (optional)", answers: "array (required) [{topperName, rank, toppers_copy_section, topperAnswerText}]" } }
+          }
+        }
+      }
+    },
+    behavior: {
+      deduplication: "Matches by normalized question text + same year + same exam",
+      prelims: "Duplicate → skip. New → auto-ID + create.",
+      mains: "Duplicate → skip. New → auto-ID + create.",
+      toppers: "Duplicate → append new topper answers. New → auto-ID + create.",
+      cache: "Clears relevant cache after upload"
+    }
+  });
+});
+
+// Unified API to upload questions (prelims, mains, toppers)
+serverApp.post("/api/admin/upload-questions", async (req, res) => {
+  try {
+    const { type, questions } = req.body;
+    if (!type || !["prelims", "mains", "toppers"].includes(type)) {
+      return res.status(400).json({ error: "type is required and must be 'prelims', 'mains', or 'toppers'" });
+    }
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: "questions array is required and must not be empty" });
+    }
+
+    const container = type === "prelims" ? questionsContainer : type === "mains" ? mainsQuestionsContainer : toppersContainer;
+    const results = { created: 0, updated: 0, skipped: 0, errors: [] as string[] };
+
+    const { resources: existing } = await container.items.query("SELECT * FROM c").fetchAll();
+    let maxId = existing.reduce((max, q) => Math.max(max, parseInt(q.id) || 0), 0);
+    const normalizeText = (t: string) => t.trim().replace(/\s+/g, ' ').toLowerCase();
+
+    for (const q of questions) {
+      try {
+        if (!q.year || !q.exam || !q.question) {
+          results.errors.push(`Skipped: missing required fields (year/exam/question)`);
+          continue;
+        }
+
+        const match = existing.find(e =>
+          e.year === q.year && e.exam === q.exam && normalizeText(e.question) === normalizeText(q.question)
+        );
+
+        if (match) {
+          if (type === "toppers" && q.answers?.length > 0) {
+            const existingNames = new Set(match.answers?.map((a: any) => a.topperName) || []);
+            const newAnswers = q.answers.filter((a: any) => !existingNames.has(a.topperName));
+            if (newAnswers.length > 0) {
+              match.answers = [...(match.answers || []), ...newAnswers];
+              const { _rid, _self, _etag, _attachments, _ts, ...cleanDoc } = match;
+              await container.items.upsert(cleanDoc);
+              results.updated++;
+            } else { results.skipped++; }
+          } else { results.skipped++; }
+        } else {
+          maxId++;
+          let newDoc: any;
+          if (type === "prelims") {
+            if (!q.options || !q.answer) { results.errors.push(`Skipped: prelims missing options/answer`); continue; }
+            newDoc = { id: String(maxId), year: q.year, exam: q.exam, subject: q.subject || "", question: q.question, options: q.options, answer: q.answer, explanation: q.explanation || "" };
+          } else if (type === "mains") {
+            newDoc = { id: String(maxId), year: q.year, exam: q.exam, subject: q.subject || "", topic: q.topic || "", paper: q.paper || "", question: q.question, keywords: q.keywords || [] };
+          } else {
+            if (!q.answers || q.answers.length === 0) { results.errors.push(`Skipped: toppers missing answers`); continue; }
+            newDoc = { id: String(maxId), questionNumber: q.questionNumber || maxId - 30000, year: q.year, exam: q.exam, subject: q.subject || "", topic: q.topic || "", question: q.question, marks: q.marks || null, words: q.words || null, answers: q.answers };
+          }
+          await container.items.upsert(newDoc);
+          existing.push(newDoc);
+          results.created++;
+        }
+      } catch (itemError: any) { results.errors.push(`Error: ${itemError.message}`); }
+    }
+
+    if (type === "prelims") { questionsCache = null; cacheTimestamp = 0; }
+    else if (type === "mains") { mainsCache = null; mainsCacheTimestamp = 0; }
+    else { toppersCache = null; toppersCacheTimestamp = 0; }
+
+    res.json({ message: "Upload complete", type, ...results, totalInDb: existing.length });
+  } catch (error: any) {
+    console.error("Error uploading questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to check user status
 serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;
