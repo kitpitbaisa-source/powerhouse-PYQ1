@@ -770,11 +770,15 @@ export default function App() {
         (q.year || "").toLowerCase().includes(toppersSearchQuery.toLowerCase());
       return matchesYear && matchesSubject && matchesTopper && matchesPaper && matchesSearch;
     }).sort((a, b) => {
-      // Sort by Year (desc) → Question Number (asc)
+      // Unlocked questions first (free = 2023 + GS1 or no paper)
+      const aFree = a.year === "2023" && (a.paper === "GS1" || !a.paper) ? 0 : 1;
+      const bFree = b.year === "2023" && (b.paper === "GS1" || !b.paper) ? 0 : 1;
+      if (!isSubscribed && aFree !== bFree) return aFree - bFree;
+      // Then by Year (desc) → Question Number (asc)
       if (a.year !== b.year) return b.year.localeCompare(a.year);
       return (a.questionNumber || 0) - (b.questionNumber || 0);
     });
-  }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter, toppersPaperFilter, toppersSearchQuery]);
+  }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter, toppersPaperFilter, toppersSearchQuery, isSubscribed]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -1299,6 +1303,7 @@ export default function App() {
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300 overflow-x-hidden">
         <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Top row: logo, tabs, theme, login */}
           <div className="flex justify-between items-center py-2.5">
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
               <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8 flex-shrink-0">
@@ -1369,101 +1374,6 @@ export default function App() {
                 )}
               </button>
 
-
-              
-              {activeTab === 'prelims' && (
-                <>
-                  <div className={cn(
-                    "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
-                    score.total > 0 && (score.correct / score.total) < 0.5
-                      ? "bg-red-900/30 text-red-400 border-red-800/50"
-                      : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
-                  )}>
-                    <Trophy className={cn(
-                      "w-4 h-4 mr-2",
-                      score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
-                    )} /> 
-                    <span>{score.correct}</span>
-                    <span className={cn(
-                      "font-medium mx-1",
-                      score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
-                    )}>/</span>
-                    <span>{score.total}</span>
-                    {score.total > 0 && (
-                      <span className={cn(
-                        "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
-                        (score.correct / score.total) < 0.5 
-                          ? "bg-red-500/20 text-red-400" 
-                          : "bg-emerald-500/20 text-emerald-400"
-                      )}>
-                        {Math.round((score.correct / score.total) * 100)}%
-                      </span>
-                    )}
-                    {score.total > 0 && (
-                      <button 
-                        onClick={resetQuiz}
-                        title="Reset Score"
-                        className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                    <select
-                      value={randomSelectLimit}
-                      onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
-                      className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                    >
-                      {[10, 20, 50, 100].map(n => (
-                        <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => startRandomPractice(randomSelectLimit)}
-                      title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
-                      className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
-                    >
-                      <Dice5 className="w-3 h-3" />
-                      <span className="hidden xl:inline">Random PYQ</span>
-                      <span className="xl:hidden">Random</span>
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'mains' && (
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <select
-                    value={mainsRandomSelectLimit}
-                    onChange={(e) => setMainsRandomSelectLimit(Number(e.target.value))}
-                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                  >
-                    {[5, 10, 20, 50].map(n => (
-                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
-                  >
-                    <Dice5 className="w-3 h-3" />
-                    <span className="hidden xl:inline">Random PYQ</span>
-                    <span className="xl:hidden">Random</span>
-                  </button>
-                  {mainsRandomMode && (
-                    <button
-                      onClick={() => setMainsRandomMode(false)}
-                      title="Exit Random Mode"
-                      className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              )}
-
               <div className="flex items-center gap-2">
                 <a 
                   href="https://t.me/upsc_pyq_powerhouse" 
@@ -1495,6 +1405,102 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Second row: Score + Random (prelims/mains only) */}
+          {activeTab === 'prelims' && (
+            <div className="flex items-center gap-2 pb-2 border-t border-slate-100 dark:border-slate-800 pt-2 -mt-0.5">
+              <div className={cn(
+                "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
+                score.total > 0 && (score.correct / score.total) < 0.5
+                  ? "bg-red-900/30 text-red-400 border-red-800/50"
+                  : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
+              )}>
+                <Trophy className={cn(
+                  "w-4 h-4 mr-2",
+                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
+                )} /> 
+                <span>{score.correct}</span>
+                <span className={cn(
+                  "font-medium mx-1",
+                  score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
+                )}>/</span>
+                <span>{score.total}</span>
+                {score.total > 0 && (
+                  <span className={cn(
+                    "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
+                    (score.correct / score.total) < 0.5 
+                      ? "bg-red-500/20 text-red-400" 
+                      : "bg-emerald-500/20 text-emerald-400"
+                  )}>
+                    {Math.round((score.correct / score.total) * 100)}%
+                  </span>
+                )}
+                {score.total > 0 && (
+                  <button 
+                    onClick={resetQuiz}
+                    title="Reset Score"
+                    className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                <select
+                  value={randomSelectLimit}
+                  onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
+                  className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                >
+                  {[10, 20, 50, 100].map(n => (
+                    <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => startRandomPractice(randomSelectLimit)}
+                  title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
+                  className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                >
+                  <Dice5 className="w-3 h-3" />
+                  <span className="hidden sm:inline">Random PYQ</span>
+                  <span className="sm:hidden">Random</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'mains' && (
+            <div className="flex items-center gap-2 pb-2 border-t border-slate-100 dark:border-slate-800 pt-2 -mt-0.5">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                <select
+                  value={mainsRandomSelectLimit}
+                  onChange={(e) => setMainsRandomSelectLimit(Number(e.target.value))}
+                  className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                >
+                  {[5, 10, 20, 50].map(n => (
+                    <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
+                  className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                >
+                  <Dice5 className="w-3 h-3" />
+                  <span className="hidden sm:inline">Random PYQ</span>
+                  <span className="sm:hidden">Random</span>
+                </button>
+                {mainsRandomMode && (
+                  <button
+                    onClick={() => setMainsRandomMode(false)}
+                    title="Exit Random Mode"
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -2251,6 +2257,7 @@ export default function App() {
                           <div className="flex flex-wrap gap-1.5">
                             <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-semibold">{q.year}</span>
                             <span className="text-[10px] px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-semibold">{q.exam}</span>
+                            {q.paper && <span className="text-[10px] px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded font-semibold">{q.paper}</span>}
                             <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-semibold">{q.subject}</span>
                             {q.topic && <span className="text-[10px] px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-semibold">{q.topic}</span>}
                           </div>
@@ -2261,7 +2268,7 @@ export default function App() {
                         </div>
                         <p className="text-sm text-slate-900 dark:text-slate-100 leading-relaxed">
                           {q.questionNumber && <span className="font-bold text-indigo-600 dark:text-indigo-400">Q{q.questionNumber}. </span>}
-                          {q.question}
+                          <HighlightText text={q.question} query={toppersSearchQuery} />
                         </p>
                       </div>
 
