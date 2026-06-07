@@ -1299,8 +1299,8 @@ export default function App() {
   };
 
   return (
-    <div className={cn("min-h-screen overflow-x-hidden", isDarkMode ? "dark" : "")}>
-      <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300 overflow-x-hidden">
+    <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
+      <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
         <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
