@@ -2205,10 +2205,7 @@ export default function App() {
                       <select value={toppersPaperFilter} onChange={(e) => setToppersPaperFilter(e.target.value)}
                         className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
                         <option value="All">All Papers</option>
-                        {toppersPapersList.length > 0 
-                          ? toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)
-                          : ['GS1', 'GS2', 'GS3', 'GS4'].map(p => <option key={p} value={p}>{p}</option>)
-                        }
+                        {toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
 
@@ -2244,34 +2241,7 @@ export default function App() {
                     const currentAnswer = currentIdx >= 0 ? visibleAnswers?.[currentIdx] : null;
                     const isToppersLocked = !isSubscribed && !(q.year === "2023" && (q.paper === "GS1" || q.paper === "GS 1" || !q.paper));
                     return (
-                    <div key={q.id} className={cn("bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative", isToppersLocked && "select-none")}>
-                      {isToppersLocked && (
-                        <div className="absolute inset-0 bg-slate-50/10 dark:bg-slate-900/10 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center rounded-xl">
-                          <div className="bg-indigo-600 p-2 rounded-full mb-3 shadow-lg">
-                            <Lock className="w-4 h-4 text-white" />
-                          </div>
-                          <h4 className="text-[13px] font-bold text-slate-900 dark:text-white mb-2">Premium Content</h4>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4">
-                            Topper answers from {q.year} {q.paper || ''} are available for subscribed members only.
-                          </p>
-                          <div className="w-full space-y-2">
-                            <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
-                              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
-                                <QrCode className="w-3 h-3" /> Subscribe
-                              </p>
-                              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                                Contact <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@INDIAN4</a> on Telegram to unlock all topper answers.
-                              </p>
-                            </div>
-                            <button 
-                              onClick={() => userEmail && checkUserStatus(userEmail)}
-                              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
-                            >
-                              <RotateCcw className="w-3 h-3" /> Refresh Status
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                    <div key={q.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
                       {/* Question header */}
                       <div className="p-4 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center justify-between mb-2">
@@ -2293,8 +2263,8 @@ export default function App() {
                         </p>
                       </div>
 
-                      {/* Topper answers - horizontal toggle */}
-                      {visibleAnswers && visibleAnswers.length > 0 && (
+                      {/* Answers section - tabs always visible, answer locked on expand for non-subscribed */}
+                      {visibleAnswers && visibleAnswers.length > 0 ? (
                         <div className="flex-1 p-4">
                           {/* Topper tabs - scroll to expand/collapse */}
                           <TopperScrollTabs
@@ -2315,16 +2285,44 @@ export default function App() {
 
                           {/* Active topper's answer */}
                           {currentAnswer && (
-                            <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] border border-emerald-100 dark:border-emerald-800/30">
-                              {currentAnswer.topperAnswerText.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-                                part.startsWith('**') && part.endsWith('**')
-                                  ? <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>
-                                  : <span key={i}>{part}</span>
-                              )}
-                            </div>
+                            isToppersLocked ? (
+                              <div className="relative rounded-lg p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-center select-none">
+                                <div className="bg-indigo-600 p-2 rounded-full mb-3 shadow-lg">
+                                  <Lock className="w-4 h-4 text-white" />
+                                </div>
+                                <h4 className="text-[13px] font-bold text-slate-900 dark:text-white mb-2">Premium Content</h4>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4">
+                                  Topper answers from {q.year} {q.paper || ''} are available for subscribed members only.
+                                </p>
+                                <div className="w-full max-w-xs space-y-2">
+                                  <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
+                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <QrCode className="w-3 h-3" /> Subscribe
+                                    </p>
+                                    <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+                                      Contact <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@INDIAN4</a> on Telegram to unlock all topper answers.
+                                    </p>
+                                  </div>
+                                  <button 
+                                    onClick={() => userEmail && checkUserStatus(userEmail)}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
+                                  >
+                                    <RotateCcw className="w-3 h-3" /> Refresh Status
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] border border-emerald-100 dark:border-emerald-800/30">
+                                {currentAnswer.topperAnswerText.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+                                  part.startsWith('**') && part.endsWith('**')
+                                    ? <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>
+                                    : <span key={i}>{part}</span>
+                                )}
+                              </div>
+                            )
                           )}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                     );
                   })}
