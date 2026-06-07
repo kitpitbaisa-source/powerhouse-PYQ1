@@ -40,9 +40,11 @@ export interface ToppersCopyQuestion {
   subject: string;
   topic?: string;
   exam: string;
+  paper?: string;
   question: string;
   marks?: number;
   words?: number;
+  questionNumber?: number;
   answers: TopperAnswer[];
 }
 

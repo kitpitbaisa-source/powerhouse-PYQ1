@@ -507,9 +507,12 @@ export default function App() {
   const [toppersYearFilter, setToppersYearFilter] = useState("All");
   const [toppersTopperFilter, setToppersTopperFilter] = useState("All");
   const [toppersSubjectFilter, setToppersSubjectFilter] = useState("All");
+  const [toppersPaperFilter, setToppersPaperFilter] = useState("All");
+  const [toppersSearchQuery, setToppersSearchQuery] = useState("");
   const [activeTopperIndex, setActiveTopperIndex] = useState<Record<string, number>>({});
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [visibleCount, setVisibleCount] = useState(30);
+  const [mainsVisibleCount, setMainsVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
   const [randomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
   const [randomSelectLimit, setRandomSelectLimit] = useState(10);
@@ -717,12 +720,27 @@ export default function App() {
 
         return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
       })
-      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions]);
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, mainsVisibleCount);
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions, mainsVisibleCount]);
+
+  const isMoreMainsToLoad = useMemo(() => {
+    if (mainsRandomMode) return false;
+    const totalFiltered = mainsQuestions.filter(q => {
+      const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
+      const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
+      const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
+      const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
+      const matchesSearch = mainsSearchQuery === "" ||
+        (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
+      return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+    }).length;
+    return totalFiltered > mainsVisibleCount;
+  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsVisibleCount, mainsRandomMode]);
 
   // Toppers copy filter lists
   const toppersYearsList = useMemo(() => {
-    return [...new Set(toppersQuestions.map(q => q.year))].sort((a, b) => b.localeCompare(a));
+    return [...new Set(toppersQuestions.map(q => q.year))].sort((a: string, b: string) => b.localeCompare(a));
   }, [toppersQuestions]);
 
   const toppersToppersList = useMemo(() => {
@@ -735,19 +753,28 @@ export default function App() {
     return [...new Set(toppersQuestions.map(q => q.subject))].sort();
   }, [toppersQuestions]);
 
+  const toppersPapersList = useMemo(() => {
+    return [...new Set(toppersQuestions.map(q => q.paper).filter(Boolean))].sort();
+  }, [toppersQuestions]);
+
   const filteredToppersQuestions = useMemo(() => {
     return toppersQuestions.filter(q => {
       const matchesYear = toppersYearFilter === "All" || q.year === toppersYearFilter;
       const matchesSubject = toppersSubjectFilter === "All" || q.subject === toppersSubjectFilter;
       const matchesTopper = toppersTopperFilter === "All" || 
         q.answers?.some(a => a.topperName === toppersTopperFilter);
-      return matchesYear && matchesSubject && matchesTopper;
+      const matchesPaper = toppersPaperFilter === "All" || q.paper === toppersPaperFilter;
+      const matchesSearch = toppersSearchQuery === "" ||
+        (q.question || "").toLowerCase().includes(toppersSearchQuery.toLowerCase()) ||
+        (q.subject || "").toLowerCase().includes(toppersSearchQuery.toLowerCase()) ||
+        (q.year || "").toLowerCase().includes(toppersSearchQuery.toLowerCase());
+      return matchesYear && matchesSubject && matchesTopper && matchesPaper && matchesSearch;
     }).sort((a, b) => {
       // Sort by Year (desc) → Question Number (asc)
       if (a.year !== b.year) return b.year.localeCompare(a.year);
       return (a.questionNumber || 0) - (b.questionNumber || 0);
     });
-  }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter]);
+  }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter, toppersPaperFilter, toppersSearchQuery]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -1153,18 +1180,28 @@ export default function App() {
     setVisibleCount(prev => prev + 50);
   }, []);
 
+  const handleMainsLoadMore = useCallback(() => {
+    setMainsVisibleCount(prev => prev + 50);
+  }, []);
+
   // Infinite scroll: load more on scroll near bottom
   useEffect(() => {
     const handleScroll = () => {
       if (
         window.innerHeight + window.scrollY >= document.body.offsetHeight - 800
       ) {
-        handleLoadMore();
+        if (activeTab === 'prelims') handleLoadMore();
+        else if (activeTab === 'mains') handleMainsLoadMore();
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleLoadMore]);
+  }, [handleLoadMore, handleMainsLoadMore, activeTab]);
+
+  // Reset mains pagination on filter change
+  useEffect(() => {
+    setMainsVisibleCount(30);
+  }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean) => {
     if (userAttempts[qid]) return;
@@ -1258,13 +1295,13 @@ export default function App() {
   };
 
   return (
-    <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
-      <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
+    <div className={cn("min-h-screen overflow-x-hidden", isDarkMode ? "dark" : "")}>
+      <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300 overflow-x-hidden">
         <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-2.5">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8">
+            <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
+              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8 flex-shrink-0">
                 <Landmark className="w-4 h-4" />
               </div>
               <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
@@ -1304,7 +1341,7 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 {userEmail && (
                 <div className="hidden lg:flex flex-col items-end mr-2 text-right">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">Logged in as</span>
@@ -2084,6 +2121,14 @@ export default function App() {
                   ))}
                 </div>
               )}
+              {isMoreMainsToLoad && (
+                <div className="text-center py-6">
+                  <div className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    Loading more questions...
+                  </div>
+                </div>
+              )}
             </section>
           </>
         ) : activeTab === 'essay' ? (
@@ -2124,9 +2169,20 @@ export default function App() {
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Filters</h3>
                       <button
-                        onClick={() => { setToppersYearFilter("All"); setToppersTopperFilter("All"); setToppersSubjectFilter("All"); }}
+                        onClick={() => { setToppersYearFilter("All"); setToppersTopperFilter("All"); setToppersSubjectFilter("All"); setToppersPaperFilter("All"); setToppersSearchQuery(""); }}
                         className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold"
                       >Reset</button>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search</label>
+                      <input
+                        type="text"
+                        value={toppersSearchQuery}
+                        onChange={(e) => setToppersSearchQuery(e.target.value)}
+                        placeholder="Search questions..."
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      />
                     </div>
 
                     <div className="mb-4">
@@ -2137,6 +2193,17 @@ export default function App() {
                         {toppersYearsList.map(y => <option key={y} value={y}>{y}</option>)}
                       </select>
                     </div>
+
+                    {toppersPapersList.length > 0 && (
+                      <div className="mb-4">
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
+                        <select value={toppersPaperFilter} onChange={(e) => setToppersPaperFilter(e.target.value)}
+                          className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
+                          <option value="All">All Papers</option>
+                          {toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                    )}
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
@@ -2168,8 +2235,16 @@ export default function App() {
                     const visibleAnswers = toppersTopperFilter === "All" ? q.answers : q.answers?.filter(a => a.topperName === toppersTopperFilter);
                     const currentIdx = activeTopperIndex[q.id] ?? -1;
                     const currentAnswer = currentIdx >= 0 ? visibleAnswers?.[currentIdx] : null;
+                    const isToppersLocked = !isSubscribed && !(q.year === "2023" && (q.paper === "GS1" || !q.paper));
                     return (
-                    <div key={q.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
+                    <div key={q.id} className={cn("bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative", isToppersLocked && "select-none")}>
+                      {isToppersLocked && (
+                        <div className="absolute inset-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-[2px] flex flex-col items-center justify-center rounded-xl">
+                          <Lock className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2" />
+                          <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Premium Content</p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-1">Subscribe to access all topper answers</p>
+                        </div>
+                      )}
                       {/* Question header */}
                       <div className="p-4 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center justify-between mb-2">
@@ -2204,7 +2279,7 @@ export default function App() {
                                 delete next[q.id];
                                 return next;
                               }
-                              const openCount = Object.values(prev).filter(v => v >= 0).length - (prev[q.id] >= 0 ? 1 : 0);
+                              const openCount = Object.values(prev).filter(v => (v as number) >= 0).length - ((prev[q.id] as number) >= 0 ? 1 : 0);
                               if (openCount >= 2) return { [q.id]: idx };
                               return { ...prev, [q.id]: idx };
                             })}
