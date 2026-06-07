@@ -2200,16 +2200,17 @@ export default function App() {
                       </select>
                     </div>
 
-                    {toppersPapersList.length > 0 && (
-                      <div className="mb-4">
-                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
-                        <select value={toppersPaperFilter} onChange={(e) => setToppersPaperFilter(e.target.value)}
-                          className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
-                          <option value="All">All Papers</option>
-                          {toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                      </div>
-                    )}
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
+                      <select value={toppersPaperFilter} onChange={(e) => setToppersPaperFilter(e.target.value)}
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
+                        <option value="All">All Papers</option>
+                        {toppersPapersList.length > 0 
+                          ? toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)
+                          : ['GS1', 'GS2', 'GS3', 'GS4'].map(p => <option key={p} value={p}>{p}</option>)
+                        }
+                      </select>
+                    </div>
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
@@ -2241,7 +2242,7 @@ export default function App() {
                     const visibleAnswers = toppersTopperFilter === "All" ? q.answers : q.answers?.filter(a => a.topperName === toppersTopperFilter);
                     const currentIdx = activeTopperIndex[q.id] ?? -1;
                     const currentAnswer = currentIdx >= 0 ? visibleAnswers?.[currentIdx] : null;
-                    const isToppersLocked = !isSubscribed && !(q.year === "2023" && (q.paper === "GS1" || !q.paper));
+                    const isToppersLocked = !isSubscribed && !(q.year === "2023" && (q.paper === "GS1" || q.paper === "GS 1" || !q.paper));
                     return (
                     <div key={q.id} className={cn("bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative", isToppersLocked && "select-none")}>
                       {isToppersLocked && (

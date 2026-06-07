@@ -179,6 +179,7 @@ serverApp.get("/api/admin/upload-questions/schema", (req, res) => {
                 exam: { type: "string", required: true, example: "CSE Mains", description: "Exam name" },
                 subject: { type: "string", required: false, example: "History", description: "Subject category" },
                 topic: { type: "string", required: false, example: "Modern Indian History", description: "Specific topic" },
+                paper: { type: "string", required: false, example: "GS1", description: "Paper name (GS1, GS2, GS3, GS4)" },
                 questionNumber: { type: "number", required: false, example: 1, description: "Question number in the paper" },
                 question: { type: "string", required: true, description: "Full question text" },
                 marks: { type: "number", required: false, example: 10, description: "Maximum marks" },
@@ -234,7 +235,7 @@ serverApp.get("/api/admin/upload-questions/schema", (req, res) => {
       toppers: {
         type: "toppers",
         questions: [{
-          year: "2023", exam: "CSE Mains", subject: "History", topic: "Modern Indian History",
+          year: "2023", exam: "CSE Mains", subject: "History", topic: "Modern Indian History", paper: "GS1",
           questionNumber: 1, question: "Discuss the role of the Non-Cooperation Movement.", marks: 15, words: 200,
           answers: [{
             topperName: "Aditya Srivastava", rank: "1",
