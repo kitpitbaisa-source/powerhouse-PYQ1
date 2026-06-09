@@ -219,7 +219,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       </h3>
       
       <div className="space-y-1.5 mb-5">
-        {question.options.map(opt => {
+        {(question.options || []).map(opt => {
           const isCorrectAnswer = opt === question.answer;
           const isSelected = opt === attemptedOption;
           const hasAttempted = !!attemptedOption;
@@ -1148,7 +1148,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (Array.isArray(q.options) && q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase())));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
@@ -1173,7 +1173,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (Array.isArray(q.options) && q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase())));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -1287,7 +1287,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (Array.isArray(q.options) && q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase())));
 
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     });
