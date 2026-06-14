@@ -20,26 +20,55 @@ serverApp.use(express.json());
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
-// In-memory cache for questions (refreshes every 5 minutes)
+// In-memory cache for questions (12h TTL, invalidated via cache-version doc in Cosmos)
 let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
 let toppersCache: any[] | null = null;
 let toppersCacheTimestamp = 0;
-const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours (use /api/admin/refresh-questions to force clear)
+const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+// Cache version tracking — stored in Cosmos so all serverless instances can see invalidation
+let localCacheVersion = 0;
+
+async function getCacheVersion(): Promise<number> {
+  try {
+    const { resource } = await questionsContainer.item("__cache_version__", "__cache_version__").read();
+    return resource?.version || 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function bumpCacheVersion(): Promise<void> {
+  const newVersion = Date.now();
+  await questionsContainer.items.upsert({ id: "__cache_version__", version: newVersion });
+  localCacheVersion = newVersion;
+}
+
+async function isCacheStale(): Promise<boolean> {
+  const remoteVersion = await getCacheVersion();
+  if (remoteVersion > localCacheVersion) {
+    localCacheVersion = remoteVersion;
+    return true;
+  }
+  return false;
+}
 
 async function getQuestions() {
   const now = Date.now();
-  if (questionsCache && (now - cacheTimestamp) < CACHE_TTL) {
+  const withinTTL = questionsCache && (now - cacheTimestamp) < CACHE_TTL;
+  if (withinTTL && !(await isCacheStale())) {
     return questionsCache;
   }
   const { resources } = await questionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  questionsCache = resources;
+  // Filter out the cache version doc
+  questionsCache = resources.filter((r: any) => r.id !== "__cache_version__");
   cacheTimestamp = now;
-  return resources;
+  return questionsCache;
 }
 
 async function getMainsQuestions() {
@@ -116,6 +145,8 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     mainsCacheTimestamp = 0;
     toppersCache = null;
     toppersCacheTimestamp = 0;
+    // Bump version so ALL serverless instances know cache is stale
+    await bumpCacheVersion();
     const [questions, mainsQuestions, toppersQuestions] = await Promise.all([getQuestions(), getMainsQuestions(), getToppersQuestions()]);
     res.json({
       message: "Cache refreshed",
@@ -167,12 +198,13 @@ serverApp.patch("/api/admin/update-question", async (req, res) => {
 
     const { resource: updated } = await questionsContainer.item(itemId, itemId).replace(existing);
 
-    // Update just this question in cache (avoid full re-fetch of 9500+ items)
+    // Update local cache + bump version so all instances re-fetch
     if (questionsCache) {
       questionsCache = questionsCache.map((q: any) =>
         String(q.id) === itemId ? { ...q, answer: updated.answer, explanation: updated.explanation } : q
       );
     }
+    await bumpCacheVersion();
 
     res.json({
       message: "Question updated",
