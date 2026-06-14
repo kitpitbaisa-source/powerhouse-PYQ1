@@ -102,7 +102,7 @@ serverApp.get("/api/questions", async (req, res) => {
   try {
     const questions = await getQuestions();
     questions.sort((a: any, b: any) => a.id - b.id);
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "no-store");
     res.json(questions);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
@@ -115,7 +115,7 @@ serverApp.get("/api/mains-questions", async (req, res) => {
   try {
     const mainsQuestions = await getMainsQuestions();
     mainsQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "no-store");
     res.json(mainsQuestions);
   } catch (error: any) {
     console.error("Error fetching mains questions:", error);
@@ -128,7 +128,7 @@ serverApp.get("/api/toppers-copy", async (req, res) => {
   try {
     const toppersQuestions = await getToppersQuestions();
     toppersQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "no-store");
     res.json(toppersQuestions);
   } catch (error: any) {
     console.error("Error fetching toppers copy questions:", error);
