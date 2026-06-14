@@ -114,11 +114,14 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     cacheTimestamp = 0;
     mainsCache = null;
     mainsCacheTimestamp = 0;
-    const [questions, mainsQuestions] = await Promise.all([getQuestions(), getMainsQuestions()]);
+    toppersCache = null;
+    toppersCacheTimestamp = 0;
+    const [questions, mainsQuestions, toppersQuestions] = await Promise.all([getQuestions(), getMainsQuestions(), getToppersQuestions()]);
     res.json({
       message: "Cache refreshed",
       count: questions.length,
       mainsCount: mainsQuestions.length,
+      toppersCount: toppersQuestions.length,
     });
   } catch (error: any) {
     console.error("Error refreshing cache:", error);
