@@ -28,7 +28,8 @@ import {
   UserPlus,
   X,
   Database,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { mcqData } from './questions.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -63,6 +64,8 @@ interface QuestionCardProps {
   onExamClick?: (exam: string) => void;
   onYearClick?: (year: string) => void;
   searchQuery?: string;
+  isAdmin?: boolean;
+  onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
 }
 
 const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query }) => {
@@ -117,8 +120,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onTopicClick,
   onExamClick,
   onYearClick,
-  searchQuery = ""
+  searchQuery = "",
+  isAdmin,
+  onUpdateQuestion
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editAnswer, setEditAnswer] = useState("");
+  const [editExplanation, setEditExplanation] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
 
   if (isLocked) {
@@ -282,6 +291,71 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1 not-italic">Explanation</span>
                 <HighlightText text={question.explanation} query={searchQuery} />
               </p>
+            </div>
+          )}
+
+          {/* Admin edit button */}
+          {isAdmin && onUpdateQuestion && !isEditing && (
+            <button
+              onClick={() => {
+                setEditAnswer(question.answer || "");
+                setEditExplanation(question.explanation || "");
+                setIsEditing(true);
+              }}
+              className="mt-2 text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-700 flex items-center gap-1"
+            >
+              <Pencil className="w-3 h-3" /> Edit Answer
+            </button>
+          )}
+
+          {/* Admin edit form */}
+          {isAdmin && isEditing && (
+            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 w-16">Answer</label>
+                <select
+                  value={editAnswer}
+                  onChange={(e) => setEditAnswer(e.target.value)}
+                  className="flex-1 text-xs border border-amber-300 dark:border-amber-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                >
+                  <option value="">-- Select --</option>
+                  {(question.options || []).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 block mb-1">Explanation</label>
+                <textarea
+                  value={editExplanation}
+                  onChange={(e) => setEditExplanation(e.target.value)}
+                  rows={3}
+                  className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
+                  placeholder="Enter explanation..."
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={isSaving}
+                  onClick={async () => {
+                    setIsSaving(true);
+                    try {
+                      await onUpdateQuestion(question.id, question.year, editAnswer, editExplanation);
+                      setIsEditing(false);
+                    } catch {}
+                    setIsSaving(false);
+                  }}
+                  className="text-[10px] font-bold px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded disabled:opacity-50"
+                >
+                  {isSaving ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="text-[10px] font-bold px-3 py-1 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded hover:bg-slate-300 dark:hover:bg-slate-500"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1225,6 +1299,24 @@ export default function App() {
     setRevealedMainsAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
   };
 
+  const handleUpdateQuestion = async (id: number, year: string, answer: string, explanation: string) => {
+    const res = await fetch("/api/admin/update-question", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, answer, explanation }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert("Update failed: " + (err.error || "Unknown error"));
+      throw new Error(err.error);
+    }
+    const data = await res.json();
+    // Update local state so the card reflects changes immediately
+    setQuestions(prev => prev.map(q =>
+      q.id === id ? { ...q, answer: data.answer, explanation: data.explanation } : q
+    ));
+  };
+
   const resetFilters = () => {
     setYearFilter("All");
     setExamFilter("All");
@@ -1902,6 +1994,8 @@ export default function App() {
                         userEmail={userEmail}
                         onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
                         searchQuery={searchQuery}
+                        isAdmin={isAdmin}
+                        onUpdateQuestion={handleUpdateQuestion}
                         onSubjectClick={(subject) => {
                           setSubjectFilter(subject);
                           setTopicFilter("All");

@@ -114,14 +114,74 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     cacheTimestamp = 0;
     mainsCache = null;
     mainsCacheTimestamp = 0;
-    const [questions, mainsQuestions] = await Promise.all([getQuestions(), getMainsQuestions()]);
+    toppersCache = null;
+    toppersCacheTimestamp = 0;
+    const [questions, mainsQuestions, toppersQuestions] = await Promise.all([getQuestions(), getMainsQuestions(), getToppersQuestions()]);
     res.json({
       message: "Cache refreshed",
       count: questions.length,
       mainsCount: mainsQuestions.length,
+      toppersCount: toppersQuestions.length,
     });
   } catch (error: any) {
     console.error("Error refreshing cache:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// PATCH /api/admin/update-question - Update answer/explanation for a prelims question
+serverApp.patch("/api/admin/update-question", async (req, res) => {
+  try {
+    const { id, answer, explanation } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "id is required" });
+    }
+    if (!answer && explanation === undefined) {
+      return res.status(400).json({ error: "Provide at least answer or explanation to update" });
+    }
+
+    // Partition key is /id for questions container
+    const itemId = String(id);
+    const { resource: existing } = await questionsContainer.item(itemId, itemId).read();
+    if (!existing) {
+      return res.status(404).json({ error: `Question ${id} not found` });
+    }
+
+    // Build update — only touch fields that were provided
+    if (answer) {
+      // Accept full option text directly, or match a single letter to the option
+      const trimmed = answer.trim();
+      if (trimmed.length === 1) {
+        const letter = trimmed.toUpperCase();
+        const matchedOption = existing.options?.find((opt: string) =>
+          opt.trim().toUpperCase().startsWith(letter + ".")
+        );
+        existing.answer = matchedOption || answer;
+      } else {
+        existing.answer = trimmed;
+      }
+    }
+    if (explanation !== undefined) {
+      existing.explanation = explanation;
+    }
+
+    const { resource: updated } = await questionsContainer.item(itemId, itemId).replace(existing);
+
+    // Update just this question in cache (avoid full re-fetch of 9500+ items)
+    if (questionsCache) {
+      questionsCache = questionsCache.map((q: any) =>
+        String(q.id) === itemId ? { ...q, answer: updated.answer, explanation: updated.explanation } : q
+      );
+    }
+
+    res.json({
+      message: "Question updated",
+      id: updated.id,
+      answer: updated.answer,
+      explanation: updated.explanation,
+    });
+  } catch (error: any) {
+    console.error("Error updating question:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
