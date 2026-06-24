@@ -175,7 +175,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </span>
           </div>
           <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-1.5 leading-relaxed">
-            {question.question.substring(0, 50)}...
+            {(question.question || '').substring(0, 50)}...
           </h3>
           <div className="space-y-1.5 mb-5">
             {[1, 2, 3, 4].map(i => (
@@ -222,12 +222,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </span>
       </div>
       
-      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-3 leading-[18px] whitespace-pre-wrap">
-        <span className="text-blue-600 dark:text-blue-400 mr-1 font-normal">Q{question.id}.</span> 
+      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-3 leading-[20px] whitespace-pre-wrap px-1">
+        <span className="text-blue-600 dark:text-blue-400 mr-1.5 font-normal">Q{question.id}.</span> 
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
       
-      <div className="space-y-1.5 mb-5">
+      <div className="space-y-2 mb-5 px-1">
         {question.options.map(opt => {
           const isCorrectAnswer = opt === question.answer;
           const isSelected = opt === attemptedOption;
@@ -239,14 +239,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               disabled={hasAttempted}
               onClick={() => onOptionClick(opt)}
               className={cn(
-                "w-full text-left py-2.5 px-3 border rounded-lg text-[13px] font-normal transition-all flex justify-between items-center group/btn",
+                "w-full text-left py-2.5 px-4 border rounded-lg text-[13px] font-normal transition-all flex justify-between items-center group/btn leading-[19px]",
                 !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
                 hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400",
                 hasAttempted && isSelected && !isCorrectAnswer && "bg-red-100/50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400",
                 hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
             >
-              <span className="text-left pr-3">
+              <span className="text-left pr-3 leading-[19px]">
                 <HighlightText text={opt} query={searchQuery} />
               </span>
               {hasAttempted && isCorrectAnswer && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />}
@@ -270,7 +270,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </button>
         
         <a 
-          href={`https://www.google.com/search?q=${encodeURIComponent(question.question.replace(/<[^>]*>?/gm, ' '))}`} 
+          href={`https://www.google.com/search?q=${encodeURIComponent((question.question || '').replace(/<[^>]*>?/gm, ' '))}`} 
           target="_blank" 
           rel="noopener noreferrer" 
           title="Search Google for this question" 
@@ -281,14 +281,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       </div>
       
       {isRevealed && (
-        <div className="pt-2">
-          <p className="text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5">
+        <div className="pt-2 px-1">
+          <p className="text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5 leading-[18px]">
             Answer: <span className="text-emerald-600 dark:text-emerald-400 font-normal">{question.answer}</span>
           </p>
           {question.explanation && (
-            <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-2.5 rounded-r-lg shadow-sm">
-              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed italic">
-                <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1 not-italic">Explanation</span>
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-3 rounded-r-lg shadow-sm">
+              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px] italic">
+                <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1.5 not-italic">Explanation</span>
                 <HighlightText text={question.explanation} query={searchQuery} />
               </p>
             </div>
@@ -554,11 +554,15 @@ function TopperScrollTabs({ answers, activeIdx, onSelect }: { answers: any[]; ac
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers'>('prelims');
+  const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers' | 'csat' | 'english'>('prelims');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
+  const [csatQuestions, setCSATQuestions] = useState<Question[]>([]);
+  const [englishQuestions, setEnglishQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [isLoadingMains, setIsLoadingMains] = useState(false);
+  const [isLoadingCSAT, setIsLoadingCSAT] = useState(false);
+  const [isLoadingEnglish, setIsLoadingEnglish] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("All");
   const [examFilter, setExamFilter] = useState("All");
@@ -584,6 +588,51 @@ export default function App() {
   const [toppersPaperFilter, setToppersPaperFilter] = useState("All");
   const [toppersSearchQuery, setToppersSearchQuery] = useState("");
   const [activeTopperIndex, setActiveTopperIndex] = useState<Record<string, number>>({});
+  
+  // CSAT and English filters
+  const [csatYearFilter, setCSATYearFilter] = useState("All");
+  const [csatSubjectFilter, setCSATSubjectFilter] = useState("All");
+  const [csatSearchQuery, setCSATSearchQuery] = useState("");
+  const [csatVisibleCount, setCSATVisibleCount] = useState(30);
+  const [csatRandomMode, setCSATRandomMode] = useState(false);
+  const [csatRandomizedQuestions, setCSATRandomizedQuestions] = useState<Question[]>([]);
+  const [csatRandomSelectLimit, setCSATRandomSelectLimit] = useState(10);
+  
+  const [englishYearFilter, setEnglishYearFilter] = useState("All");
+  const [englishSubjectFilter, setEnglishSubjectFilter] = useState("All");
+  const [englishExamFilter, setEnglishExamFilter] = useState("All");
+  const [englishSearchQuery, setEnglishSearchQuery] = useState("");
+  const [englishVisibleCount, setEnglishVisibleCount] = useState(30);
+  const [englishRandomMode, setEnglishRandomMode] = useState(false);
+  const [englishRandomizedQuestions, setEnglishRandomizedQuestions] = useState<Question[]>([]);
+  const [englishRandomSelectLimit, setEnglishRandomSelectLimit] = useState(10);
+
+  // Infinite scroll using callback refs
+  const csatObserverRef = useRef<IntersectionObserver | null>(null);
+  const englishObserverRef = useRef<IntersectionObserver | null>(null);
+
+  const csatScrollRef = useCallback((node: HTMLDivElement | null) => {
+    if (csatObserverRef.current) csatObserverRef.current.disconnect();
+    if (!node) return;
+    csatObserverRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !csatRandomMode) {
+        setCSATVisibleCount(prev => prev + 30);
+      }
+    }, { threshold: 0.1 });
+    csatObserverRef.current.observe(node);
+  }, [csatRandomMode]);
+
+  const englishScrollRef = useCallback((node: HTMLDivElement | null) => {
+    if (englishObserverRef.current) englishObserverRef.current.disconnect();
+    if (!node) return;
+    englishObserverRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !englishRandomMode) {
+        setEnglishVisibleCount(prev => prev + 30);
+      }
+    }, { threshold: 0.1 });
+    englishObserverRef.current.observe(node);
+  }, [englishRandomMode]);
+  
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [visibleCount, setVisibleCount] = useState(30);
   const [mainsVisibleCount, setMainsVisibleCount] = useState(30);
@@ -686,10 +735,42 @@ export default function App() {
     }
   };
 
+  const fetchCSATQuestions = async () => {
+    setIsLoadingCSAT(true);
+    try {
+      const response = await fetch('/api/csat-questions');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      setCSATQuestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Failed to fetch CSAT questions:", error);
+      setCSATQuestions([]);
+    } finally {
+      setIsLoadingCSAT(false);
+    }
+  };
+
+  const fetchEnglishQuestions = async () => {
+    setIsLoadingEnglish(true);
+    try {
+      const response = await fetch('/api/english-questions');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      setEnglishQuestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Failed to fetch English questions:", error);
+      setEnglishQuestions([]);
+    } finally {
+      setIsLoadingEnglish(false);
+    }
+  };
+
   useEffect(() => {
     fetchQuestions();
     fetchMainsQuestions();
     fetchToppersQuestions();
+    fetchCSATQuestions();
+    fetchEnglishQuestions();
   }, []);
 
   const latestTwoYears = useMemo(() => {
@@ -853,6 +934,82 @@ export default function App() {
       return (a.questionNumber || 0) - (b.questionNumber || 0);
     });
   }, [toppersQuestions, toppersYearFilter, toppersSubjectFilter, toppersTopperFilter, toppersPaperFilter, toppersSearchQuery, isSubscribed]);
+
+  // CSAT filter lists
+  const csatYearsList = useMemo(() => {
+    const years = [...new Set(csatQuestions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    const counts: Record<string, number> = {};
+    csatQuestions.forEach(q => {
+      counts[q.year] = (counts[q.year] || 0) + 1;
+    });
+    return { options: ["All", ...years], counts };
+  }, [csatQuestions]);
+
+  const csatSubjectsList = useMemo(() => {
+    const filtered = csatQuestions.filter(q => csatYearFilter === "All" || q.year === csatYearFilter);
+    const subjects = [...new Set(filtered.map(q => q.subject))].sort();
+    const counts: Record<string, number> = {};
+    filtered.forEach(q => {
+      counts[q.subject] = (counts[q.subject] || 0) + 1;
+    });
+    return { options: ["All", ...subjects], counts };
+  }, [csatQuestions, csatYearFilter]);
+
+  const filteredCSATQuestions = useMemo(() => {
+    if (csatRandomMode) return csatRandomizedQuestions;
+    return csatQuestions
+      .filter(q => {
+        const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
+        const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
+        const matchesSearch = csatSearchQuery === "" || (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase());
+        return matchesYear && matchesSubject && matchesSearch;
+      })
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, csatVisibleCount);
+  }, [csatQuestions, csatYearFilter, csatSubjectFilter, csatSearchQuery, csatRandomMode, csatRandomizedQuestions, csatVisibleCount]);
+
+  // English filter lists
+  const englishYearsList = useMemo(() => {
+    const years = [...new Set(englishQuestions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    const counts: Record<string, number> = {};
+    englishQuestions.forEach(q => {
+      counts[q.year] = (counts[q.year] || 0) + 1;
+    });
+    return { options: ["All", ...years], counts };
+  }, [englishQuestions]);
+
+  const englishSubjectsList = useMemo(() => {
+    const filtered = englishQuestions.filter(q => (englishYearFilter === "All" || q.year === englishYearFilter) && (englishExamFilter === "All" || q.exam === englishExamFilter));
+    const subjects = [...new Set(filtered.map(q => q.subject))].sort();
+    const counts: Record<string, number> = {};
+    filtered.forEach(q => {
+      counts[q.subject] = (counts[q.subject] || 0) + 1;
+    });
+    return { options: ["All", ...subjects], counts };
+  }, [englishQuestions, englishYearFilter, englishExamFilter]);
+
+  const englishExamsList = useMemo(() => {
+    const exams = [...new Set(englishQuestions.map(q => q.exam).filter(Boolean))].sort();
+    const counts: Record<string, number> = {};
+    englishQuestions.forEach(q => {
+      if (q.exam) counts[q.exam] = (counts[q.exam] || 0) + 1;
+    });
+    return { options: ["All", ...exams], counts };
+  }, [englishQuestions]);
+
+  const filteredEnglishQuestions = useMemo(() => {
+    if (englishRandomMode) return englishRandomizedQuestions;
+    return englishQuestions
+      .filter(q => {
+        const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
+        const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
+        const matchesExam = englishExamFilter === "All" || q.exam === englishExamFilter;
+        const matchesSearch = englishSearchQuery === "" || (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
+        return matchesYear && matchesSubject && matchesExam && matchesSearch;
+      })
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, englishVisibleCount);
+  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -1390,6 +1547,32 @@ export default function App() {
     resetQuiz();
   };
 
+  const startCSATRandomPractice = (limit: number) => {
+    const baseList = csatQuestions.filter(q => {
+      const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
+      const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
+      const matchesSearch = csatSearchQuery === "" || (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase());
+      return matchesYear && matchesSubject && matchesSearch;
+    });
+
+    const shuffled = [...baseList].sort(() => Math.random() - 0.5);
+    setCSATRandomizedQuestions(shuffled.slice(0, limit));
+    setCSATRandomMode(true);
+  };
+
+  const startEnglishRandomPractice = (limit: number) => {
+    const baseList = englishQuestions.filter(q => {
+      const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
+      const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
+      const matchesSearch = englishSearchQuery === "" || (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
+      return matchesYear && matchesSubject && matchesSearch;
+    });
+
+    const shuffled = [...baseList].sort(() => Math.random() - 0.5);
+    setEnglishRandomizedQuestions(shuffled.slice(0, limit));
+    setEnglishRandomMode(true);
+  };
+
   return (
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
@@ -1406,9 +1589,11 @@ export default function App() {
 
               {/* Compact tab pills inline */}
               <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
-                {([
+               {([
                   { id: 'prelims', label: 'Prelims', count: questions.length },
                   { id: 'mains', label: 'Mains', count: mainsQuestions.length },
+                  { id: 'csat', label: 'CSAT', count: csatQuestions.length },
+                  { id: 'english', label: 'English', count: englishQuestions.length },
                   { id: 'essay', label: 'Essay', count: 0 },
                   { id: 'toppers', label: "Topper's Copy", count: toppersQuestions.length },
                 ] as const).map(tab => (
@@ -1524,6 +1709,72 @@ export default function App() {
                   {mainsRandomMode && (
                     <button
                       onClick={() => setMainsRandomMode(false)}
+                      title="Exit Random Mode"
+                      className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'csat' && (
+              <div className="flex items-center gap-2 order-3 lg:order-none">
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                  <select
+                    value={csatRandomSelectLimit}
+                    onChange={(e) => setCSATRandomSelectLimit(Number(e.target.value))}
+                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                  >
+                    {[10, 20, 50, 100].map(n => (
+                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => startCSATRandomPractice(csatRandomSelectLimit)}
+                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                  >
+                    <Dice5 className="w-3 h-3" />
+                    <span className="hidden sm:inline">Random PYQ</span>
+                    <span className="sm:hidden">Random</span>
+                  </button>
+                  {csatRandomMode && (
+                    <button
+                      onClick={() => setCSATRandomMode(false)}
+                      title="Exit Random Mode"
+                      className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'english' && (
+              <div className="flex items-center gap-2 order-3 lg:order-none">
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                  <select
+                    value={englishRandomSelectLimit}
+                    onChange={(e) => setEnglishRandomSelectLimit(Number(e.target.value))}
+                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
+                  >
+                    {[10, 20, 50, 100].map(n => (
+                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => startEnglishRandomPractice(englishRandomSelectLimit)}
+                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                  >
+                    <Dice5 className="w-3 h-3" />
+                    <span className="hidden sm:inline">Random PYQ</span>
+                    <span className="sm:hidden">Random</span>
+                  </button>
+                  {englishRandomMode && (
+                    <button
+                      onClick={() => setEnglishRandomMode(false)}
                       title="Exit Random Mode"
                       className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
                     >
@@ -2228,6 +2479,247 @@ export default function App() {
                     Loading more questions...
                   </div>
                 </div>
+              )}
+            </section>
+          </>
+        ) : activeTab === 'csat' ? (
+          <>
+            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setCSATYearFilter("All");
+                      setCSATSubjectFilter("All");
+                      setCSATSearchQuery("");
+                      setCSATVisibleCount(30);
+                      setCSATRandomMode(false);
+                    }}
+                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="csat-search" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      id="csat-search"
+                      value={csatSearchQuery}
+                      onChange={(e) => setCSATSearchQuery(e.target.value)}
+                      placeholder="Reasoning, logic..."
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                    />
+                    <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
+                  <select
+                    value={csatYearFilter}
+                    onChange={(e) => setCSATYearFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {csatYearsList.options.map(y => (
+                      <option key={y} value={y}>
+                        {y === "All" ? "All Years" : `${y} (${csatYearsList.counts[y] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic</label>
+                  <select
+                    value={csatSubjectFilter}
+                    onChange={(e) => setCSATSubjectFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {csatSubjectsList.options.map(s => (
+                      <option key={s} value={s}>
+                        {s === "All" ? "All Topics" : `${s} (${csatSubjectsList.counts[s] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredCSATQuestions.length}</span> questions</p>
+                </div>
+              </div>
+            </aside>
+
+            <section className="flex-grow">
+              {filteredCSATQuestions.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+                  <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+                  <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No CSAT questions found</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters to see more results.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredCSATQuestions.map((q, idx) => (
+                      <QuestionCard 
+                        key={q.id}
+                        question={q}
+                        index={idx}
+                        attemptedOption={userAttempts[q.id]}
+                        isRevealed={revealedAnswers[q.id]}
+                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                        onToggleRevealed={() => toggleAnswer(q.id)}
+                        isLocked={false}
+                        userEmail={userEmail}
+                        onSubjectClick={(subject) => {
+                          setCSATSubjectFilter(subject);
+                          setCSATRandomMode(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onYearClick={(year) => {
+                          setCSATYearFilter(year);
+                          setCSATRandomMode(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div ref={csatScrollRef} className="h-10" />
+                </>
+              )}
+            </section>
+          </>
+        ) : activeTab === 'english' ? (
+          <>
+            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setEnglishYearFilter("All");
+                      setEnglishSubjectFilter("All");
+                      setEnglishExamFilter("All");
+                      setEnglishSearchQuery("");
+                      setEnglishVisibleCount(30);
+                      setEnglishRandomMode(false);
+                    }}
+                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="english-search" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      id="english-search"
+                      value={englishSearchQuery}
+                      onChange={(e) => setEnglishSearchQuery(e.target.value)}
+                      placeholder="Vocabulary, grammar..."
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                    />
+                    <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam</label>
+                  <select
+                    value={englishExamFilter}
+                    onChange={(e) => setEnglishExamFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {englishExamsList.options.map(ex => (
+                      <option key={ex} value={ex}>
+                        {ex === "All" ? "All Exams" : `${ex} (${englishExamsList.counts[ex] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
+                  <select
+                    value={englishYearFilter}
+                    onChange={(e) => setEnglishYearFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {englishYearsList.options.map(y => (
+                      <option key={y} value={y}>
+                        {y === "All" ? "All Years" : `${y} (${englishYearsList.counts[y] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic</label>
+                  <select
+                    value={englishSubjectFilter}
+                    onChange={(e) => setEnglishSubjectFilter(e.target.value)}
+                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                  >
+                    {englishSubjectsList.options.map(s => (
+                      <option key={s} value={s}>
+                        {s === "All" ? "All Topics" : `${s} (${englishSubjectsList.counts[s] || 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredEnglishQuestions.length}</span> questions</p>
+                </div>
+              </div>
+            </aside>
+
+            <section className="flex-grow">
+              {filteredEnglishQuestions.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+                  <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+                  <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No English questions found</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters to see more results.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredEnglishQuestions.map((q, idx) => (
+                      <QuestionCard 
+                        key={q.id}
+                        question={q}
+                        index={idx}
+                        attemptedOption={userAttempts[q.id]}
+                        isRevealed={revealedAnswers[q.id]}
+                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                        onToggleRevealed={() => toggleAnswer(q.id)}
+                        isLocked={false}
+                        userEmail={userEmail}
+                        onSubjectClick={(subject) => {
+                          setEnglishSubjectFilter(subject);
+                          setEnglishRandomMode(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onYearClick={(year) => {
+                          setEnglishYearFilter(year);
+                          setEnglishRandomMode(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div ref={englishScrollRef} className="h-10" />
+                </>
               )}
             </section>
           </>

@@ -11,6 +11,8 @@ const client = new CosmosClient({ endpoint, key });
 const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
 const mainsQuestionsContainer = database.container("mains-questions");
+const csatQuestionsContainer = database.container("csat-questions");
+const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
@@ -33,6 +35,10 @@ let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
+let csatCache: any[] | null = null;
+let csatCacheTimestamp = 0;
+let englishCache: any[] | null = null;
+let englishCacheTimestamp = 0;
 let toppersCache: any[] | null = null;
 let toppersCacheTimestamp = 0;
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours (use /api/admin/refresh-questions to force clear)
@@ -76,6 +82,32 @@ async function getToppersQuestions() {
   return resources;
 }
 
+async function getCSATQuestions() {
+  const now = Date.now();
+  if (csatCache && (now - csatCacheTimestamp) < CACHE_TTL) {
+    return csatCache;
+  }
+  const { resources } = await csatQuestionsContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  csatCache = resources;
+  csatCacheTimestamp = now;
+  return resources;
+}
+
+async function getEnglishQuestions() {
+  const now = Date.now();
+  if (englishCache && (now - englishCacheTimestamp) < CACHE_TTL) {
+    return englishCache;
+  }
+  const { resources } = await englishQuestionsContainer.items
+    .readAll({ maxItemCount: -1 })
+    .fetchAll();
+  englishCache = resources;
+  englishCacheTimestamp = now;
+  return resources;
+}
+
 // API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
@@ -112,6 +144,32 @@ serverApp.get("/api/toppers-copy", async (req, res) => {
   }
 });
 
+// API to get all CSAT questions (cached)
+serverApp.get("/api/csat-questions", async (req, res) => {
+  try {
+    const csatQuestions = await getCSATQuestions();
+    csatQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(csatQuestions);
+  } catch (error: any) {
+    console.error("Error fetching CSAT questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to get all English questions (cached)
+serverApp.get("/api/english-questions", async (req, res) => {
+  try {
+    const englishQuestions = await getEnglishQuestions();
+    englishQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.json(englishQuestions);
+  } catch (error: any) {
+    console.error("Error fetching English questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to refresh questions cache (admin only)
 serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   try {
@@ -119,13 +177,24 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     cacheTimestamp = 0;
     mainsCache = null;
     mainsCacheTimestamp = 0;
+    csatCache = null;
+    csatCacheTimestamp = 0;
+    englishCache = null;
+    englishCacheTimestamp = 0;
     toppersCache = null;
     toppersCacheTimestamp = 0;
-    const [questions, mainsQuestions] = await Promise.all([getQuestions(), getMainsQuestions()]);
+    const [questions, mainsQuestions, csatQuestions, englishQuestions] = await Promise.all([
+      getQuestions(), 
+      getMainsQuestions(),
+      getCSATQuestions(),
+      getEnglishQuestions()
+    ]);
     res.json({
       message: "Cache refreshed",
       count: questions.length,
       mainsCount: mainsQuestions.length,
+      csatCount: csatQuestions.length,
+      englishCount: englishQuestions.length,
     });
   } catch (error: any) {
     console.error("Error refreshing cache:", error);
