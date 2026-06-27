@@ -26,6 +26,7 @@ import {
   Sun,
   Moon,
   UserPlus,
+  User,
   X,
   Database,
   Trash2,
@@ -68,9 +69,16 @@ interface QuestionCardProps {
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
 }
 
+const parseMarkdownBold = (text: string) => {
+  return text.replace(/\*\*([^\*]+)\*\*/g, '<b>$1</b>');
+};
+
 const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query }) => {
+  // First convert markdown bold to HTML
+  const htmlText = parseMarkdownBold(text);
+  
   if (!query.trim()) {
-    return <span dangerouslySetInnerHTML={{ __html: text }} />;
+    return <span dangerouslySetInnerHTML={{ __html: htmlText }} />;
   }
 
   // Escape special regex characters
@@ -78,7 +86,7 @@ const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query 
   const regex = new RegExp(`(${escapedQuery})`, "gi");
   
   // Split by HTML tags to avoid highlighting inside tags
-  const parts = text.split(/(<[^>]*>)/g);
+  const parts = htmlText.split(/(<[^>]*>)/g);
   
   return (
     <>
@@ -778,6 +786,16 @@ export default function App() {
     return years.slice(0, 2);
   }, [questions]);
 
+  const csatLatestTwoYears = useMemo(() => {
+    const years = [...new Set(csatQuestions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    return years.slice(0, 2);
+  }, [csatQuestions]);
+
+  const englishLatestTwoYears = useMemo(() => {
+    const years = [...new Set(englishQuestions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    return years.slice(0, 2);
+  }, [englishQuestions]);
+
   const mainsYearsList = useMemo(() => {
     const availableData = mainsQuestions.filter(q =>
       (mainsExamFilter === "All" || q.exam === mainsExamFilter) &&
@@ -961,7 +979,9 @@ export default function App() {
       .filter(q => {
         const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
         const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
-        const matchesSearch = csatSearchQuery === "" || (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase());
+        const matchesSearch = csatSearchQuery === "" || 
+          (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase()) ||
+          (q.options || []).some(opt => (opt || "").toLowerCase().includes(csatSearchQuery.toLowerCase()));
         return matchesYear && matchesSubject && matchesSearch;
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
@@ -988,6 +1008,16 @@ export default function App() {
     return { options: ["All", ...subjects], counts };
   }, [englishQuestions, englishYearFilter, englishExamFilter]);
 
+  const englishTopicsList = useMemo(() => {
+    const filtered = englishQuestions.filter(q => (englishYearFilter === "All" || q.year === englishYearFilter) && (englishExamFilter === "All" || q.exam === englishExamFilter));
+    const topics = [...new Set(filtered.map(q => q.topic).filter(Boolean))].sort();
+    const counts: Record<string, number> = {};
+    filtered.forEach(q => {
+      if (q.topic) counts[q.topic] = (counts[q.topic] || 0) + 1;
+    });
+    return { options: ["All", ...topics], counts };
+  }, [englishQuestions, englishYearFilter, englishExamFilter]);
+
   const englishExamsList = useMemo(() => {
     const exams = [...new Set(englishQuestions.map(q => q.exam).filter(Boolean))].sort();
     const counts: Record<string, number> = {};
@@ -1004,7 +1034,9 @@ export default function App() {
         const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
         const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
         const matchesExam = englishExamFilter === "All" || q.exam === englishExamFilter;
-        const matchesSearch = englishSearchQuery === "" || (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
+        const matchesSearch = englishSearchQuery === "" || 
+          (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
+          (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
         return matchesYear && matchesSubject && matchesExam && matchesSearch;
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
@@ -1521,7 +1553,12 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const isAppLoading = isLoadingQuestions || isLoadingMains;
+  const isAppLoading = 
+    (activeTab === 'prelims' && isLoadingQuestions) ||
+    (activeTab === 'mains' && isLoadingMains) ||
+    (activeTab === 'csat' && isLoadingCSAT) ||
+    (activeTab === 'english' && isLoadingEnglish) ||
+    (activeTab === 'toppers' && isLoadingToppers);
 
   const startRandomPractice = (limit: number) => {
     const baseList = questions.filter(q => {
@@ -1818,9 +1855,10 @@ export default function App() {
                   href="https://t.me/upsc_pyq_powerhouse" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center shadow-amber-500/20 hover:scale-[1.02] hidden sm:flex"
+                  className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 p-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center justify-center shadow-amber-500/20 hover:scale-[1.02] hidden sm:flex"
+                  title="Join Telegram"
                 >
-                  <Send className="w-3.5 h-3.5 mr-1.5" /> <span>Join Telegram</span>
+                  <Send className="w-4 h-4" />
                 </a>
 
                 {!userEmail ? (
@@ -1828,7 +1866,7 @@ export default function App() {
                     onClick={() => setShowLoginModal(true)}
                     className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800/50 flex items-center gap-2 px-3"
                   >
-                    <KeyRound className="w-4 h-4" />
+                    <User className="w-4 h-4" />
                     <span className="text-xs font-bold hidden sm:inline">Login</span>
                   </button>
                 ) : (
@@ -2565,29 +2603,34 @@ export default function App() {
               ) : (
                 <>
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredCSATQuestions.map((q, idx) => (
-                      <QuestionCard 
-                        key={q.id}
-                        question={q}
-                        index={idx}
-                        attemptedOption={userAttempts[q.id]}
-                        isRevealed={revealedAnswers[q.id]}
-                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
-                        onToggleRevealed={() => toggleAnswer(q.id)}
-                        isLocked={false}
-                        userEmail={userEmail}
-                        onSubjectClick={(subject) => {
-                          setCSATSubjectFilter(subject);
-                          setCSATRandomMode(false);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        onYearClick={(year) => {
-                          setCSATYearFilter(year);
-                          setCSATRandomMode(false);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                      />
-                    ))}
+                    {filteredCSATQuestions.map((q, idx) => {
+                      const isLocked = !isSubscribed && !csatLatestTwoYears.includes(q.year);
+                      return (
+                        <QuestionCard 
+                          key={q.id}
+                          question={q}
+                          index={idx}
+                          attemptedOption={userAttempts[q.id]}
+                          isRevealed={revealedAnswers[q.id]}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                          onToggleRevealed={() => toggleAnswer(q.id)}
+                          isLocked={isLocked}
+                          userEmail={userEmail}
+                          searchQuery={csatSearchQuery}
+                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onSubjectClick={(subject) => {
+                            setCSATSubjectFilter(subject);
+                            setCSATRandomMode(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          onYearClick={(year) => {
+                            setCSATYearFilter(year);
+                            setCSATRandomMode(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        />
+                      );
+                    })}
                   </div>
 
                   <div ref={csatScrollRef} className="h-10" />
@@ -2670,9 +2713,9 @@ export default function App() {
                     onChange={(e) => setEnglishSubjectFilter(e.target.value)}
                     className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
                   >
-                    {englishSubjectsList.options.map(s => (
-                      <option key={s} value={s}>
-                        {s === "All" ? "All Topics" : `${s} (${englishSubjectsList.counts[s] || 0})`}
+                    {englishTopicsList.options.map(t => (
+                      <option key={t} value={t}>
+                        {t === "All" ? "All Topics" : `${t} (${englishTopicsList.counts[t] || 0})`}
                       </option>
                     ))}
                   </select>
@@ -2694,29 +2737,34 @@ export default function App() {
               ) : (
                 <>
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredEnglishQuestions.map((q, idx) => (
-                      <QuestionCard 
-                        key={q.id}
-                        question={q}
-                        index={idx}
-                        attemptedOption={userAttempts[q.id]}
-                        isRevealed={revealedAnswers[q.id]}
-                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
-                        onToggleRevealed={() => toggleAnswer(q.id)}
-                        isLocked={false}
-                        userEmail={userEmail}
-                        onSubjectClick={(subject) => {
-                          setEnglishSubjectFilter(subject);
-                          setEnglishRandomMode(false);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        onYearClick={(year) => {
-                          setEnglishYearFilter(year);
-                          setEnglishRandomMode(false);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                      />
-                    ))}
+                    {filteredEnglishQuestions.map((q, idx) => {
+                      const isLocked = !isSubscribed && !englishLatestTwoYears.includes(q.year);
+                      return (
+                        <QuestionCard 
+                          key={q.id}
+                          question={q}
+                          index={idx}
+                          attemptedOption={userAttempts[q.id]}
+                          isRevealed={revealedAnswers[q.id]}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                          onToggleRevealed={() => toggleAnswer(q.id)}
+                          isLocked={isLocked}
+                          userEmail={userEmail}
+                          searchQuery={englishSearchQuery}
+                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onSubjectClick={(subject) => {
+                            setEnglishSubjectFilter(subject);
+                            setEnglishRandomMode(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          onYearClick={(year) => {
+                            setEnglishYearFilter(year);
+                           setEnglishRandomMode(false);
+                           window.scrollTo({ top: 0, behavior: 'smooth' });
+                         }}
+                       />
+                     );
+                   })}
                   </div>
                   <div ref={englishScrollRef} className="h-10" />
                 </>
@@ -2942,8 +2990,9 @@ export default function App() {
             </button>
 
             <div className="flex justify-center mb-6">
-              <div className="bg-blue-600 p-4 rounded-2xl shadow-lg shadow-blue-500/30">
-                <KeyRound className="w-8 h-8 text-white" />
+              <div className="bg-blue-600 p-4 rounded-full shadow-lg shadow-blue-500/30 w-16 h-16 flex items-center justify-center relative">
+                <User className="w-8 h-8 text-orange-400 absolute" />
+                <Lock className="w-5 h-5 text-yellow-400 absolute bottom-1 right-1" />
               </div>
             </div>
             
