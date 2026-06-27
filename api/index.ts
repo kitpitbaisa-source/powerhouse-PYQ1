@@ -10,6 +10,8 @@ const client = new CosmosClient({ endpoint, key });
 const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
 const mainsQuestionsContainer = database.container("mains-questions");
+const csatQuestionsContainer = database.container("csat-questions");
+const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
@@ -136,6 +138,44 @@ serverApp.get("/api/toppers-copy", async (req, res) => {
   }
 });
 
+// API to get all CSAT questions (cached)
+let csatCache: any[] | null = null;
+let csatCacheTimestamp = 0;
+serverApp.get("/api/csat-questions", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (!csatCache || now - csatCacheTimestamp > 300000) {
+      const { resources } = await csatQuestionsContainer.items.readAll().fetchAll();
+      csatCache = resources;
+      csatCacheTimestamp = now;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json(csatCache);
+  } catch (error: any) {
+    console.error("Error fetching CSAT questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// API to get all English questions (cached)
+let englishCache: any[] | null = null;
+let englishCacheTimestamp = 0;
+serverApp.get("/api/english-questions", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (!englishCache || now - englishCacheTimestamp > 300000) {
+      const { resources } = await englishQuestionsContainer.items.readAll().fetchAll();
+      englishCache = resources;
+      englishCacheTimestamp = now;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json(englishCache);
+  } catch (error: any) {
+    console.error("Error fetching English questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to refresh questions cache (admin only)
 serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   try {
@@ -145,14 +185,28 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     mainsCacheTimestamp = 0;
     toppersCache = null;
     toppersCacheTimestamp = 0;
+    csatCache = null;
+    csatCacheTimestamp = 0;
+    englishCache = null;
+    englishCacheTimestamp = 0;
     // Bump version so ALL serverless instances know cache is stale
     await bumpCacheVersion();
-    const [questions, mainsQuestions, toppersQuestions] = await Promise.all([getQuestions(), getMainsQuestions(), getToppersQuestions()]);
+    const [questions, mainsQuestions, toppersQuestions, csatQuestions, englishQuestions] = await Promise.all([
+      getQuestions(), getMainsQuestions(), getToppersQuestions(),
+      csatQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
+      englishQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
+    ]);
+    csatCache = csatQuestions;
+    csatCacheTimestamp = Date.now();
+    englishCache = englishQuestions;
+    englishCacheTimestamp = Date.now();
     res.json({
       message: "Cache refreshed",
       count: questions.length,
       mainsCount: mainsQuestions.length,
       toppersCount: toppersQuestions.length,
+      csatCount: csatQuestions.length,
+      englishCount: englishQuestions.length,
     });
   } catch (error: any) {
     console.error("Error refreshing cache:", error);
