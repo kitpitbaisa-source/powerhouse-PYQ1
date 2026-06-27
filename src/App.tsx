@@ -69,11 +69,13 @@ interface QuestionCardProps {
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
 }
 
-const parseMarkdownBold = (text: string) => {
+const parseMarkdownBold = (text: string | undefined) => {
+  if (!text) return '';
   return text.replace(/\*\*([^\*]+)\*\*/g, '<b>$1</b>');
 };
 
-const HighlightText: React.FC<{ text: string; query: string }> = ({ text, query }) => {
+const HighlightText: React.FC<{ text: string | undefined; query: string }> = ({ text, query }) => {
+  if (!text) return null;
   // First convert markdown bold to HTML
   const htmlText = parseMarkdownBold(text);
   
@@ -236,7 +238,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       </h3>
       
       <div className="space-y-2 mb-5 px-1">
-        {question.options.map(opt => {
+        {(question.options || []).map(opt => {
           const isCorrectAnswer = opt === question.answer;
           const isSelected = opt === attemptedOption;
           const hasAttempted = !!attemptedOption;
