@@ -610,6 +610,7 @@ export default function App() {
   
   const [englishYearFilter, setEnglishYearFilter] = useState("All");
   const [englishSubjectFilter, setEnglishSubjectFilter] = useState("All");
+  const [englishTopicFilter, setEnglishTopicFilter] = useState("All");
   const [englishExamFilter, setEnglishExamFilter] = useState("All");
   const [englishSearchQuery, setEnglishSearchQuery] = useState("");
   const [englishVisibleCount, setEnglishVisibleCount] = useState(30);
@@ -1038,15 +1039,16 @@ export default function App() {
       .filter(q => {
         const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
         const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
+        const matchesTopic = englishTopicFilter === "All" || q.topic === englishTopicFilter;
         const matchesExam = englishExamFilter === "All" || q.exam === englishExamFilter;
         const matchesSearch = englishSearchQuery === "" || 
           (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
           (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
-        return matchesYear && matchesSubject && matchesExam && matchesSearch;
+        return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesSearch;
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
       .slice(0, englishVisibleCount);
-  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
+  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
 
   // Check subscription and admin status
   const checkUserStatus = async (email: string) => {
@@ -2717,8 +2719,8 @@ export default function App() {
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic</label>
                   <select
-                    value={englishSubjectFilter}
-                    onChange={(e) => setEnglishSubjectFilter(e.target.value)}
+                    value={englishTopicFilter}
+                    onChange={(e) => setEnglishTopicFilter(e.target.value)}
                     className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
                   >
                     {englishTopicsList.options.map(t => (
