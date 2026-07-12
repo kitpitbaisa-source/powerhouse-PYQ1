@@ -710,9 +710,14 @@ export default function App() {
       
       if (Array.isArray(data) && data.length > 0) {
         console.log(`Loaded ${data.length} questions from API`);
-        setQuestions(data);
+       // Keep the 100 shown locally, then append remaining questions from API (avoid duplicates)
+       setQuestions(prev => {
+         const existingIds = new Set(prev.map(q => q.id));
+         const newQuestions = data.filter(q => !existingIds.has(q.id));
+         return [...prev, ...newQuestions];
+       });
       } else {
-        throw new Error("Empty data from API");
+       throw new Error("Empty data from API");
       }
     } catch (error) {
       console.warn("Server API failed, falling back to local data:", error);
