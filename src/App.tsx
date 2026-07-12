@@ -645,7 +645,10 @@ export default function App() {
   }, [englishRandomMode]);
   
   const [score, setScore] = useState({ correct: 0, total: 0 });
-  const [visibleCount, setVisibleCount] = useState(30);
+  const [visibleCount, setVisibleCount] = useState(() => {
+    const saved = localStorage.getItem('visibleCount');
+    return saved ? parseInt(saved) : 30;
+  });
   const [mainsVisibleCount, setMainsVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
   const [randomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
@@ -666,6 +669,11 @@ export default function App() {
       localStorage.setItem('theme', 'light');
     }
   }, [isDarkMode]);
+
+  // Persist scroll position (visibleCount)
+  useEffect(() => {
+    localStorage.setItem('visibleCount', String(visibleCount));
+  }, [visibleCount]);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
@@ -781,11 +789,22 @@ export default function App() {
     const initialData = (mcqData as Question[]).slice(0, 100);
     setQuestions(initialData);
     console.log(`Showing ${initialData.length} prelims instantly from local data`);
-    setVisibleCount(100);
+    
+    // Restore previously saved scroll position
+    const savedVisibleCount = localStorage.getItem('visibleCount');
+    const initialCount = savedVisibleCount ? parseInt(savedVisibleCount) : 100;
+    setVisibleCount(initialCount);
     setIsLoadingQuestions(false);
 
+    // Scroll to saved position after a brief delay to let DOM render
+    const scrollTimer = setTimeout(() => {
+      if (savedVisibleCount) {
+        window.scrollTo(0, 0); // Start from top for fresh load
+      }
+    }, 500);
+
     // Then load all prelims from local data in background (no API call - it's already bundled)
-    const timer = setTimeout(() => {
+    const fetchTimer = setTimeout(() => {
       console.log(`Loading all ${mcqData.length} prelims from local data in background`);
       setQuestions(mcqData as Question[]);
       // Fetch other sections from API only
@@ -795,7 +814,10 @@ export default function App() {
       fetchEnglishQuestions();
     }, 100);
     
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(fetchTimer);
+    };
   }, []);
 
   const latestTwoYears = useMemo(() => {
