@@ -1446,9 +1446,6 @@ export default function App() {
     }
 
     const list = questions.filter(q => {
-      // Skip questions without valid question text
-      if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
-      
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
       const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
