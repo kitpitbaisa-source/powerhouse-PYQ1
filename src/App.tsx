@@ -700,8 +700,8 @@ export default function App() {
     }
   });
 
-  const fetchQuestions = async () => {
-    setIsLoadingQuestions(true);
+  const fetchQuestions = async (showLoading = true) => {
+    if (showLoading) setIsLoadingQuestions(true);
     try {
       console.log("Fetching questions from API...");
       const response = await fetch('/api/questions');
@@ -806,8 +806,8 @@ export default function App() {
     // Then fetch all prelims from API in background (already filtered on server, returns ~9.5k)
     // Delay this more so 100 questions display first
     const fetchTimer = setTimeout(() => {
-      // Don't show loading spinner - just fetch in background
-      fetchQuestions();
+      // Fetch in background without showing loading spinner
+      fetchQuestions(false);
       // Fetch other sections from API only
       fetchMainsQuestions();
       fetchToppersQuestions();
