@@ -784,9 +784,11 @@ export default function App() {
     setVisibleCount(100);
     setIsLoadingQuestions(false);
 
-    // Then fetch all data in background (non-blocking)
+    // Then load all prelims from local data in background (no API call - it's already bundled)
     const timer = setTimeout(() => {
-      fetchQuestions();
+      console.log(`Loading all ${mcqData.length} prelims from local data in background`);
+      setQuestions(mcqData as Question[]);
+      // Fetch other sections from API only
       fetchMainsQuestions();
       fetchToppersQuestions();
       fetchCSATQuestions();
