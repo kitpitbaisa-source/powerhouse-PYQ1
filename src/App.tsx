@@ -806,7 +806,7 @@ export default function App() {
     // Then fetch all prelims from API in background (already filtered on server, returns ~9.5k)
     // Delay this more so 100 questions display first
     const fetchTimer = setTimeout(() => {
-      setIsLoadingQuestions(true);
+      // Don't show loading spinner - just fetch in background
       fetchQuestions();
       // Fetch other sections from API only
       fetchMainsQuestions();
