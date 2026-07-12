@@ -684,6 +684,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('user_session');
@@ -2206,7 +2207,21 @@ export default function App() {
           </div>
         ) : activeTab === 'prelims' ? (
           <>
-            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            {/* Mobile Filters Toggle Button */}
+            <div className="md:hidden w-full mb-4 flex gap-2">
+              <button 
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+              >
+                <Filter className="w-4 h-4" />
+                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+              </button>
+            </div>
+
+            <aside className={cn(
+              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              isMobileFiltersOpen ? "block" : "hidden"
+            )}>
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2440,7 +2455,21 @@ export default function App() {
         </>
         ) : activeTab === 'mains' ? (
           <>
-            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            {/* Mobile Filters Toggle Button */}
+            <div className="md:hidden w-full mb-4 flex gap-2">
+              <button 
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+              >
+                <Filter className="w-4 h-4" />
+                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+              </button>
+            </div>
+
+            <aside className={cn(
+              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              isMobileFiltersOpen ? "block" : "hidden"
+            )}>
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2586,7 +2615,21 @@ export default function App() {
           </>
         ) : activeTab === 'csat' ? (
           <>
-            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            {/* Mobile Filters Toggle Button */}
+            <div className="md:hidden w-full mb-4 flex gap-2">
+              <button 
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+              >
+                <Filter className="w-4 h-4" />
+                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+              </button>
+            </div>
+
+            <aside className={cn(
+              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              isMobileFiltersOpen ? "block" : "hidden"
+            )}>
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2704,7 +2747,21 @@ export default function App() {
           </>
         ) : activeTab === 'english' ? (
           <>
-            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            {/* Mobile Filters Toggle Button */}
+            <div className="md:hidden w-full mb-4 flex gap-2">
+              <button 
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+              >
+                <Filter className="w-4 h-4" />
+                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+              </button>
+            </div>
+
+            <aside className={cn(
+              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              isMobileFiltersOpen ? "block" : "hidden"
+            )}>
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
