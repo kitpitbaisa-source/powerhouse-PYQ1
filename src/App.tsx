@@ -1876,19 +1876,32 @@ export default function App() {
             
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 {userEmail && (
-                <div className="hidden lg:flex flex-col items-end mr-2 text-right">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">Logged in as</span>
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-white truncate max-w-[140px] leading-tight" title={userEmail}>{userEmail}</span>
-                  {isAdmin && (
-                    <button 
-                      onClick={() => setIsAdminView(!isAdminView)}
-                      className="text-[9px] font-extrabold text-blue-500 hover:text-blue-600 uppercase tracking-tighter mt-1 hover:underline"
-                    >
-                      {isAdminView ? "Exit Admin" : "Admin Panel"}
-                    </button>
-                  )}
-                </div>
-              )}
+               <div className="relative group">
+                 <button 
+                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1"
+                   title="User Info"
+                 >
+                   <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">
+                     {userEmail.charAt(0).toUpperCase()}
+                   </div>
+                   <span className="text-[10px] font-bold text-slate-700 dark:text-white hidden sm:inline">Me</span>
+                 </button>
+                  
+                 {/* Hover Tooltip */}
+                 <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none group-hover:pointer-events-auto">
+                   <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Logged in as</p>
+                   <p className="text-[11px] font-bold text-slate-700 dark:text-white break-all mb-2">{userEmail}</p>
+                   {isAdmin && (
+                     <button 
+                       onClick={() => setIsAdminView(!isAdminView)}
+                       className="w-full text-[9px] font-extrabold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tighter py-1 hover:underline"
+                     >
+                       {isAdminView ? "Exit Admin" : "Admin Panel"}
+                     </button>
+                   )}
+                 </div>
+               </div>
+             )}
               
               <button
                 onClick={toggleTheme}
