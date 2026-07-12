@@ -2206,7 +2206,7 @@ export default function App() {
           </div>
         ) : activeTab === 'prelims' ? (
           <>
-            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2440,7 +2440,7 @@ export default function App() {
         </>
         ) : activeTab === 'mains' ? (
           <>
-            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2586,7 +2586,7 @@ export default function App() {
           </>
         ) : activeTab === 'csat' ? (
           <>
-            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
@@ -2704,7 +2704,7 @@ export default function App() {
           </>
         ) : activeTab === 'english' ? (
           <>
-            <aside className="w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
+            <aside className="hidden md:block w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24">
               <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
