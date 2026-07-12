@@ -803,10 +803,9 @@ export default function App() {
       }
     }, 500);
 
-    // Then load all prelims from local data in background (no API call - it's already bundled)
+    // Then fetch all prelims from API in background (already filtered on server, returns ~9.5k)
     const fetchTimer = setTimeout(() => {
-      console.log(`Loading all ${mcqData.length} prelims from local data in background`);
-      setQuestions(mcqData as Question[]);
+      fetchQuestions();
       // Fetch other sections from API only
       fetchMainsQuestions();
       fetchToppersQuestions();
@@ -1446,6 +1445,9 @@ export default function App() {
     }
 
     const list = questions.filter(q => {
+      // Skip questions without valid question text
+      if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
+      
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || q.exam === examFilter;
       const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
