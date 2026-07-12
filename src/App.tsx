@@ -804,14 +804,16 @@ export default function App() {
     }, 500);
 
     // Then fetch all prelims from API in background (already filtered on server, returns ~9.5k)
+    // Delay this more so 100 questions display first
     const fetchTimer = setTimeout(() => {
+      setIsLoadingQuestions(true);
       fetchQuestions();
       // Fetch other sections from API only
       fetchMainsQuestions();
       fetchToppersQuestions();
       fetchCSATQuestions();
       fetchEnglishQuestions();
-    }, 100);
+    }, 1000);
     
     return () => {
       clearTimeout(scrollTimer);
