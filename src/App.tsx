@@ -777,11 +777,23 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchQuestions();
-    fetchMainsQuestions();
-    fetchToppersQuestions();
-    fetchCSATQuestions();
-    fetchEnglishQuestions();
+    // Show 100 prelims instantly from local data
+    const initialData = (mcqData as Question[]).slice(0, 100);
+    setQuestions(initialData);
+    console.log(`Showing ${initialData.length} prelims instantly from local data`);
+    setVisibleCount(100);
+    setIsLoadingQuestions(false);
+
+    // Then fetch all data in background (non-blocking)
+    const timer = setTimeout(() => {
+      fetchQuestions();
+      fetchMainsQuestions();
+      fetchToppersQuestions();
+      fetchCSATQuestions();
+      fetchEnglishQuestions();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const latestTwoYears = useMemo(() => {
@@ -1421,7 +1433,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
@@ -1446,7 +1458,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -1454,7 +1466,7 @@ export default function App() {
   }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
 
   const handleLoadMore = useCallback(() => {
-    setVisibleCount(prev => prev + 50);
+    setVisibleCount(prev => prev + 150);
   }, []);
 
   const handleMainsLoadMore = useCallback(() => {
@@ -1465,7 +1477,7 @@ export default function App() {
   useEffect(() => {
     const handleScroll = () => {
       if (
-        window.innerHeight + window.scrollY >= document.body.offsetHeight - 800
+        window.innerHeight + window.scrollY >= document.body.offsetHeight - 2500
       ) {
         if (activeTab === 'prelims') handleLoadMore();
         else if (activeTab === 'mains') handleMainsLoadMore();
@@ -1583,7 +1595,7 @@ export default function App() {
       const matchesSearch = searchQuery === "" || 
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.options.some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
       return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     });
