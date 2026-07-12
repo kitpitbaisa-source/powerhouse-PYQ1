@@ -2279,33 +2279,6 @@ export default function App() {
               <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredQuestions.length}</span> questions</p>
             </div>
 
-            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-center bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 border border-slate-200 dark:border-slate-600/50">
-              {userEmail && (
-                <div className="mb-4 pb-3 border-b border-slate-200 dark:border-slate-600/50">
-                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Signed in as</p>
-                  <p className="text-xs font-bold text-slate-700 dark:text-white truncate" title={userEmail}>{userEmail}</p>
-                </div>
-              )}
-              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Your Score</p>
-              <p className={cn(
-                "text-2xl font-bold mb-3",
-                score.total > 0 && (score.correct / score.total) < 0.5
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-emerald-600 dark:text-emerald-400"
-              )}>
-                {score.correct} <span className="text-xs text-slate-500 font-normal">/ {score.total}</span>
-                {score.total > 0 && (
-                  <span className={cn(
-                    "ml-2 text-xs px-2 py-0.5 rounded-full",
-                    (score.correct / score.total) < 0.5
-                      ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-                      : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                  )}>
-                    {Math.round((score.correct / score.total) * 100)}%
-                  </span>
-                )}
-              </p>
-            </div>
           </div>
         </aside>
 
