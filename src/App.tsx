@@ -160,7 +160,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 <QrCode className="w-3 h-3" /> Subscribe
               </p>
               <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                Contact <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@INDIAN4</a> on Telegram to unlock all {question.year} questions.
+                Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all {question.year} questions.
+              </p>
+              <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                1 Year ₹899 · 2 Years ₹1299
               </p>
             </div>
             <button 
@@ -2408,6 +2411,24 @@ export default function App() {
                     </p>
                     
                     <div className="w-full space-y-4">
+                      {/* Subscription Plans / Pricing */}
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider">Subscription Plans</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
+                            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">1 Year</p>
+                            <p className="text-lg font-extrabold text-slate-900 dark:text-white">₹899</p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border-2 border-indigo-400 dark:border-indigo-500 text-center relative">
+                            <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
+                            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">2 Years</p>
+                            <p className="text-lg font-extrabold text-slate-900 dark:text-white">₹1299</p>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Subscription Info */}
                       <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
                         <div className="flex items-center gap-2 mb-3">
@@ -2415,14 +2436,14 @@ export default function App() {
                           <span className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider">How to Subscribe</span>
                         </div>
                         <ol className="text-[11px] text-slate-500 dark:text-slate-400 space-y-2 list-decimal list-inside">
-                          <li>Contact us on Telegram <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 font-bold hover:underline">@INDIAN4</a></li>
+                          <li>Contact us on Telegram <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 font-bold hover:underline">@UPSC_powerhouse_helpbot</a></li>
                           <li>Provide your registered email: <span className="font-bold text-slate-700 dark:text-white truncate block mt-1">{userEmail}</span></li>
                           <li>Once your subscription is activated, refresh this page.</li>
                         </ol>
                         
                         <div className="mt-4 flex justify-center">
-                          <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer">
-                            <img src="/telegram-qr.png" alt="Telegram QR Code @INDIAN4" className="w-40 h-40 rounded-lg shadow-md" />
+                          <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer">
+                            <img src="/telegram-qr.png" alt="Telegram QR Code @UPSC_powerhouse_helpbot" className="w-40 h-40 rounded-lg shadow-md" />
                           </a>
                         </div>
 
@@ -3055,7 +3076,10 @@ export default function App() {
                                       <QrCode className="w-3 h-3" /> Subscribe
                                     </p>
                                     <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                                      Contact <a href="https://t.me/INDIAN4" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@INDIAN4</a> on Telegram to unlock all topper answers.
+                                      Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all topper answers.
+                                    </p>
+                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                      1 Year ₹899 · 2 Years ₹1299
                                     </p>
                                   </div>
                                   <button 
