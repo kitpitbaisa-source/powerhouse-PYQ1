@@ -9,6 +9,7 @@ import {
   Trophy, 
   Search, 
   RotateCcw, 
+  LogOut,
   Dice5, 
   ChevronDown, 
   ExternalLink,
@@ -25,30 +26,220 @@ import {
   Check,
   Sun,
   Moon,
+  Menu,
+  Crown,
+  Sparkles,
+  BookOpen,
   UserPlus,
+  RefreshCw,
+  IndianRupee,
   User,
+  Mail,
+  Phone,
   X,
   Database,
   Trash2,
   Pencil
 } from 'lucide-react';
-import { mcqData } from './questions.ts';
+import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
 const subjectColors: SubjectColorMap = {
-  "Polity": "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-purple-400/20",
-  "History": "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-500 ring-amber-500/20",
-  "Geography": "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-blue-400/20",
-  "Economy": "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-emerald-400/20",
-  "Environment": "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-green-400/20",
-  "Science & Technology": "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 ring-cyan-400/20",
-  "Art & Culture": "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400 ring-pink-400/20",
-  "Current Affairs": "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 ring-orange-400/20",
-  "International Relations": "bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 ring-sky-400/20",
-  "Default": "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-slate-400/20"
+  "Polity": "bg-gradient-to-r from-indigo-500 to-violet-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20",
+  "History": "bg-gradient-to-r from-blue-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-blue-500/20",
+  "Geography": "bg-gradient-to-r from-sky-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
+  "Economy": "bg-gradient-to-r from-cyan-500 to-sky-500 text-white ring-white/15 shadow-sm shadow-cyan-500/20",
+  "Environment": "bg-gradient-to-r from-teal-500 to-cyan-500 text-white ring-white/15 shadow-sm shadow-teal-500/20",
+  "Science & Technology": "bg-gradient-to-r from-cyan-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-cyan-500/20",
+  "Art & Culture": "bg-gradient-to-r from-violet-500 to-purple-500 text-white ring-white/15 shadow-sm shadow-violet-500/20",
+  "Current Affairs": "bg-gradient-to-r from-blue-500 to-cyan-500 text-white ring-white/15 shadow-sm shadow-blue-500/20",
+  "International Relations": "bg-gradient-to-r from-sky-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
+  "Default": "bg-gradient-to-r from-indigo-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20"
 };
+
+// ── Business / legal details (used across policy pages & PayU) ──
+const BUSINESS = {
+  brand: "UPSC PYQ Powerhouse",
+  owner: "Rajender Singh",
+  email: "raj48354835@gmail.com",
+  phone: "+91 76658 72210",
+  location: "Kota, Rajasthan, India",
+  telegramHelp: "https://telegram.me/UPSC_powerhouse_helpbot",
+  telegramChannel: "https://t.me/+7DfVmsKSI4FmNzg1",
+};
+
+// Razorpay checkout script loader (loads once, resolves true when ready).
+declare global {
+  interface Window { Razorpay?: any }
+}
+let razorpayScriptPromise: Promise<boolean> | null = null;
+function loadRazorpayScript(): Promise<boolean> {
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+  razorpayScriptPromise = new Promise<boolean>((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => { razorpayScriptPromise = null; resolve(false); };
+    document.body.appendChild(script);
+  });
+  return razorpayScriptPromise;
+}
+
+const LEGAL_TITLES: Record<string, string> = {
+  about: "About Us",
+  contact: "Contact Us",
+  privacy: "Privacy Policy",
+  terms: "Terms & Conditions",
+  refund: "Cancellation & Refund Policy",
+};
+
+function LegalPageContent({ page }: { page: 'about' | 'contact' | 'privacy' | 'terms' | 'refund' }) {
+  const h = "text-base font-bold text-slate-900 dark:text-white mt-5 mb-2";
+  const p = "text-sm leading-relaxed text-slate-600 dark:text-slate-300 mb-3";
+  const li = "text-sm leading-relaxed text-slate-600 dark:text-slate-300";
+  const updated = "Last updated: 18 July 2026";
+
+  if (page === 'about') {
+    return (
+      <div>
+        <p className={p}>{BUSINESS.brand} is an education and practice platform built for Civil Service aspirants. We help candidates prepare for UPSC CSE, State PCS, CAPF, CDS, NDA and similar examinations through previous-year questions (PYQs), curated solutions, topper copies and all-in-one study ebooks.</p>
+        <h3 className={h}>Our Mission</h3>
+        <p className={p}>To make high-quality, exam-focused practice material affordable and accessible to every aspirant, so preparation depends on effort — not on expensive coaching.</p>
+        <h3 className={h}>What We Offer</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Thousands of previous-year questions with detailed solutions.</li>
+          <li className={li}>Prelims, Mains, CSAT and English practice sections.</li>
+          <li className={li}>Topper answer copies and curated PowerHouse ebooks.</li>
+          <li className={li}>Regular content updates and a supportive Telegram community.</li>
+        </ul>
+        <h3 className={h}>Who Runs This</h3>
+        <p className={p}>This platform is owned and operated by {BUSINESS.owner}, based in {BUSINESS.location}. For any query, reach us at {BUSINESS.email} or {BUSINESS.phone}.</p>
+
+        <h3 className={h}>A Note from the Founder</h3>
+        <p className={p}>Every PYQ tells a story.</p>
+        <p className={p}>During my preparation, I realized that UPSC rarely asks questions in isolation—it often revisits ideas in new ways. The more PYQs I solved, the more the exam started to make sense.</p>
+        <p className={p}>That's why PowerHouse PYQ exists: to make quality PYQs simple, organized, and affordable, so every aspirant can spend less time searching and more time learning.</p>
+        <p className={p}>
+          — Rajendra<br />
+          <span className="text-xs text-slate-500 dark:text-slate-400">UPSC Interview Candidate | 105+ in CSE Prelims 2025 | CAPF (AC), CDS, NDA Qualified</span>
+        </p>
+        <p className={p}>Built with ❤️</p>
+        <p className={p}>Powered by my brother, a software engineer at Microsoft and an IIT Delhi alumnus, who brings the technology behind the platform while I bring the UPSC journey behind it.</p>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Built by aspirants, for aspirants.</p>
+
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'contact') {
+    return (
+      <div>
+        <p className={p}>We're happy to help with subscriptions, activation, content or any other question. The fastest way to reach us is Telegram, but you can also email or call.</p>
+        <h3 className={h}>Reach Us</h3>
+        <ul className="space-y-2 mb-3">
+          <li className={li}><strong>Owner:</strong> {BUSINESS.owner}</li>
+          <li className={li}><strong>Email:</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a></li>
+          <li className={li}><strong>Phone / WhatsApp:</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={`tel:${BUSINESS.phone.replace(/\s/g, '')}`}>{BUSINESS.phone}</a></li>
+          <li className={li}><strong>Address:</strong> {BUSINESS.location}</li>
+          <li className={li}><strong>Telegram (Support):</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={BUSINESS.telegramHelp} target="_blank" rel="noopener noreferrer">Help Bot</a></li>
+        </ul>
+        <h3 className={h}>Support Hours</h3>
+        <p className={p}>Monday to Saturday, 10:00 AM – 7:00 PM IST. We usually respond within 24 hours.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'privacy') {
+    return (
+      <div>
+        <p className={p}>This Privacy Policy explains how {BUSINESS.brand} ("we", "us") collects, uses and protects your information when you use our website and services.</p>
+        <h3 className={h}>Information We Collect</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Your email address, which you provide to log in and to activate a subscription.</li>
+          <li className={li}>Subscription and payment status (we store whether you are subscribed and the plan expiry date).</li>
+          <li className={li}>Basic login activity (timestamps) used to keep your account secure.</li>
+        </ul>
+        <h3 className={h}>Payments</h3>
+        <p className={p}>Online payments are processed by our payment partner, PayU. We do <strong>not</strong> collect or store your card, UPI or bank details on our servers — that information is handled directly and securely by PayU. We only receive the transaction status and a transaction reference.</p>
+        <h3 className={h}>How We Use Your Information</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>To create your account and grant access to purchased content.</li>
+          <li className={li}>To verify payments and activate/renew subscriptions.</li>
+          <li className={li}>To provide support and respond to your queries.</li>
+        </ul>
+        <h3 className={h}>Data Sharing</h3>
+        <p className={p}>We do not sell or rent your personal data. We share data only with service providers strictly necessary to run the service (e.g. our database host and PayU for payments), or when required by law.</p>
+        <h3 className={h}>Data Security & Retention</h3>
+        <p className={p}>We use reasonable technical measures to protect your data and retain it only as long as needed to provide the service or as required by law. You may request deletion of your account data by emailing {BUSINESS.email}.</p>
+        <h3 className={h}>Contact</h3>
+        <p className={p}>For any privacy request, contact {BUSINESS.email} or {BUSINESS.phone}.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'terms') {
+    return (
+      <div>
+        <p className={p}>By accessing or using {BUSINESS.brand}, you agree to these Terms & Conditions. Please read them carefully.</p>
+        <h3 className={h}>1. Service</h3>
+        <p className={p}>We provide access to previous-year questions, solutions, topper copies and study ebooks for exam preparation. Content is for personal, non-commercial study use only.</p>
+        <h3 className={h}>2. Accounts</h3>
+        <p className={p}>You are responsible for the email/account you use to access the service and for keeping your access secure. You must provide accurate information.</p>
+        <h3 className={h}>3. Subscriptions & Payments</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Paid plans grant access for a fixed duration (e.g. 1 year or 2 years) from the date of activation.</li>
+          <li className={li}>Prices are listed in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise.</li>
+          <li className={li}>Online payments are processed securely through PayU. Access is activated after the payment is confirmed.</li>
+        </ul>
+        <h3 className={h}>4. Acceptable Use</h3>
+        <p className={p}>You may not copy, redistribute, resell, publicly share or upload our content elsewhere. Sharing account access or ebooks with others is prohibited and may result in termination without refund.</p>
+        <h3 className={h}>5. Intellectual Property</h3>
+        <p className={p}>All content, branding and materials on the platform are owned by {BUSINESS.owner} or respective rights-holders and are protected by law.</p>
+        <h3 className={h}>6. Disclaimer</h3>
+        <p className={p}>We strive for accuracy but do not guarantee that content is error-free or that it will lead to any particular exam result. The service is provided on an "as is" basis.</p>
+        <h3 className={h}>7. Changes</h3>
+        <p className={p}>We may update these terms or the service from time to time. Continued use after changes means you accept the updated terms.</p>
+        <h3 className={h}>8. Contact</h3>
+        <p className={p}>Questions about these terms? Email {BUSINESS.email} or call {BUSINESS.phone}.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  // refund
+  return (
+    <div>
+      <p className={p}>This Cancellation & Refund Policy applies to subscriptions and ebooks purchased on {BUSINESS.brand}.</p>
+      <h3 className={h}>Nature of Products</h3>
+      <p className={p}>Our products are digital and delivered instantly (online access and downloadable study material). Because access is granted immediately upon successful payment, purchases are generally <strong>non-refundable</strong> once activated.</p>
+      <h3 className={h}>When You Are Eligible for a Refund</h3>
+      <ul className="list-disc pl-5 space-y-1.5 mb-3">
+        <li className={li}><strong>Duplicate payment:</strong> If you were charged more than once for the same order, the extra amount is fully refunded.</li>
+        <li className={li}><strong>Payment deducted but access not granted:</strong> If money is debited but your subscription is not activated within 48 hours, you are eligible for a full refund (or, at your choice, activation of access).</li>
+        <li className={li}><strong>Technical failure:</strong> If a verified technical fault on our side prevents you from accessing the purchased content and we are unable to resolve it, you may request a refund.</li>
+      </ul>
+      <h3 className={h}>Non-Refundable Cases</h3>
+      <ul className="list-disc pl-5 space-y-1.5 mb-3">
+        <li className={li}>Change of mind after the content/ebooks have been accessed or downloaded.</li>
+        <li className={li}>Partial use of the subscription period.</li>
+        <li className={li}>Violation of our Terms (e.g. sharing or redistributing content).</li>
+      </ul>
+      <h3 className={h}>Cancellation</h3>
+      <p className={p}>Our plans are one-time purchases for a fixed period and do <strong>not</strong> auto-renew, so there is no recurring billing to cancel. You may choose not to renew at the end of your term.</p>
+      <h3 className={h}>How to Request a Refund</h3>
+      <p className={p}>Email {BUSINESS.email} (or message us on Telegram) within <strong>7 days</strong> of the transaction with your registered email and the payment reference. Approved refunds are processed back to the original payment method via PayU within <strong>5–7 business days</strong>.</p>
+      <h3 className={h}>Contact</h3>
+      <p className={p}>{BUSINESS.owner} — {BUSINESS.email} — {BUSINESS.phone} — {BUSINESS.location}.</p>
+      <p className="text-xs text-slate-400 mt-6">{updated}</p>
+    </div>
+  );
+}
 
 interface QuestionCardProps {
   question: Question;
@@ -60,6 +251,7 @@ interface QuestionCardProps {
   isLocked?: boolean;
   userEmail?: string | null;
   onCheckStatus?: () => void;
+  onOpenPremium?: () => void;
   onSubjectClick?: (subject: string) => void;
   onTopicClick?: (topic: string) => void;
   onExamClick?: (exam: string) => void;
@@ -126,6 +318,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   isLocked,
   userEmail,
   onCheckStatus,
+  onOpenPremium,
   onSubjectClick,
   onTopicClick,
   onExamClick,
@@ -156,21 +349,29 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           
           <div className="w-full space-y-2">
             <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
-              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
-                <QrCode className="w-3 h-3" /> Subscribe
+              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1.5 font-bold uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> What you unlock
               </p>
-              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all {question.year} questions.
-              </p>
+              <ul className="space-y-1">
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All PYQs with detailed solutions
+                </li>
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Topper copies &amp; all-in-one ebooks
+                </li>
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Advanced filters, search &amp; bookmarks
+                </li>
+              </ul>
               <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                 1 Year ₹899 · 2 Years ₹1299
               </p>
             </div>
             <button 
-              onClick={onCheckStatus}
+              onClick={onOpenPremium}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
             >
-              <RotateCcw className="w-3 h-3" /> Refresh Status
+              <Crown className="w-3 h-3" /> View Premium Plans
             </button>
           </div>
         </div>
@@ -179,7 +380,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="opacity-20 pointer-events-none filter blur-[1px]">
           <div className="flex justify-between items-start mb-3 gap-2">
             <div className="flex gap-1.5 items-center">
-              <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
                 {question.exam}
               </span>
             </div>
@@ -202,26 +403,29 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div 
-      className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full group"
+      className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-4 sm:p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group animate-fadeInUp overflow-hidden"
+      style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, animationFillMode: 'both' }}
     >
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
           <span 
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
           <span 
             onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
           >
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             {question.subject}
           </span>
           {question.topic && (
             <span 
               onClick={() => onTopicClick?.(question.topic!)}
-              className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 ring-1 ring-inset ring-blue-400/20 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors"
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
               {question.topic}
             </span>
@@ -229,14 +433,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
         <span 
           onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         >
           <Calendar className="w-3 h-3 mr-1" />{question.year}
         </span>
       </div>
       
-      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-3 leading-[20px] whitespace-pre-wrap px-1">
-        <span className="text-blue-600 dark:text-blue-400 mr-1.5 font-normal">Q{question.id}.</span> 
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[21px] whitespace-pre-wrap px-1">
+        <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
       
@@ -252,10 +456,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               disabled={hasAttempted}
               onClick={() => onOptionClick(opt)}
               className={cn(
-                "w-full text-left py-2.5 px-4 border rounded-lg text-[13px] font-normal transition-all flex justify-between items-center group/btn leading-[19px]",
-                !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
-                hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400",
-                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-100/50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400",
+                "w-full text-left py-2.5 px-4 border rounded-xl text-[13px] font-medium transition-all flex justify-between items-center group/btn leading-[19px]",
+                !hasAttempted && "bg-slate-50/80 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600/70 text-slate-700 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-600/70 hover:border-blue-300 dark:hover:border-blue-500/60 hover:shadow-sm cursor-pointer active:scale-[0.98]",
+                hasAttempted && isCorrectAnswer && "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10",
+                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400 shadow-sm shadow-red-500/10",
                 hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
             >
@@ -272,7 +476,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className={cn("flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700/50 mt-auto", isRevealed && "mb-3")}>
         <button 
           onClick={onToggleRevealed} 
-          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
+          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-white bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-600 dark:hover:bg-blue-600 px-3 py-1.5 rounded-full flex items-center focus:outline-none transition-colors ring-1 ring-blue-500/20"
         >
           <div
             className={cn("mr-1.5 transition-transform duration-200", isRevealed ? "rotate-180" : "rotate-0")}
@@ -287,22 +491,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           target="_blank" 
           rel="noopener noreferrer" 
           title="Search Google for this question" 
-          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white flex items-center transition-colors px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
+          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-white flex items-center transition-colors px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
         >
           <ExternalLink className="w-3 h-3 mr-1.5" /> Search
         </a>
       </div>
       
       {isRevealed && (
-        <div className="pt-2 px-1">
-          <p className="text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5 leading-[18px]">
-            Answer: <span className="text-emerald-600 dark:text-emerald-400 font-normal">{question.answer}</span>
-          </p>
+        <div className="pt-3 px-1 animate-fadeInUp">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-full ring-1 ring-emerald-500/20 mb-2.5">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Answer: {question.answer}
+          </div>
           {question.explanation && (
-            <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-3 rounded-r-lg shadow-sm">
-              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px] italic">
-                <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1.5 not-italic">Explanation</span>
-                <HighlightText text={question.explanation} query={searchQuery} />
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-slate-800/40 border border-indigo-100 dark:border-indigo-500/20 p-3.5 rounded-xl shadow-sm">
+              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px]">
+                <span className="inline-flex items-center gap-1 font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider mb-1.5"><Sparkles className="w-3 h-3" /> Explanation</span>
+                <span className="block">
+                  <HighlightText text={question.explanation} query={searchQuery} />
+                </span>
               </p>
             </div>
           )}
@@ -401,48 +607,50 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   const hasModelAnswer = !!answer.trim();
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full">
+    <div className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
           <span
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
           <span
             onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
           >
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             {question.subject}
           </span>
           {question.paper && (
-            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800">
+            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
               {question.paper}
             </span>
           )}
           {question.topic && (
-            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
               {question.topic}
             </span>
           )}
         </div>
         <span
           onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         >
           <Calendar className="w-3 h-3 mr-1" />{question.year}
         </span>
       </div>
 
-      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-4 leading-[20px] whitespace-pre-wrap flex-grow">
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[21px] whitespace-pre-wrap flex-grow">
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
 
       {question.keywords && question.keywords.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-1.5 mb-3">
           {question.keywords.map((kw, i) => (
-            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/15 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-700/40 font-medium">
+            <span key={i} className="text-[9.5px] px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full ring-1 ring-inset ring-blue-500/20 font-semibold">
               {kw}
             </span>
           ))}
@@ -678,16 +886,22 @@ export default function App() {
     localStorage.setItem('visibleCount', String(visibleCount));
   }, [visibleCount]);
 
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+  // Slim the header once the page is scrolled
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
-  // Admin configuration
-  const ADMIN_EMAILS = ['kitpitbaisa@gmail.com', 'admin@example.com'];
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('user_session');
@@ -727,8 +941,8 @@ export default function App() {
       }
     } catch (error) {
       console.warn("Server API failed, falling back to local data:", error);
-      console.log(`Loaded ${mcqData.length} questions from local fallback`);
-      setQuestions(mcqData as Question[]);
+      console.log(`Loaded ${fallbackQuestions.length} questions from local fallback`);
+      setQuestions(fallbackQuestions as Question[]);
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -795,17 +1009,110 @@ export default function App() {
     }
   };
 
+  // Fast initial paint: fetch the top 30 prelims (display order) from the backend.
+  const fetchInitialQuestions = async () => {
+    try {
+      const response = await fetch('/api/questions?limit=30');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setQuestions(data as Question[]);
+        console.log(`Showing ${data.length} prelims from backend (top 30)`);
+        return;
+      }
+      throw new Error("Empty data from API");
+    } catch (error) {
+      console.warn("Initial questions fetch failed, using local fallback:", error);
+      setQuestions(fallbackQuestions.slice(0, 30) as Question[]);
+    }
+  };
+
+  const loadRazorpay = () =>
+    new Promise<boolean>((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const initiatePayment = async (plan: '1yr' | '2yr' | 'ebooks') => {
+    if (!userEmail) {
+      setPendingPlan(plan);
+      setShowPremiumModal(false);
+      setShowLoginModal(true);
+      return;
+    }
+    try {
+      const ok = await loadRazorpay();
+      if (!ok) {
+        alert("Couldn't load the payment gateway. Check your connection and try again.");
+        return;
+      }
+      const orderRes = await fetch("/api/payment/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, plan }),
+      });
+      const order = await orderRes.json();
+      if (!orderRes.ok || !order.orderId) {
+        alert(order.error || "Could not start payment. Please try again.");
+        return;
+      }
+      const rzp = new (window as any).Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "UPSC PYQ Powerhouse",
+        description: plan === 'ebooks' ? "PowerHouse Ebooks - All-in-One" : plan === '2yr' ? "Premium Access - 2 Years" : "Premium Access - 1 Year",
+        prefill: { email: userEmail },
+        theme: { color: "#4f46e5" },
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch("/api/payment/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...response, email: userEmail, plan }),
+            });
+            const result = await verifyRes.json();
+            if (verifyRes.ok && result.success) {
+              setShowPremiumModal(false);
+              if (plan === 'ebooks') {
+                alert("✅ Payment successful! Redirecting you to the PowerHouse Ebooks Telegram channel...");
+                window.open("https://t.me/+7DfVmsKSI4FmNzg1", "_blank", "noopener,noreferrer");
+              } else {
+                await checkUserStatus(userEmail);
+                alert("✅ Payment successful! Your premium access is now active.");
+              }
+            } else {
+              alert("Payment received but verification failed. Please contact support with Payment ID: " + response.razorpay_payment_id);
+            }
+          } catch (e) {
+            alert("Could not verify the payment. If money was deducted, please contact support.");
+          }
+        },
+      });
+      rzp.on("payment.failed", (resp: any) => {
+        alert("Payment failed: " + (resp?.error?.description || "please try again."));
+      });
+      rzp.open();
+    } catch (e) {
+      alert("Payment error. Please try again.");
+    }
+  };
+
   useEffect(() => {
-    // Show 100 prelims instantly from local data
-    const initialData = (mcqData as Question[]).slice(0, 100);
-    setQuestions(initialData);
-    console.log(`Showing ${initialData.length} prelims instantly from local data`);
-    
+    // Keep the loader running until the first batch of prelims has loaded
+    setIsLoadingQuestions(true);
+    // Load the first batch of prelims from the backend (falls back to local data)
+    fetchInitialQuestions().finally(() => setIsLoadingQuestions(false));
+
     // Restore previously saved scroll position
     const savedVisibleCount = localStorage.getItem('visibleCount');
     const initialCount = savedVisibleCount ? parseInt(savedVisibleCount) : 100;
     setVisibleCount(initialCount);
-    setIsLoadingQuestions(false);
 
     // Scroll to saved position after a brief delay to let DOM render
     const scrollTimer = setTimeout(() => {
@@ -1115,6 +1422,60 @@ export default function App() {
   }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
 
   // Check subscription and admin status
+  // Admin API key (secret) — stored only in this browser, sent with admin requests.
+  const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('admin_api_key') || "");
+  const saveAdminKey = (key: string) => {
+    const k = key.trim();
+    setAdminKey(k);
+    if (k) localStorage.setItem('admin_api_key', k);
+    else localStorage.removeItem('admin_api_key');
+  };
+  // Builds request headers with the admin key (read fresh from storage to avoid stale values).
+  const adminHeaders = (base: Record<string, string> = {}): Record<string, string> => {
+    const k = localStorage.getItem('admin_api_key') || "";
+    return k ? { ...base, Authorization: `Bearer ${k}` } : base;
+  };
+
+  const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
+  const [priceForm, setPriceForm] = useState<{ '1yr': string; '2yr': string; 'ebooks': string }>({ '1yr': '', '2yr': '', 'ebooks': '' });
+  const [savingPrices, setSavingPrices] = useState(false);
+  useEffect(() => {
+    if (Object.keys(planPrices).length) {
+      setPriceForm({
+        '1yr': String(Math.round((planPrices['1yr'] || 89900) / 100)),
+        '2yr': String(Math.round((planPrices['2yr'] || 129900) / 100)),
+        'ebooks': String(Math.round((planPrices['ebooks'] || 94900) / 100)),
+      });
+    }
+  }, [planPrices]);
+  const savePrices = async () => {
+    setSavingPrices(true);
+    try {
+      const res = await fetch('/api/admin/prices', {
+        method: 'POST',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ prices: {
+          '1yr': Number(priceForm['1yr']),
+          '2yr': Number(priceForm['2yr']),
+          'ebooks': Number(priceForm['ebooks']),
+        } }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminMessage({ text: "✓ Subscription prices updated.", type: "success" });
+        const pr = await fetch('/api/plans');
+        if (pr.ok) setPlanPrices(await pr.json());
+      } else {
+        throw new Error(data.error || "Failed to update prices");
+      }
+    } catch (e: any) {
+      setAdminMessage({ text: `Failed to update prices: ${e.message}`, type: "error" });
+    } finally {
+      setSavingPrices(false);
+      setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
+    }
+  };
+
   const checkUserStatus = async (email: string) => {
     try {
       const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
@@ -1133,16 +1494,38 @@ export default function App() {
 
       const data = await response.json();
       setIsSubscribed(data.status === 'subscribed' || data.status === 'admin');
-      const adminStatus = data.status === 'admin' || ADMIN_EMAILS.includes(email.toLowerCase().trim());
-      setIsAdmin(adminStatus);
+      // Admin status is decided solely by the backend role; never trust the client.
+      setIsAdmin(data.status === 'admin');
     } catch (error) {
       console.error("Failed to check status:", error);
       setIsSubscribed(false);
-      setIsAdmin(ADMIN_EMAILS.includes(email.toLowerCase().trim()));
+      setIsAdmin(false);
     }
   };
 
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
+  const [showFounderModal, setShowFounderModal] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
+
+  useEffect(() => {
+    fetch('/api/plans')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && typeof d === 'object') setPlanPrices(d); })
+      .catch(() => {});
+  }, []);
+
+  // After a not-logged-in user logs in, resume the payment they intended.
+  useEffect(() => {
+    if (userEmail && pendingPlan) {
+      const plan = pendingPlan;
+      setPendingPlan(null);
+      setShowLoginModal(false);
+      initiatePayment(plan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail, pendingPlan]);
   const [loginEmailInput, setLoginEmailInput] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
@@ -1163,7 +1546,7 @@ export default function App() {
     setExpandedUserHistory(email);
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`/api/admin/login-history/${encodeURIComponent(email)}`);
+      const response = await fetch(`/api/admin/login-history/${encodeURIComponent(email)}`, { headers: adminHeaders() });
       if (response.ok) {
         const data = await response.json();
         setLoginHistory(data);
@@ -1176,7 +1559,7 @@ export default function App() {
 
   const fetchActiveSessions = async () => {
     try {
-      const response = await fetch('/api/admin/active-sessions');
+      const response = await fetch('/api/admin/active-sessions', { headers: adminHeaders() });
       if (response.ok) {
         const data = await response.json();
         const map: Record<string, number> = {};
@@ -1191,7 +1574,7 @@ export default function App() {
     setIsLoadingUsers(true);
     try {
       console.log("Fetching users from API...");
-      const response = await fetch('/api/admin/users');
+      const response = await fetch('/api/admin/users', { headers: adminHeaders() });
       
       if (!response.ok) {
         throw new Error(`API fetch failed with status ${response.status}`);
@@ -1232,7 +1615,7 @@ export default function App() {
       console.log(`Updating user ${userEmailToUpdate} to ${status}...`);
       const response = await fetch('/api/admin/update-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ email: userEmailToUpdate, status })
       });
 
@@ -1257,7 +1640,7 @@ export default function App() {
     if (!window.confirm(`Are you sure you want to deactivate "${email}"? This user will no longer have access.`)) return;
     const userEmailToDelete = email.toLowerCase().trim();
     try {
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE' });
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE', headers: adminHeaders() });
       if (response.ok) {
         setAdminMessage({ text: `User ${userEmailToDelete} deactivated`, type: "success" });
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
@@ -1565,7 +1948,7 @@ export default function App() {
   const handleUpdateQuestion = async (id: number, year: string, answer: string, explanation: string) => {
     const res = await fetch("/api/admin/update-question", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id, answer, explanation }),
     });
     if (!res.ok) {
@@ -1687,16 +2070,22 @@ export default function App() {
   return (
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
-        <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+        <header className={cn(
+          "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/70 dark:border-slate-800/70 sticky top-0 z-50 transition-all duration-300",
+          isScrolled ? "shadow-lg shadow-slate-900/5 dark:shadow-black/20" : "shadow-sm"
+        )}>
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
-          <div className="flex flex-wrap justify-between items-center py-2.5 gap-y-2">
+          <div className={cn(
+            "flex flex-wrap items-center gap-y-2 transition-all duration-300",
+            isScrolled ? "py-1.5" : "py-2.5"
+          )}>
             <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8 flex-shrink-0">
+              <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white p-1.5 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center w-8 h-8 flex-shrink-0 ring-1 ring-white/20">
                 <Landmark className="w-4 h-4" />
               </div>
-              <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
-              <h1 className="text-sm font-bold text-slate-900 dark:text-white leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
+              <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
+              <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
 
               {/* Compact tab pills inline */}
               <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
@@ -1714,7 +2103,7 @@ export default function App() {
                     className={cn(
                       "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1",
                       activeTab === tab.id
-                        ? "bg-blue-600 text-white shadow-sm"
+                        ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     )}
                   >
@@ -1734,6 +2123,7 @@ export default function App() {
               </div>
             </div>
 
+            <div className="flex items-center gap-2 ml-auto order-none">
             {/* Score + Random controls - inline on wide, wraps on narrow */}
             {activeTab === 'prelims' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
@@ -1743,10 +2133,29 @@ export default function App() {
                     ? "bg-red-900/30 text-red-400 border-red-800/50"
                     : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
                 )}>
-                  <Trophy className={cn(
-                    "w-4 h-4 mr-2",
-                    score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
-                  )} /> 
+                  {(() => {
+                    const pct = score.total > 0 ? score.correct / score.total : 0;
+                    const low = score.total > 0 && pct < 0.5;
+                    const C = 2 * Math.PI * 13;
+                    return (
+                      <div className="relative w-8 h-8 mr-2 flex-shrink-0">
+                        <svg className="w-8 h-8 -rotate-90" viewBox="0 0 32 32">
+                          <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200 dark:stroke-slate-700" />
+                          <circle
+                            cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
+                            className={low ? "stroke-red-500" : "stroke-emerald-500"}
+                            style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }}
+                          />
+                        </svg>
+                        <span className={cn(
+                          "absolute inset-0 flex items-center justify-center text-[9px] font-bold",
+                          low ? "text-red-500" : "text-emerald-500"
+                        )}>
+                          {score.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-3 h-3" />}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <span>{score.correct}</span>
                   <span className={cn(
                     "font-medium mx-1",
@@ -1754,20 +2163,10 @@ export default function App() {
                   )}>/</span>
                   <span>{score.total}</span>
                   {score.total > 0 && (
-                    <span className={cn(
-                      "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
-                      (score.correct / score.total) < 0.5 
-                        ? "bg-red-500/20 text-red-400" 
-                        : "bg-emerald-500/20 text-emerald-400"
-                    )}>
-                      {Math.round((score.correct / score.total) * 100)}%
-                    </span>
-                  )}
-                  {score.total > 0 && (
                     <button 
                       onClick={resetQuiz}
                       title="Reset Score"
-                      className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      className="ml-2 p-1 rounded-md text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       <RotateCcw className="w-3 h-3" />
                     </button>
@@ -1787,7 +2186,7 @@ export default function App() {
                   <button
                     onClick={() => startRandomPractice(randomSelectLimit)}
                     title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -1811,7 +2210,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -1844,7 +2243,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startCSATRandomPractice(csatRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -1877,7 +2276,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startEnglishRandomPractice(englishRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -1896,85 +2295,142 @@ export default function App() {
               </div>
             )}
             
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                {userEmail && (
-            <div className="relative" ref={userMenuRef}>
-                 <button 
-                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1"
-                   title="User Info"
-                 >
-                   <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">
-                     {userEmail.charAt(0).toUpperCase()}
-                   </div>
-                   <span className="text-[10px] font-bold text-slate-700 dark:text-white hidden sm:inline">Me</span>
-                 </button>
-                   
-                 {/* User Menu Dropdown */}
-                 <div 
-                   className={cn(
-                     "absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 p-3 z-50 transition-all duration-200",
-                     isUserMenuOpen 
-                       ? "opacity-100 visible pointer-events-auto" 
-                       : "opacity-0 invisible pointer-events-none"
-                   )}
-                 >
-                   <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Logged in as</p>
-                   <p className="text-[11px] font-bold text-slate-700 dark:text-white break-all mb-2">{userEmail}</p>
-                   {isAdmin && (
-                     <button 
-                       onClick={() => { setIsAdminView(!isAdminView); setIsUserMenuOpen(false); }}
-                       className="w-full text-[9px] font-extrabold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tighter py-1 hover:underline"
-                     >
-                       {isAdminView ? "Exit Admin" : "Admin Panel"}
-                     </button>
-                   )}
-                 </div>
-               </div>
-             )}
-              
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 group"
-                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              >
-                {isDarkMode ? (
-                  <Sun className="w-4 h-4 group-hover:rotate-45 transition-transform" />
-                ) : (
-                  <Moon className="w-4 h-4 group-hover:-rotate-12 transition-transform" />
-                )}
-              </button>
-
-              <div className="flex items-center gap-2">
-                <a 
-                  href="https://t.me/upsc_pyq_powerhouse" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 p-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center justify-center shadow-amber-500/20 hover:scale-[1.02] hidden sm:flex"
-                  title="Join Telegram"
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 order-last">
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className={cn(
+                    "p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center",
+                    isUserMenuOpen
+                      ? "bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                      : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  )}
+                  title="Menu"
+                  aria-label="Open menu"
+                  aria-expanded={isUserMenuOpen}
                 >
-                  <Send className="w-4 h-4" />
-                </a>
+                  {isUserMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
 
-                {!userEmail ? (
-                  <button
-                    onClick={() => setShowLoginModal(true)}
-                    className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800/50 flex items-center gap-2 px-3"
-                  >
-                    <User className="w-4 h-4" />
-                    <span className="text-xs font-bold hidden sm:inline">Login</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleLogout}
-                    className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors border border-rose-200 dark:border-rose-800/50 flex items-center gap-2 px-3"
-                    title="Logout"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span className="text-xs font-bold hidden sm:inline">Logout</span>
-                  </button>
+                {/* Mobile backdrop */}
+                {isUserMenuOpen && (
+                  <div
+                    className="fixed inset-0 z-[90] bg-slate-900/40 backdrop-blur-[2px] sm:hidden"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  />
                 )}
+
+                {/* Unified Menu Dropdown */}
+                <div
+                  className={cn(
+                    "absolute right-0 top-full mt-2 w-60 max-w-[calc(100vw-1.5rem)] origin-top-right z-[100]",
+                    "rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-slate-900/10 dark:shadow-black/40 ring-1 ring-black/5 p-2 transition-all duration-200",
+                    isUserMenuOpen
+                      ? "opacity-100 visible pointer-events-auto scale-100 translate-y-0"
+                      : "opacity-0 invisible pointer-events-none scale-95 -translate-y-1"
+                  )}
+                >
+                  {userEmail && (
+                    <div className="flex items-center gap-2.5 px-2 py-2 mb-1">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm shrink-0">
+                        {userEmail.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Signed in</p>
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{userEmail}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Go Premium */}
+                  {!isSubscribed && (
+                    <button
+                      onClick={() => { setShowPremiumModal(true); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 mb-1 rounded-xl text-sm font-bold text-amber-900 dark:text-amber-100 bg-gradient-to-r from-amber-300 to-yellow-400 dark:from-amber-500/30 dark:to-yellow-500/20 hover:from-amber-400 hover:to-yellow-500 transition-colors shadow-sm"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-white/40 dark:bg-white/10 flex items-center justify-center shrink-0">
+                        <Crown className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+                      </span>
+                      <span>Go Premium</span>
+                    </button>
+                  )}
+
+                  {/* Appearance */}
+                  <button
+                    onClick={toggleTheme}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+                      {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                    </span>
+                    <span>{isDarkMode ? "Light mode" : "Dark mode"}</span>
+                  </button>
+
+                  {/* Admin / Login section */}
+
+                  {/* Admin Panel */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => { setIsAdminView(!isAdminView); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <KeyRound className="w-4 h-4 text-blue-500" />
+                      </span>
+                      <span>{isAdminView ? "Exit admin" : "Admin panel"}</span>
+                    </button>
+                  )}
+
+                  {/* Telegram */}
+                  <a
+                    href="https://t.me/upsc_pyq_powerhouse"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
+                      <Send className="w-4 h-4 text-sky-500" />
+                    </span>
+                    <span>Join Telegram</span>
+                  </a>
+
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
+
+                  {/* Login / Logout */}
+                  {!userEmail ? (
+                    <button
+                      onClick={() => { setShowLoginModal(true); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <User className="w-4 h-4 text-blue-500" />
+                      </span>
+                      <span>Login</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { handleLogout(); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center shrink-0">
+                        <LogOut className="w-4 h-4 text-rose-500" />
+                      </span>
+                      <span>Logout</span>
+                    </button>
+                  )}
+
+                  {/* About the Founder */}
+                  <button
+                    onClick={() => { setShowFounderModal(true); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-xs shrink-0">R</span>
+                    <span>About the Founder</span>
+                  </button>
+                </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1982,12 +2438,47 @@ export default function App() {
 
       <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
         {isAppLoading ? (
-          <div className="w-full flex flex-col items-center justify-center py-20 gap-4">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-blue-100 dark:border-blue-900/30 rounded-full animate-pulse"></div>
-              <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-blue-600 rounded-full animate-spin"></div>
+          <div className="w-full flex flex-col md:flex-row items-start gap-6 animate-fadeIn">
+            {/* Filter sidebar skeleton */}
+            <aside className="w-full md:w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="skeleton h-4 w-24"></div>
+                <div className="skeleton h-6 w-16 rounded-lg"></div>
+              </div>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="skeleton h-3 w-20"></div>
+                  <div className="skeleton h-9 w-full rounded-lg"></div>
+                </div>
+              ))}
+            </aside>
+            {/* Question card grid skeleton */}
+            <div className="flex-grow w-full grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col gap-3 animate-fadeInUp"
+                  style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'both' }}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex gap-1.5">
+                      <div className="skeleton h-4 w-14 rounded-md"></div>
+                      <div className="skeleton h-4 w-20 rounded-md"></div>
+                    </div>
+                    <div className="skeleton h-4 w-12 rounded-md"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="skeleton h-3.5 w-full"></div>
+                    <div className="skeleton h-3.5 w-5/6"></div>
+                  </div>
+                  <div className="space-y-2 mt-1">
+                    {[...Array(4)].map((_, j) => (
+                      <div key={j} className="skeleton h-9 w-full rounded-lg"></div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-            <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Loading Questions from Database...</p>
           </div>
         ) : isAdmin && isAdminView ? (
           <div className="w-full space-y-8">
@@ -2000,43 +2491,41 @@ export default function App() {
                 onClick={() => setIsAdminView(false)}
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold"
               >
-                Back to App
-              </button>
-            </div>
-
-            {/* Refresh Questions Cache Button */}
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Questions Cache</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
-              </div>
-              <button 
-                onClick={async () => {
-                  try {
-                    setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
-                    const res = await fetch('/api/admin/refresh-questions', { method: 'POST' });
-                    const data = await res.json();
-                    if (res.ok) {
-                      setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
-                      fetchQuestions();
-                      fetchMainsQuestions();
-                    } else {
-                      throw new Error(data.error);
-                    }
-                  } catch (err: any) {
-                    setAdminMessage({ text: `Failed to refresh: ${err.message}`, type: "error" });
-                  }
-                  setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
-              >
-                🔄 Refresh Questions
+                Back
               </button>
             </div>
 
             <div className="grid md:grid-cols-3 gap-8">
+              {/* Left column: Add User + admin tools */}
+              <div className="md:col-span-1 space-y-8">
+              {/* Admin Key — required to perform admin actions */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-blue-500" /> Admin Key
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                  {adminKey
+                    ? "Key saved in this browser. Admin actions are unlocked."
+                    : "Enter your admin key to unlock admin actions. Stored only in this browser."}
+                </p>
+                <input
+                  type="password"
+                  placeholder="Paste admin key"
+                  defaultValue={adminKey}
+                  onChange={(e) => saveAdminKey(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {adminKey && (
+                  <button
+                    onClick={() => saveAdminKey("")}
+                    className="mt-3 w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-bold transition-all"
+                  >
+                    Clear Key
+                  </button>
+                )}
+              </div>
               {/* Add New User */}
-              <div className="md:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
                 </h3>
@@ -2076,6 +2565,73 @@ export default function App() {
                     Add/Update User
                   </button>
                 </form>
+              </div>
+
+              {/* Questions Cache */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-blue-500" /> Questions Cache
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
+                      const res = await fetch('/api/admin/refresh-questions', { method: 'POST', headers: adminHeaders() });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
+                        fetchQuestions();
+                        fetchMainsQuestions();
+                      } else {
+                        throw new Error(data.error);
+                      }
+                    } catch (err: any) {
+                      setAdminMessage({ text: `Failed to refresh: ${err.message}`, type: "error" });
+                    }
+                    setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                >
+                  Refresh Questions
+                </button>
+              </div>
+
+              {/* Subscription Prices — edit live, saved to the database */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <IndianRupee className="w-5 h-5 text-blue-500" /> Subscription Prices
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Set the price (in ₹) per plan. Saved instantly — no redeploy. Razorpay charges this exact amount.</p>
+                <div className="space-y-3">
+                  {([
+                    { key: '1yr', label: '1 Year Plan' },
+                    { key: '2yr', label: '2 Years Plan' },
+                    { key: 'ebooks', label: 'Ebooks Plan' },
+                  ] as const).map(pl => (
+                    <div key={pl.key}>
+                      <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">{pl.label}</label>
+                      <div className="flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                        <span className="pl-3 text-slate-400 text-sm font-bold">₹</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={priceForm[pl.key]}
+                          onChange={(e) => setPriceForm(prev => ({ ...prev, [pl.key]: e.target.value }))}
+                          className="w-full px-2 py-2 text-sm bg-transparent outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={savePrices}
+                    disabled={savingPrices}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                  >
+                    {savingPrices ? "Saving..." : "Save Prices"}
+                  </button>
+                </div>
+              </div>
               </div>
 
               {/* User List */}
@@ -2225,14 +2781,14 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+          <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                 <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
               </h2>
               <button 
                 onClick={resetFilters} 
-                className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
               >
                 Reset
               </button>
@@ -2363,7 +2919,7 @@ export default function App() {
                         onToggleRevealed={() => toggleAnswer(q.id)}
                         isLocked={isLocked}
                         userEmail={userEmail}
-                        onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                        onOpenPremium={() => setShowPremiumModal(true)}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
                         onUpdateQuestion={handleUpdateQuestion}
@@ -2405,7 +2961,7 @@ export default function App() {
                     <div className="bg-indigo-600 p-3 rounded-full mb-4 shadow-lg group-hover:scale-110 transition-transform">
                       <Lock className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Unlock {mcqData.length}+ Questions</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Unlock 9500+ Questions</h3>
                     <p className="text-slate-600 dark:text-slate-300 text-xs mb-6 max-w-[250px]">
                       You're viewing the free preview. Get full access to all subjects, 2026 predictions, and future updates by subscribing.
                     </p>
@@ -2427,9 +2983,13 @@ export default function App() {
                             <p className="text-lg font-extrabold text-slate-900 dark:text-white">₹1299</p>
                           </div>
                         </div>
+                        <button
+                          onClick={() => setShowPremiumModal(true)}
+                          className="mt-3 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-2.5 rounded-lg text-xs transition-all shadow-md flex items-center justify-center gap-2 active:scale-[0.98]"
+                        >
+                          <Crown className="w-4 h-4 text-amber-300" /> View Premium Plans
+                        </button>
                       </div>
-
-                      {/* Subscription Info */}
                       <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
                         <div className="flex items-center gap-2 mb-3">
                           <QrCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -2491,14 +3051,14 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
                   </h2>
                   <button
                     onClick={resetMainsFilters}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
                     Reset
                   </button>
@@ -2651,7 +3211,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -2664,7 +3224,7 @@ export default function App() {
                       setCSATVisibleCount(30);
                       setCSATRandomMode(false);
                     }}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
                     Reset
                   </button>
@@ -2745,7 +3305,7 @@ export default function App() {
                           isLocked={isLocked}
                           userEmail={userEmail}
                           searchQuery={csatSearchQuery}
-                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onOpenPremium={() => setShowPremiumModal(true)}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -2783,7 +3343,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -2797,7 +3357,7 @@ export default function App() {
                       setEnglishVisibleCount(30);
                       setEnglishRandomMode(false);
                     }}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
                     Reset
                   </button>
@@ -2893,7 +3453,7 @@ export default function App() {
                           isLocked={isLocked}
                           userEmail={userEmail}
                           searchQuery={englishSearchQuery}
-                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onOpenPremium={() => setShowPremiumModal(true)}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -2947,12 +3507,12 @@ export default function App() {
               <div className="flex flex-col lg:flex-row gap-6">
                 {/* Filters sidebar */}
                 <div className="lg:w-64 flex-shrink-0">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm sticky top-4">
+                  <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl border border-slate-200/70 dark:border-slate-700/70 p-4 shadow-sm sticky top-4">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Filters</h3>
                       <button
                         onClick={() => { setToppersYearFilter("All"); setToppersTopperFilter("All"); setToppersSubjectFilter("All"); setToppersPaperFilter("All"); setToppersSearchQuery(""); }}
-                        className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold"
+                        className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                       >Reset</button>
                     </div>
 
@@ -3022,11 +3582,11 @@ export default function App() {
                       <div className="p-4 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex flex-wrap gap-1.5">
-                            <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-semibold">{q.year}</span>
-                            <span className="text-[10px] px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-semibold">{q.exam}</span>
-                            {q.paper && <span className="text-[10px] px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded font-semibold">{q.paper}</span>}
-                            <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-semibold">{q.subject}</span>
-                            {q.topic && <span className="text-[10px] px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-semibold">{q.topic}</span>}
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold"><Calendar className="w-3 h-3" />{q.year}</span>
+                            <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.exam}</span>
+                            {q.paper && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.paper}</span>}
+                            <span className="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-300/90 rounded-full ring-1 ring-inset ring-indigo-400/15 font-semibold tracking-wide"><span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />{q.subject}</span>
+                            {q.topic && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.topic}</span>}
                           </div>
                           <div className="flex gap-1.5">
                             {q.marks && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.marks} marks</span>}
@@ -3072,21 +3632,29 @@ export default function App() {
                                 </p>
                                 <div className="w-full max-w-xs space-y-2">
                                   <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
-                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
-                                      <QrCode className="w-3 h-3" /> Subscribe
+                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1.5 font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <Sparkles className="w-3 h-3" /> What you unlock
                                     </p>
-                                    <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                                      Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all topper answers.
-                                    </p>
+                                    <ul className="space-y-1">
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All topper copies with model answers
+                                      </li>
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Every PYQ with detailed solutions
+                                      </li>
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All-in-one ebooks &amp; advanced search
+                                      </li>
+                                    </ul>
                                     <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                                       1 Year ₹899 · 2 Years ₹1299
                                     </p>
                                   </div>
                                   <button 
-                                    onClick={() => userEmail && checkUserStatus(userEmail)}
+                                    onClick={() => setShowPremiumModal(true)}
                                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
                                   >
-                                    <RotateCcw className="w-3 h-3" /> Refresh Status
+                                    <Crown className="w-3 h-3" /> View Premium Plans
                                   </button>
                                 </div>
                               </div>
@@ -3113,67 +3681,341 @@ export default function App() {
       </main>
 
       <footer className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 py-6 mt-auto transition-colors duration-300">
-        <div className="max-w-[1400px] mx-auto px-4 text-center flex flex-col sm:flex-row justify-between items-center gap-2">
-          <p className="text-xs text-slate-500 font-medium">&copy; 2026 UPSC PYQ Powerhouse. Education & Practice Platform.</p>
-          <p className="text-xs text-slate-500 font-medium">Built for Civil Service Aspirants.</p>
+        <div className="max-w-[1400px] mx-auto px-4 flex flex-col gap-3 items-center">
+          <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            {([
+              ['about', 'About Us'],
+              ['contact', 'Contact Us'],
+              ['privacy', 'Privacy Policy'],
+              ['terms', 'Terms & Conditions'],
+              ['refund', 'Refund Policy'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setLegalPage(key)}
+                className="text-xs font-semibold text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-2 text-center">
+            <p className="text-xs text-slate-500 font-medium">&copy; 2026 UPSC PYQ Powerhouse. Education & Practice Platform.</p>
+            <p className="text-xs text-slate-500 font-medium">Built for Civil Service Aspirants.</p>
+          </div>
         </div>
       </footer>
 
       {/* Login Modal */}
       {showLoginModal && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade"
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
+            className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop"
           >
-            <button 
-              onClick={() => setShowLoginModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
+            {/* Gradient header */}
+            <div className="relative bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 pt-7 pb-8 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <button
+                onClick={() => { setShowLoginModal(false); setPendingPlan(null); }}
+                className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="relative flex flex-col items-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shadow-lg ring-2 ring-white/25 mb-3">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-extrabold text-white">Welcome Back</h2>
+                <p className="text-blue-100 text-xs sm:text-sm mt-1 max-w-xs mx-auto">
+                  Enter your email address to access the powerhouse.
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 sm:px-8 pt-6 pb-7">
+              {pendingPlan && (
+                <div className="mb-5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/70 dark:border-indigo-500/30 px-4 py-2.5 text-center">
+                  <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                    Please log in to continue to your {pendingPlan === '2yr' ? '2 Years' : '1 Year'} plan payment.
+                  </p>
+                </div>
+              )}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="email"
+                      type="email"
+                      required
+                      value={loginEmailInput}
+                      onChange={(e) => setLoginEmailInput(e.target.value)}
+                      placeholder="e.g. user@example.com"
+                      className="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 hover:from-indigo-500 hover:via-blue-500 hover:to-violet-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-600/25 transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
+                  {!isLoggingIn && <Check className="w-5 h-5" />}
+                </button>
+              </form>
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
+                Your session will be remembered for 7 days.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Modal */}
+      {showPremiumModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl max-h-[96vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
+            <button
+              onClick={() => setShowPremiumModal(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex justify-center mb-6">
-              <div className="bg-blue-600 p-4 rounded-full shadow-lg shadow-blue-500/30 w-16 h-16 flex items-center justify-center relative">
-                <User className="w-8 h-8 text-orange-400 absolute" />
-                <Lock className="w-5 h-5 text-yellow-400 absolute bottom-1 right-1" />
+            {/* Header banner */}
+            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 sm:px-10 pt-3 pb-3 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <div className="relative">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/15 backdrop-blur mb-1 shadow-lg">
+                  <Crown className="w-4 h-4 text-amber-300" />
+                </div>
+                <h2 className="text-base sm:text-xl font-extrabold text-white flex items-center justify-center gap-2">
+                  Powerhouse Premium
+                </h2>
+                <p className="text-blue-100 text-[11px] sm:text-xs mt-0.5 max-w-md mx-auto">
+                  Unlock every PYQ, topper copies and all-in-one ebooks. Pick the plan that fits your prep.
+                </p>
               </div>
             </div>
-            
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
-                <div className="relative">
-                  <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    id="email"
-                    type="email"
-                    required
-                    value={loginEmailInput}
-                    onChange={(e) => setLoginEmailInput(e.target.value)}
-                    placeholder="e.g. user@example.com"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                  />
-                </div>
+
+            <div className="px-4 sm:px-6 pb-4 pt-3 overflow-y-auto flex-1 min-h-0">
+              <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
+                {([
+                  {
+                    id: 'pyq1',
+                    label: 'PYQ SUBSCRIPTION',
+                    icon: 'calendar',
+                    title: '1 Year',
+                    subtitle: 'Premium PYQ Access',
+                    price: '₹899',
+                    per: '≈ ₹75 / month',
+                    ribbon: '',
+                    labelClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+                    cardClass: 'border-emerald-500/40',
+                    iconClass: 'bg-emerald-500/10 text-emerald-400',
+                    titleClass: 'text-emerald-400',
+                    checkClass: 'text-emerald-400',
+                    btnClass: 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25',
+                    features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Cancel anytime'],
+                    cta: 'Get 1 Year Plan',
+                    link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                    plan: '1yr',
+                  },
+                  {
+                    id: 'pyq2',
+                    label: 'PYQ SUBSCRIPTION',
+                    icon: 'calendar',
+                    title: '2 Years',
+                    subtitle: 'Premium PYQ Access',
+                    price: '₹1299',
+                    per: '≈ ₹54 / month',
+                    ribbon: 'Most Popular',
+                    labelClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+                    cardClass: 'border-blue-500 ring-2 ring-blue-500/20',
+                    iconClass: 'bg-blue-500/10 text-blue-400',
+                    titleClass: 'text-blue-400',
+                    checkClass: 'text-blue-400',
+                    btnClass: 'bg-blue-500 hover:bg-blue-400 shadow-blue-500/25',
+                    features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Priority support', 'Cancel anytime'],
+                    cta: 'Get 2 Years Plan',
+                    link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                    plan: '2yr',
+                  },
+                  {
+                    id: 'ebooks',
+                    label: 'EBOOKS SUBSCRIPTION',
+                    icon: 'book',
+                    title: 'PowerHouse Ebooks',
+                    subtitle: 'All-in-One Study Material',
+                    price: '₹949',
+                    per: 'All Powerhouse ebooks for exams like UPSC CSE, State PCS, CAPF, CDS, NDA, etc...',
+                    ribbon: '',
+                    labelClass: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+                    cardClass: 'border-amber-500/40',
+                    iconClass: 'bg-amber-500/10 text-amber-400',
+                    titleClass: 'text-amber-400',
+                    checkClass: 'text-amber-400',
+                    btnClass: 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/25',
+                    features: ['Polity - Laxmikant summary', 'Geography - 11th and 12th NCERT summary', 'Ancient and Medieval - From Upendra and old NCERT', 'Modern History - Spectrum summary', 'Theme 1 and Theme 2 - 12th NCERT', 'Economics - 12th Micro and Macro summary + Mrunal Sir'],
+                    cta: 'Get Ebooks Plan',
+                    link: 'https://t.me/+7DfVmsKSI4FmNzg1',
+                    plan: 'ebooks',
+                  },
+                ] as const).map(card => (
+                  <div
+                    key={card.id}
+                    className={cn(
+                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-3 shadow-sm",
+                      card.cardClass
+                    )}
+                  >
+                    {card.ribbon && (
+                      <span className="absolute -top-px right-4 bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-b-lg shadow-md">
+                        {card.ribbon}
+                      </span>
+                    )}
+                    <span className={cn("self-start text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-md", card.labelClass)}>
+                      {card.label}
+                    </span>
+
+                    <div className="flex flex-col items-center text-center mt-2">
+                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center mb-1.5", card.iconClass)}>
+                        {card.icon === 'book' ? <BookOpen className="w-5 h-5" /> : <Calendar className="w-5 h-5" />}
+                      </div>
+                      <h3 className={cn("text-lg font-extrabold", card.titleClass)}>{card.title}</h3>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{card.subtitle}</p>
+                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{planPrices[card.plan] ? `₹${Math.round(planPrices[card.plan] / 100).toLocaleString('en-IN')}` : card.price}</p>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 px-2">{card.per}</p>
+                    </div>
+
+                    <div className="border-t border-slate-100 dark:border-slate-700 my-2" />
+
+                    <ul className="space-y-1.5 flex-1">
+                      {card.features.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <Check className={cn("w-4 h-4 shrink-0 mt-0.5", card.checkClass)} />
+                          <span className="text-[12px] text-slate-700 dark:text-slate-300">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {(
+                      <button
+                        onClick={() => initiatePayment(card.plan)}
+                        className={cn(
+                          "mt-3 w-full text-white font-bold py-2 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+                          card.btnClass
+                        )}
+                      >
+                        <Lock className="w-4 h-4" /> {card.cta}
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-              
+
+              {/* Queries footer */}
+              <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 flex flex-col sm:flex-row items-center gap-2 justify-between">
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 text-center sm:text-left">
+                  For any queries or activation help, reach us on Telegram.
+                </p>
+                <a
+                  href="https://telegram.me/UPSC_powerhouse_helpbot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" /> Queries on Telegram
+                </a>
+              </div>
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">
+                PYQ plans include the same features — only the duration & per-month cost differ. Secure activation via Telegram.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Founder Modal */}
+      {showFounderModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade" onClick={() => setShowFounderModal(false)}>
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop" onClick={(e) => e.stopPropagation()}>
+            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 px-6 pt-7 pb-7 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
               <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                onClick={() => setShowFounderModal(false)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                aria-label="Close"
               >
-                {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
-                {!isLoggingIn && <Check className="w-5 h-5" />}
+                <X className="w-5 h-5" />
               </button>
-            </form>
-            
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
-              Your session will be remembered for 7 days.
-            </p>
+              <div className="relative flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white font-extrabold text-2xl shadow-lg ring-2 ring-white/30">R</div>
+                <h2 className="text-xl font-extrabold text-white mt-3">Rajendra</h2>
+                <p className="text-indigo-100 text-xs font-medium mt-1">Founder · UPSC PYQ Powerhouse</p>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
+              <div className="flex flex-wrap justify-center gap-1.5 mb-4">
+                <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold">UPSC Interview Candidate</span>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold">105+ CSE Prelims 2025</span>
+                <span className="px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-300 text-[10px] font-bold">CAPF · CDS · NDA Qualified</span>
+              </div>
+
+              <p className="text-lg font-extrabold text-slate-900 dark:text-white text-center">A Note from the Founder</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">Every PYQ tells a story.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">During my preparation, I realized that UPSC rarely asks questions in isolation—it often revisits ideas in new ways. The more PYQs I solved, the more the exam started to make sense.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">That's why PowerHouse PYQ exists: to make quality PYQs simple, organized, and affordable, so every aspirant can spend less time searching and more time learning.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">— Rajendra</p>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2">Built with <span className="text-rose-500">❤️</span></p>
+                <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-1">Powered by my brother, a software engineer at Microsoft and an IIT Delhi alumnus, who brings the technology behind the platform while I bring the UPSC journey behind it.</p>
+                <p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mt-2">Built by aspirants, for aspirants.</p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                <a href="mailto:raj48354835@gmail.com" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <Mail className="w-3.5 h-3.5" /> raj48354835@gmail.com
+                </a>
+                <a href="tel:+917665872210" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <Phone className="w-3.5 h-3.5" /> +91 76658 72210
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legal / Policy Pages Modal */}
+      {legalPage && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-5 sm:px-7 py-4 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90">
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">{LEGAL_TITLES[legalPage]}</h2>
+              <button
+                onClick={() => setLegalPage(null)}
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-7 py-5">
+              <LegalPageContent page={legalPage} />
+            </div>
           </div>
         </div>
       )}

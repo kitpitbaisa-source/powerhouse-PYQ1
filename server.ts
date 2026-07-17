@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import { timingSafeEqual, createHmac } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
@@ -16,16 +17,83 @@ const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
+const settingsContainer = database.container("settings");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
+// Secret admin key (server-side only, never sent to the browser).
+// Set ADMIN_API_KEY in .env locally and in the Vercel dashboard for production.
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+
+// Razorpay payment gateway (server-side only; secret never sent to the browser)
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+
+// Plans and their price (in paise) + subscription length. Amount is decided
+// here on the server so it can never be tampered with from the client.
+const PLANS: Record<string, { amount: number; days: number; label: string }> = {
+  "1yr": { amount: 89900, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
+  "2yr": { amount: 129900, days: 730, label: "Powerhouse PYQ Premium - 2 Years" },
+  "ebooks": { amount: 94900, days: 3650, label: "PowerHouse Ebooks - All-in-One Study Material" },
+};
+
+// Plan prices can be overridden live from the admin panel (stored in the
+// "settings" container). Amounts are always in paise and enforced server-side.
+let settingsContainerReady = false;
+async function ensureSettingsContainer() {
+  if (settingsContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "settings",
+    partitionKey: { paths: ["/id"] },
+  });
+  settingsContainerReady = true;
+}
+async function getEffectivePlans() {
+  const merged: Record<string, { amount: number; days: number; label: string }> =
+    JSON.parse(JSON.stringify(PLANS));
+  try {
+    await ensureSettingsContainer();
+    const { resource } = await settingsContainer.item("plan-prices", "plan-prices").read();
+    if (resource?.amounts) {
+      for (const k of Object.keys(merged)) {
+        const a = resource.amounts[k];
+        if (typeof a === "number" && a >= 100) merged[k].amount = a;
+      }
+    }
+  } catch (e) {}
+  return merged;
+}
+
 const serverApp = express();
 const PORT = 3000;
 
 serverApp.use(express.json());
+// PayU posts its callbacks as application/x-www-form-urlencoded
+serverApp.use(express.urlencoded({ extended: true }));
+
+// Guard: every /api/admin/* route requires a valid admin key in the
+// Authorization header. Requests without it are rejected with 401.
+function requireAdmin(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const expected = ADMIN_API_KEY;
+  const authorized =
+    expected.length > 0 &&
+    token.length === expected.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  if (!authorized) {
+    return res.status(401).json({ error: "Unauthorized: valid admin key required" });
+  }
+  next();
+}
+serverApp.use("/api/admin", requireAdmin);
 
 // Export for Vercel
 export default serverApp;
@@ -108,10 +176,19 @@ async function getEnglishQuestions() {
   return resources;
 }
 
-// API to get all questions (cached)
+// API to get all questions (cached). Supports ?limit=N to return only the
+// top N in display order (year desc, id desc) for fast initial paint.
 serverApp.get("/api/questions", async (req, res) => {
   try {
     const questions = await getQuestions();
+    const limit = parseInt(req.query.limit as string, 10);
+    if (!isNaN(limit) && limit > 0) {
+      const top = [...questions]
+        .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
+        .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
+        .slice(0, limit);
+      return res.json(top);
+    }
     questions.sort((a: any, b: any) => a.id - b.id);
     res.json(questions);
   } catch (error: any) {
@@ -512,7 +589,137 @@ serverApp.get("/api/user-status", async (req, res) => {
   }
 });
 
-// API to update status
+// ── Razorpay: create an order (amount fixed server-side per plan) ──
+serverApp.post("/api/payment/create-order", async (req, res) => {
+  try {
+    const { email, plan } = req.body || {};
+    const plans = await getEffectivePlans();
+    const p = plans[plan];
+    if (!email || !p) {
+      return res.status(400).json({ error: "Valid email and plan are required" });
+    }
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ error: "Payment gateway not configured" });
+    }
+    const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
+    const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify({
+        amount: p.amount,
+        currency: "INR",
+        receipt: `rcpt_${Date.now()}`,
+        notes: { email: String(email).toLowerCase().trim(), plan },
+      }),
+    });
+    const order: any = await rzpRes.json();
+    if (!rzpRes.ok) {
+      console.error("Razorpay order error:", order);
+      return res.status(502).json({ error: "Could not create order", details: order?.error?.description });
+    }
+    res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: RAZORPAY_KEY_ID, plan });
+  } catch (error: any) {
+    console.error("create-order error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Razorpay: verify the payment signature and activate the subscription ──
+serverApp.post("/api/payment/verify", async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, email, plan } = req.body || {};
+    const p = PLANS[plan];
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !email || !p) {
+      return res.status(400).json({ error: "Missing verification fields" });
+    }
+    const expected = createHmac("sha256", RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+    if (
+      expected.length !== razorpay_signature.length ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature))
+    ) {
+      return res.status(400).json({ error: "Payment signature verification failed" });
+    }
+
+    const userEmail = String(email).toLowerCase().trim();
+    const now = new Date().toISOString();
+    let existing: any = null;
+    try {
+      const { resource } = await usersContainer.item(userEmail, userEmail).read();
+      existing = resource;
+    } catch (e) {}
+    const expiryDate = new Date(Date.now() + p.days * 24 * 60 * 60 * 1000).toISOString();
+    const newStatus = plan === "ebooks" ? "none" : "subscribed";
+    await usersContainer.items.upsert({
+      id: userEmail,
+      email: userEmail,
+      status: newStatus,
+      plan,
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      expiryDate,
+      isActive: true,
+      lastPaymentId: razorpay_payment_id,
+    });
+    res.json({ success: true, status: newStatus, expiryDate });
+  } catch (error: any) {
+    console.error("verify error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Public: current subscription prices (paise) so the UI can display them ──
+serverApp.get("/api/plans", async (_req, res) => {
+  try {
+    const plans = await getEffectivePlans();
+    const out: Record<string, number> = {};
+    for (const k of Object.keys(plans)) out[k] = plans[k].amount;
+    res.json(out);
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: read current prices (in rupees) ──
+serverApp.get("/api/admin/prices", async (_req, res) => {
+  try {
+    const plans = await getEffectivePlans();
+    const out: Record<string, number> = {};
+    for (const k of Object.keys(plans)) out[k] = Math.round(plans[k].amount / 100);
+    res.json(out);
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: update prices (body { prices: { "1yr": 899, "2yr": 1299, "ebooks": 949 } } in rupees) ──
+serverApp.post("/api/admin/prices", async (req, res) => {
+  try {
+    const { prices } = req.body || {};
+    if (!prices || typeof prices !== "object") {
+      return res.status(400).json({ error: "prices object is required" });
+    }
+    const amounts: Record<string, number> = {};
+    for (const k of Object.keys(PLANS)) {
+      const rupees = Number(prices[k]);
+      if (!Number.isFinite(rupees) || rupees < 1) {
+        return res.status(400).json({ error: `Invalid price for ${k} (must be at least ₹1)` });
+      }
+      amounts[k] = Math.round(rupees * 100);
+    }
+    await ensureSettingsContainer();
+    await settingsContainer.items.upsert({
+      id: "plan-prices",
+      amounts,
+      modifiedAt: new Date().toISOString(),
+    });
+    res.json({ success: true, amounts });
+  } catch (error: any) {
+    console.error("set-prices error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
 serverApp.post("/api/admin/update-status", async (req, res) => {
   const { email, status } = req.body;
   if (!email || !status) {
