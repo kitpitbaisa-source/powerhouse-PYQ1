@@ -103,6 +103,15 @@ async function getToppersQuestions() {
 serverApp.get("/api/questions", async (req, res) => {
   try {
     const questions = await getQuestions();
+    const limit = parseInt(req.query.limit as string, 10);
+    if (!isNaN(limit) && limit > 0) {
+      const top = [...questions]
+        .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
+        .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
+        .slice(0, limit);
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(top);
+    }
     questions.sort((a: any, b: any) => a.id - b.id);
     res.setHeader("Cache-Control", "no-store");
     res.json(questions);
