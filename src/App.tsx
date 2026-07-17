@@ -25,14 +25,20 @@ import {
   Check,
   Sun,
   Moon,
+  Menu,
+  Crown,
+  Sparkles,
+  BookOpen,
   UserPlus,
   User,
+  Mail,
+  Phone,
   X,
   Database,
   Trash2,
   Pencil
 } from 'lucide-react';
-import { mcqData } from './questions.ts';
+import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
@@ -49,6 +55,171 @@ const subjectColors: SubjectColorMap = {
   "International Relations": "bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 ring-sky-400/20",
   "Default": "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-slate-400/20"
 };
+
+// ── Business / legal details (used across policy pages & PayU) ──
+const BUSINESS = {
+  brand: "UPSC PYQ Powerhouse",
+  owner: "Rajender Singh",
+  email: "raj48354835@gmail.com",
+  phone: "+91 76658 72210",
+  location: "Kota, Rajasthan, India",
+  telegramHelp: "https://telegram.me/UPSC_powerhouse_helpbot",
+  telegramChannel: "https://t.me/+7DfVmsKSI4FmNzg1",
+};
+
+const LEGAL_TITLES: Record<string, string> = {
+  about: "About Us",
+  contact: "Contact Us",
+  privacy: "Privacy Policy",
+  terms: "Terms & Conditions",
+  refund: "Cancellation & Refund Policy",
+};
+
+function LegalPageContent({ page }: { page: 'about' | 'contact' | 'privacy' | 'terms' | 'refund' }) {
+  const h = "text-base font-bold text-slate-900 dark:text-white mt-5 mb-2";
+  const p = "text-sm leading-relaxed text-slate-600 dark:text-slate-300 mb-3";
+  const li = "text-sm leading-relaxed text-slate-600 dark:text-slate-300";
+  const updated = "Last updated: 18 July 2026";
+
+  if (page === 'about') {
+    return (
+      <div>
+        <p className={p}>{BUSINESS.brand} is an education and practice platform built for Civil Service aspirants. We help candidates prepare for UPSC CSE, State PCS, CAPF, CDS, NDA and similar examinations through previous-year questions (PYQs), curated solutions, topper copies and all-in-one study ebooks.</p>
+        <h3 className={h}>Our Mission</h3>
+        <p className={p}>To make high-quality, exam-focused practice material affordable and accessible to every aspirant, so preparation depends on effort — not on expensive coaching.</p>
+        <h3 className={h}>What We Offer</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Thousands of previous-year questions with detailed solutions.</li>
+          <li className={li}>Prelims, Mains, CSAT and English practice sections.</li>
+          <li className={li}>Topper answer copies and curated PowerHouse ebooks.</li>
+          <li className={li}>Regular content updates and a supportive Telegram community.</li>
+        </ul>
+        <h3 className={h}>Who Runs This</h3>
+        <p className={p}>This platform is owned and operated by {BUSINESS.owner}, based in {BUSINESS.location}. For any query, reach us at {BUSINESS.email} or {BUSINESS.phone}.</p>
+
+        <h3 className={h}>A Note from the Founder</h3>
+        <p className={p}>Every PYQ tells a story.</p>
+        <p className={p}>During my preparation, I realized that UPSC rarely asks questions in isolation—it often revisits ideas in new ways. The more PYQs I solved, the more the exam started to make sense.</p>
+        <p className={p}>That's why PowerHouse PYQ exists: to make quality PYQs simple, organized, and affordable, so every aspirant can spend less time searching and more time learning.</p>
+        <p className={p}>
+          — Rajendra<br />
+          <span className="text-xs text-slate-500 dark:text-slate-400">UPSC Interview Candidate | 105+ in CSE Prelims 2025 | CAPF (AC), CDS, NDA Qualified</span>
+        </p>
+        <p className={p}>Built with ❤️</p>
+        <p className={p}>Powered by my brother, a software engineer at Microsoft and an IIT Delhi alumnus, who brings the technology behind the platform while I bring the UPSC journey behind it.</p>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Built by aspirants, for aspirants.</p>
+
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'contact') {
+    return (
+      <div>
+        <p className={p}>We're happy to help with subscriptions, activation, content or any other question. The fastest way to reach us is Telegram, but you can also email or call.</p>
+        <h3 className={h}>Reach Us</h3>
+        <ul className="space-y-2 mb-3">
+          <li className={li}><strong>Owner:</strong> {BUSINESS.owner}</li>
+          <li className={li}><strong>Email:</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a></li>
+          <li className={li}><strong>Phone / WhatsApp:</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={`tel:${BUSINESS.phone.replace(/\s/g, '')}`}>{BUSINESS.phone}</a></li>
+          <li className={li}><strong>Address:</strong> {BUSINESS.location}</li>
+          <li className={li}><strong>Telegram (Support):</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={BUSINESS.telegramHelp} target="_blank" rel="noopener noreferrer">Help Bot</a></li>
+          <li className={li}><strong>Telegram (Ebooks Channel):</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={BUSINESS.telegramChannel} target="_blank" rel="noopener noreferrer">Join Channel</a></li>
+        </ul>
+        <h3 className={h}>Support Hours</h3>
+        <p className={p}>Monday to Saturday, 10:00 AM – 7:00 PM IST. We usually respond within 24 hours.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'privacy') {
+    return (
+      <div>
+        <p className={p}>This Privacy Policy explains how {BUSINESS.brand} ("we", "us") collects, uses and protects your information when you use our website and services.</p>
+        <h3 className={h}>Information We Collect</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Your email address, which you provide to log in and to activate a subscription.</li>
+          <li className={li}>Subscription and payment status (we store whether you are subscribed and the plan expiry date).</li>
+          <li className={li}>Basic login activity (timestamps) used to keep your account secure.</li>
+        </ul>
+        <h3 className={h}>Payments</h3>
+        <p className={p}>Online payments are processed by our payment partner, PayU. We do <strong>not</strong> collect or store your card, UPI or bank details on our servers — that information is handled directly and securely by PayU. We only receive the transaction status and a transaction reference.</p>
+        <h3 className={h}>How We Use Your Information</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>To create your account and grant access to purchased content.</li>
+          <li className={li}>To verify payments and activate/renew subscriptions.</li>
+          <li className={li}>To provide support and respond to your queries.</li>
+        </ul>
+        <h3 className={h}>Data Sharing</h3>
+        <p className={p}>We do not sell or rent your personal data. We share data only with service providers strictly necessary to run the service (e.g. our database host and PayU for payments), or when required by law.</p>
+        <h3 className={h}>Data Security & Retention</h3>
+        <p className={p}>We use reasonable technical measures to protect your data and retain it only as long as needed to provide the service or as required by law. You may request deletion of your account data by emailing {BUSINESS.email}.</p>
+        <h3 className={h}>Contact</h3>
+        <p className={p}>For any privacy request, contact {BUSINESS.email} or {BUSINESS.phone}.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  if (page === 'terms') {
+    return (
+      <div>
+        <p className={p}>By accessing or using {BUSINESS.brand}, you agree to these Terms & Conditions. Please read them carefully.</p>
+        <h3 className={h}>1. Service</h3>
+        <p className={p}>We provide access to previous-year questions, solutions, topper copies and study ebooks for exam preparation. Content is for personal, non-commercial study use only.</p>
+        <h3 className={h}>2. Accounts</h3>
+        <p className={p}>You are responsible for the email/account you use to access the service and for keeping your access secure. You must provide accurate information.</p>
+        <h3 className={h}>3. Subscriptions & Payments</h3>
+        <ul className="list-disc pl-5 space-y-1.5 mb-3">
+          <li className={li}>Paid plans grant access for a fixed duration (e.g. 1 year or 2 years) from the date of activation.</li>
+          <li className={li}>Prices are listed in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise.</li>
+          <li className={li}>Online payments are processed securely through PayU. Access is activated after the payment is confirmed.</li>
+        </ul>
+        <h3 className={h}>4. Acceptable Use</h3>
+        <p className={p}>You may not copy, redistribute, resell, publicly share or upload our content elsewhere. Sharing account access or ebooks with others is prohibited and may result in termination without refund.</p>
+        <h3 className={h}>5. Intellectual Property</h3>
+        <p className={p}>All content, branding and materials on the platform are owned by {BUSINESS.owner} or respective rights-holders and are protected by law.</p>
+        <h3 className={h}>6. Disclaimer</h3>
+        <p className={p}>We strive for accuracy but do not guarantee that content is error-free or that it will lead to any particular exam result. The service is provided on an "as is" basis.</p>
+        <h3 className={h}>7. Changes</h3>
+        <p className={p}>We may update these terms or the service from time to time. Continued use after changes means you accept the updated terms.</p>
+        <h3 className={h}>8. Contact</h3>
+        <p className={p}>Questions about these terms? Email {BUSINESS.email} or call {BUSINESS.phone}.</p>
+        <p className="text-xs text-slate-400 mt-6">{updated}</p>
+      </div>
+    );
+  }
+
+  // refund
+  return (
+    <div>
+      <p className={p}>This Cancellation & Refund Policy applies to subscriptions and ebooks purchased on {BUSINESS.brand}.</p>
+      <h3 className={h}>Nature of Products</h3>
+      <p className={p}>Our products are digital and delivered instantly (online access and downloadable study material). Because access is granted immediately upon successful payment, purchases are generally <strong>non-refundable</strong> once activated.</p>
+      <h3 className={h}>When You Are Eligible for a Refund</h3>
+      <ul className="list-disc pl-5 space-y-1.5 mb-3">
+        <li className={li}><strong>Duplicate payment:</strong> If you were charged more than once for the same order, the extra amount is fully refunded.</li>
+        <li className={li}><strong>Payment deducted but access not granted:</strong> If money is debited but your subscription is not activated within 48 hours, you are eligible for a full refund (or, at your choice, activation of access).</li>
+        <li className={li}><strong>Technical failure:</strong> If a verified technical fault on our side prevents you from accessing the purchased content and we are unable to resolve it, you may request a refund.</li>
+      </ul>
+      <h3 className={h}>Non-Refundable Cases</h3>
+      <ul className="list-disc pl-5 space-y-1.5 mb-3">
+        <li className={li}>Change of mind after the content/ebooks have been accessed or downloaded.</li>
+        <li className={li}>Partial use of the subscription period.</li>
+        <li className={li}>Violation of our Terms (e.g. sharing or redistributing content).</li>
+      </ul>
+      <h3 className={h}>Cancellation</h3>
+      <p className={p}>Our plans are one-time purchases for a fixed period and do <strong>not</strong> auto-renew, so there is no recurring billing to cancel. You may choose not to renew at the end of your term.</p>
+      <h3 className={h}>How to Request a Refund</h3>
+      <p className={p}>Email {BUSINESS.email} (or message us on Telegram) within <strong>7 days</strong> of the transaction with your registered email and the payment reference. Approved refunds are processed back to the original payment method via PayU within <strong>5–7 business days</strong>.</p>
+      <h3 className={h}>Contact</h3>
+      <p className={p}>{BUSINESS.owner} — {BUSINESS.email} — {BUSINESS.phone} — {BUSINESS.location}.</p>
+      <p className="text-xs text-slate-400 mt-6">{updated}</p>
+    </div>
+  );
+}
 
 interface QuestionCardProps {
   question: Question;
@@ -680,9 +851,6 @@ export default function App() {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  // Admin configuration
-  const ADMIN_EMAILS = ['kitpitbaisa@gmail.com', 'admin@example.com'];
-
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
@@ -727,8 +895,8 @@ export default function App() {
       }
     } catch (error) {
       console.warn("Server API failed, falling back to local data:", error);
-      console.log(`Loaded ${mcqData.length} questions from local fallback`);
-      setQuestions(mcqData as Question[]);
+      console.log(`Loaded ${fallbackQuestions.length} questions from local fallback`);
+      setQuestions(fallbackQuestions as Question[]);
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -795,12 +963,28 @@ export default function App() {
     }
   };
 
+  // Fast initial paint: fetch the top 150 prelims (display order) from the backend.
+  const fetchInitialQuestions = async () => {
+    try {
+      const response = await fetch('/api/questions?limit=150');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setQuestions(data as Question[]);
+        console.log(`Showing ${data.length} prelims from backend (top 150)`);
+        return;
+      }
+      throw new Error("Empty data from API");
+    } catch (error) {
+      console.warn("Initial questions fetch failed, using local fallback:", error);
+      setQuestions(fallbackQuestions.slice(0, 150) as Question[]);
+    }
+  };
+
   useEffect(() => {
-    // Show 100 prelims instantly from local data
-    const initialData = (mcqData as Question[]).slice(0, 100);
-    setQuestions(initialData);
-    console.log(`Showing ${initialData.length} prelims instantly from local data`);
-    
+    // Load the first batch of prelims from the backend (falls back to local data)
+    fetchInitialQuestions();
+
     // Restore previously saved scroll position
     const savedVisibleCount = localStorage.getItem('visibleCount');
     const initialCount = savedVisibleCount ? parseInt(savedVisibleCount) : 100;
@@ -1115,6 +1299,20 @@ export default function App() {
   }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
 
   // Check subscription and admin status
+  // Admin API key (secret) — stored only in this browser, sent with admin requests.
+  const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('admin_api_key') || "");
+  const saveAdminKey = (key: string) => {
+    const k = key.trim();
+    setAdminKey(k);
+    if (k) localStorage.setItem('admin_api_key', k);
+    else localStorage.removeItem('admin_api_key');
+  };
+  // Builds request headers with the admin key (read fresh from storage to avoid stale values).
+  const adminHeaders = (base: Record<string, string> = {}): Record<string, string> => {
+    const k = localStorage.getItem('admin_api_key') || "";
+    return k ? { ...base, Authorization: `Bearer ${k}` } : base;
+  };
+
   const checkUserStatus = async (email: string) => {
     try {
       const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
@@ -1133,16 +1331,19 @@ export default function App() {
 
       const data = await response.json();
       setIsSubscribed(data.status === 'subscribed' || data.status === 'admin');
-      const adminStatus = data.status === 'admin' || ADMIN_EMAILS.includes(email.toLowerCase().trim());
-      setIsAdmin(adminStatus);
+      // Admin status is decided solely by the backend role; never trust the client.
+      setIsAdmin(data.status === 'admin');
     } catch (error) {
       console.error("Failed to check status:", error);
       setIsSubscribed(false);
-      setIsAdmin(ADMIN_EMAILS.includes(email.toLowerCase().trim()));
+      setIsAdmin(false);
     }
   };
 
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
+  const [showFounderModal, setShowFounderModal] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
@@ -1163,7 +1364,7 @@ export default function App() {
     setExpandedUserHistory(email);
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`/api/admin/login-history/${encodeURIComponent(email)}`);
+      const response = await fetch(`/api/admin/login-history/${encodeURIComponent(email)}`, { headers: adminHeaders() });
       if (response.ok) {
         const data = await response.json();
         setLoginHistory(data);
@@ -1176,7 +1377,7 @@ export default function App() {
 
   const fetchActiveSessions = async () => {
     try {
-      const response = await fetch('/api/admin/active-sessions');
+      const response = await fetch('/api/admin/active-sessions', { headers: adminHeaders() });
       if (response.ok) {
         const data = await response.json();
         const map: Record<string, number> = {};
@@ -1191,7 +1392,7 @@ export default function App() {
     setIsLoadingUsers(true);
     try {
       console.log("Fetching users from API...");
-      const response = await fetch('/api/admin/users');
+      const response = await fetch('/api/admin/users', { headers: adminHeaders() });
       
       if (!response.ok) {
         throw new Error(`API fetch failed with status ${response.status}`);
@@ -1232,7 +1433,7 @@ export default function App() {
       console.log(`Updating user ${userEmailToUpdate} to ${status}...`);
       const response = await fetch('/api/admin/update-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ email: userEmailToUpdate, status })
       });
 
@@ -1257,7 +1458,7 @@ export default function App() {
     if (!window.confirm(`Are you sure you want to deactivate "${email}"? This user will no longer have access.`)) return;
     const userEmailToDelete = email.toLowerCase().trim();
     try {
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE' });
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userEmailToDelete)}`, { method: 'DELETE', headers: adminHeaders() });
       if (response.ok) {
         setAdminMessage({ text: `User ${userEmailToDelete} deactivated`, type: "success" });
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
@@ -1565,7 +1766,7 @@ export default function App() {
   const handleUpdateQuestion = async (id: number, year: string, answer: string, explanation: string) => {
     const res = await fetch("/api/admin/update-question", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: adminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id, answer, explanation }),
     });
     if (!res.ok) {
@@ -1690,7 +1891,7 @@ export default function App() {
         <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
-          <div className="flex flex-wrap justify-between items-center py-2.5 gap-y-2">
+          <div className="flex flex-wrap items-center py-2.5 gap-y-2">
             <div className="flex items-center gap-1 sm:gap-2 min-w-0">
               <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8 flex-shrink-0">
                 <Landmark className="w-4 h-4" />
@@ -1734,6 +1935,7 @@ export default function App() {
               </div>
             </div>
 
+            <div className="flex items-center gap-2 ml-auto order-none">
             {/* Score + Random controls - inline on wide, wraps on narrow */}
             {activeTab === 'prelims' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
@@ -1896,85 +2098,142 @@ export default function App() {
               </div>
             )}
             
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                {userEmail && (
-            <div className="relative" ref={userMenuRef}>
-                 <button 
-                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 flex items-center gap-1"
-                   title="User Info"
-                 >
-                   <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">
-                     {userEmail.charAt(0).toUpperCase()}
-                   </div>
-                   <span className="text-[10px] font-bold text-slate-700 dark:text-white hidden sm:inline">Me</span>
-                 </button>
-                   
-                 {/* User Menu Dropdown */}
-                 <div 
-                   className={cn(
-                     "absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 p-3 z-50 transition-all duration-200",
-                     isUserMenuOpen 
-                       ? "opacity-100 visible pointer-events-auto" 
-                       : "opacity-0 invisible pointer-events-none"
-                   )}
-                 >
-                   <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Logged in as</p>
-                   <p className="text-[11px] font-bold text-slate-700 dark:text-white break-all mb-2">{userEmail}</p>
-                   {isAdmin && (
-                     <button 
-                       onClick={() => { setIsAdminView(!isAdminView); setIsUserMenuOpen(false); }}
-                       className="w-full text-[9px] font-extrabold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-tighter py-1 hover:underline"
-                     >
-                       {isAdminView ? "Exit Admin" : "Admin Panel"}
-                     </button>
-                   )}
-                 </div>
-               </div>
-             )}
-              
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-600 group"
-                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              >
-                {isDarkMode ? (
-                  <Sun className="w-4 h-4 group-hover:rotate-45 transition-transform" />
-                ) : (
-                  <Moon className="w-4 h-4 group-hover:-rotate-12 transition-transform" />
-                )}
-              </button>
-
-              <div className="flex items-center gap-2">
-                <a 
-                  href="https://t.me/upsc_pyq_powerhouse" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-slate-900 p-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center justify-center shadow-amber-500/20 hover:scale-[1.02] hidden sm:flex"
-                  title="Join Telegram"
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 order-last">
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className={cn(
+                    "p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center",
+                    isUserMenuOpen
+                      ? "bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                      : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  )}
+                  title="Menu"
+                  aria-label="Open menu"
+                  aria-expanded={isUserMenuOpen}
                 >
-                  <Send className="w-4 h-4" />
-                </a>
+                  {isUserMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
 
-                {!userEmail ? (
-                  <button
-                    onClick={() => setShowLoginModal(true)}
-                    className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-800/50 flex items-center gap-2 px-3"
-                  >
-                    <User className="w-4 h-4" />
-                    <span className="text-xs font-bold hidden sm:inline">Login</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleLogout}
-                    className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors border border-rose-200 dark:border-rose-800/50 flex items-center gap-2 px-3"
-                    title="Logout"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span className="text-xs font-bold hidden sm:inline">Logout</span>
-                  </button>
+                {/* Mobile backdrop */}
+                {isUserMenuOpen && (
+                  <div
+                    className="fixed inset-0 z-[90] bg-slate-900/40 backdrop-blur-[2px] sm:hidden"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  />
                 )}
+
+                {/* Unified Menu Dropdown */}
+                <div
+                  className={cn(
+                    "absolute right-0 top-full mt-2 w-60 max-w-[calc(100vw-1.5rem)] origin-top-right z-[100]",
+                    "rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-slate-900/10 dark:shadow-black/40 ring-1 ring-black/5 p-2 transition-all duration-200",
+                    isUserMenuOpen
+                      ? "opacity-100 visible pointer-events-auto scale-100 translate-y-0"
+                      : "opacity-0 invisible pointer-events-none scale-95 -translate-y-1"
+                  )}
+                >
+                  {userEmail && (
+                    <div className="flex items-center gap-2.5 px-2 py-2 mb-1">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm shrink-0">
+                        {userEmail.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Signed in</p>
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{userEmail}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Go Premium */}
+                  {!isSubscribed && (
+                    <button
+                      onClick={() => { setShowPremiumModal(true); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 mb-1 rounded-xl text-sm font-bold text-amber-900 dark:text-amber-100 bg-gradient-to-r from-amber-300 to-yellow-400 dark:from-amber-500/30 dark:to-yellow-500/20 hover:from-amber-400 hover:to-yellow-500 transition-colors shadow-sm"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-white/40 dark:bg-white/10 flex items-center justify-center shrink-0">
+                        <Crown className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+                      </span>
+                      <span>Go Premium</span>
+                    </button>
+                  )}
+
+                  {/* Appearance */}
+                  <button
+                    onClick={toggleTheme}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+                      {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                    </span>
+                    <span>{isDarkMode ? "Light mode" : "Dark mode"}</span>
+                  </button>
+
+                  {/* Telegram */}
+                  <a
+                    href="https://t.me/upsc_pyq_powerhouse"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
+                      <Send className="w-4 h-4 text-sky-500" />
+                    </span>
+                    <span>Join Telegram</span>
+                  </a>
+
+                  {/* Admin / Login section */}
+
+                  {/* Admin Panel */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => { setIsAdminView(!isAdminView); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <KeyRound className="w-4 h-4 text-blue-500" />
+                      </span>
+                      <span>{isAdminView ? "Exit admin" : "Admin panel"}</span>
+                    </button>
+                  )}
+
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
+
+                  {/* Login / Logout */}
+                  {!userEmail ? (
+                    <button
+                      onClick={() => { setShowLoginModal(true); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <User className="w-4 h-4 text-blue-500" />
+                      </span>
+                      <span>Login</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { handleLogout(); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center shrink-0">
+                        <RotateCcw className="w-4 h-4 text-rose-500" />
+                      </span>
+                      <span>Logout</span>
+                    </button>
+                  )}
+
+                  {/* About the Founder */}
+                  <button
+                    onClick={() => { setShowFounderModal(true); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-xs shrink-0">R</span>
+                    <span>About the Founder</span>
+                  </button>
+                </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -2004,6 +2263,37 @@ export default function App() {
               </button>
             </div>
 
+            {/* Admin Key — required to perform admin actions */}
+            <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">🔑 Admin Key</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {adminKey
+                      ? "Key saved in this browser. Admin actions are unlocked."
+                      : "Enter your admin key to unlock admin actions. Stored only in this browser."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    placeholder="Paste admin key"
+                    defaultValue={adminKey}
+                    onChange={(e) => saveAdminKey(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 w-56"
+                  />
+                  {adminKey && (
+                    <button
+                      onClick={() => saveAdminKey("")}
+                      className="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-xs font-bold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Refresh Questions Cache Button */}
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">
               <div>
@@ -2014,7 +2304,7 @@ export default function App() {
                 onClick={async () => {
                   try {
                     setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
-                    const res = await fetch('/api/admin/refresh-questions', { method: 'POST' });
+                    const res = await fetch('/api/admin/refresh-questions', { method: 'POST', headers: adminHeaders() });
                     const data = await res.json();
                     if (res.ok) {
                       setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
@@ -2405,7 +2695,7 @@ export default function App() {
                     <div className="bg-indigo-600 p-3 rounded-full mb-4 shadow-lg group-hover:scale-110 transition-transform">
                       <Lock className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Unlock {mcqData.length}+ Questions</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Unlock 9500+ Questions</h3>
                     <p className="text-slate-600 dark:text-slate-300 text-xs mb-6 max-w-[250px]">
                       You're viewing the free preview. Get full access to all subjects, 2026 predictions, and future updates by subscribing.
                     </p>
@@ -2427,9 +2717,13 @@ export default function App() {
                             <p className="text-lg font-extrabold text-slate-900 dark:text-white">₹1299</p>
                           </div>
                         </div>
+                        <button
+                          onClick={() => setShowPremiumModal(true)}
+                          className="mt-3 w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-2.5 rounded-lg text-xs transition-all shadow-md flex items-center justify-center gap-2 active:scale-[0.98]"
+                        >
+                          <Crown className="w-4 h-4 text-amber-300" /> View Premium Plans
+                        </button>
                       </div>
-
-                      {/* Subscription Info */}
                       <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
                         <div className="flex items-center gap-2 mb-3">
                           <QrCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -3113,9 +3407,28 @@ export default function App() {
       </main>
 
       <footer className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 py-6 mt-auto transition-colors duration-300">
-        <div className="max-w-[1400px] mx-auto px-4 text-center flex flex-col sm:flex-row justify-between items-center gap-2">
-          <p className="text-xs text-slate-500 font-medium">&copy; 2026 UPSC PYQ Powerhouse. Education & Practice Platform.</p>
-          <p className="text-xs text-slate-500 font-medium">Built for Civil Service Aspirants.</p>
+        <div className="max-w-[1400px] mx-auto px-4 flex flex-col gap-3 items-center">
+          <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            {([
+              ['about', 'About Us'],
+              ['contact', 'Contact Us'],
+              ['privacy', 'Privacy Policy'],
+              ['terms', 'Terms & Conditions'],
+              ['refund', 'Refund Policy'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setLegalPage(key)}
+                className="text-xs font-semibold text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-2 text-center">
+            <p className="text-xs text-slate-500 font-medium">&copy; 2026 UPSC PYQ Powerhouse. Education & Practice Platform.</p>
+            <p className="text-xs text-slate-500 font-medium">Built for Civil Service Aspirants.</p>
+          </div>
         </div>
       </footer>
 
@@ -3174,6 +3487,242 @@ export default function App() {
             <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
               Your session will be remembered for 7 days.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Modal */}
+      {showPremiumModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl max-h-[96vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <button
+              onClick={() => setShowPremiumModal(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header banner */}
+            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 sm:px-10 pt-5 pb-6 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <div className="relative">
+                <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-white/15 backdrop-blur mb-2 shadow-lg">
+                  <Crown className="w-6 h-6 text-amber-300" />
+                </div>
+                <h2 className="text-lg sm:text-2xl font-extrabold text-white flex items-center justify-center gap-2">
+                  Powerhouse Premium
+                </h2>
+                <p className="text-blue-100 text-xs sm:text-sm mt-1 max-w-md mx-auto">
+                  Unlock every PYQ, topper copies and all-in-one ebooks. Pick the plan that fits your prep.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-4 sm:px-6 pb-6 pt-4 overflow-y-auto flex-1 min-h-0">
+              <div className="grid md:grid-cols-3 gap-4 sm:gap-5">
+                {([
+                  {
+                    id: 'pyq1',
+                    label: 'PYQ SUBSCRIPTION',
+                    icon: 'calendar',
+                    title: '1 Year',
+                    subtitle: 'Premium PYQ Access',
+                    price: '₹899',
+                    per: '≈ ₹75 / month',
+                    ribbon: '',
+                    labelClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+                    cardClass: 'border-emerald-500/40',
+                    iconClass: 'bg-emerald-500/10 text-emerald-400',
+                    titleClass: 'text-emerald-400',
+                    checkClass: 'text-emerald-400',
+                    btnClass: 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25',
+                    features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Cancel anytime'],
+                    cta: 'Get 1 Year Plan',
+                    link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                  },
+                  {
+                    id: 'pyq2',
+                    label: 'PYQ SUBSCRIPTION',
+                    icon: 'calendar',
+                    title: '2 Years',
+                    subtitle: 'Premium PYQ Access',
+                    price: '₹1299',
+                    per: '≈ ₹54 / month',
+                    ribbon: 'Most Popular',
+                    labelClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+                    cardClass: 'border-blue-500 ring-2 ring-blue-500/20',
+                    iconClass: 'bg-blue-500/10 text-blue-400',
+                    titleClass: 'text-blue-400',
+                    checkClass: 'text-blue-400',
+                    btnClass: 'bg-blue-500 hover:bg-blue-400 shadow-blue-500/25',
+                    features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Priority support', 'Cancel anytime'],
+                    cta: 'Get 2 Years Plan',
+                    link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                  },
+                  {
+                    id: 'ebooks',
+                    label: 'EBOOKS SUBSCRIPTION',
+                    icon: 'book',
+                    title: 'PowerHouse Ebooks',
+                    subtitle: 'All-in-One Study Material',
+                    price: '₹949',
+                    per: 'All Powerhouse ebooks for exams like UPSC CSE, State PCS, CAPF, CDS, NDA, etc...',
+                    ribbon: '',
+                    labelClass: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+                    cardClass: 'border-amber-500/40',
+                    iconClass: 'bg-amber-500/10 text-amber-400',
+                    titleClass: 'text-amber-400',
+                    checkClass: 'text-amber-400',
+                    btnClass: 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/25',
+                    features: ['Polity - Laxmikant summary 🇮🇳', 'Geography - 11th and 12th NCERT summary 🌍', 'Ancient and Medieval - From Upendra and old NCERT 🏛️', 'Modern History - Spectrum summary ⏳', 'Theme 1 and Theme 2 - 12th NCERT 📖', 'Economics - 12th Micro and Macro summary + Mrunal Sir 📈'],
+                    cta: 'Get Ebooks Plan',
+                    link: 'https://t.me/+7DfVmsKSI4FmNzg1',
+                  },
+                ] as const).map(card => (
+                  <div
+                    key={card.id}
+                    className={cn(
+                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-4 shadow-sm",
+                      card.cardClass
+                    )}
+                  >
+                    {card.ribbon && (
+                      <span className="absolute -top-px right-4 bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-b-lg shadow-md">
+                        {card.ribbon}
+                      </span>
+                    )}
+                    <span className={cn("self-start text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-md", card.labelClass)}>
+                      {card.label}
+                    </span>
+
+                    <div className="flex flex-col items-center text-center mt-3">
+                      <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-2", card.iconClass)}>
+                        {card.icon === 'book' ? <BookOpen className="w-6 h-6" /> : <Calendar className="w-6 h-6" />}
+                      </div>
+                      <h3 className={cn("text-lg font-extrabold", card.titleClass)}>{card.title}</h3>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{card.subtitle}</p>
+                      <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">{card.price}</p>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 px-2">{card.per}</p>
+                    </div>
+
+                    <div className="border-t border-slate-100 dark:border-slate-700 my-3" />
+
+                    <ul className="space-y-2 flex-1">
+                      {card.features.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2.5">
+                          <Check className={cn("w-4 h-4 shrink-0 mt-0.5", card.checkClass)} />
+                          <span className="text-[13px] text-slate-700 dark:text-slate-300">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <a
+                      href={card.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+                        card.btnClass
+                      )}
+                    >
+                      <Lock className="w-4 h-4" /> {card.cta}
+                    </a>
+                  </div>
+                ))}
+              </div>
+
+              {/* Activation footer */}
+              <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 flex flex-col sm:flex-row items-center gap-3 justify-between">
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 text-center sm:text-left">
+                  After paying on Telegram, share your email{userEmail ? <> (<span className="font-bold text-slate-700 dark:text-white break-all">{userEmail}</span>)</> : ""} to get activated, then tap check status.
+                </p>
+                <button
+                  onClick={() => userEmail && checkUserStatus(userEmail)}
+                  disabled={!userEmail}
+                  className="shrink-0 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" /> Check status
+                </button>
+              </div>
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3">
+                PYQ plans include the same features — only the duration & per-month cost differ. Secure activation via Telegram.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Founder Modal */}
+      {showFounderModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm" onClick={() => setShowFounderModal(false)}>
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 px-6 pt-7 pb-7 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <button
+                onClick={() => setShowFounderModal(false)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="relative flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white font-extrabold text-2xl shadow-lg ring-2 ring-white/30">R</div>
+                <h2 className="text-xl font-extrabold text-white mt-3">Rajendra</h2>
+                <p className="text-indigo-100 text-xs font-medium mt-1">Founder · UPSC PYQ Powerhouse</p>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
+              <div className="flex flex-wrap justify-center gap-1.5 mb-4">
+                <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold">UPSC Interview Candidate</span>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold">105+ CSE Prelims 2025</span>
+                <span className="px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-300 text-[10px] font-bold">CAPF · CDS · NDA Qualified</span>
+              </div>
+
+              <p className="text-lg font-extrabold text-slate-900 dark:text-white text-center">A Note from the Founder</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">Every PYQ tells a story.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">During my preparation, I realized that UPSC rarely asks questions in isolation—it often revisits ideas in new ways. The more PYQs I solved, the more the exam started to make sense.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">That's why PowerHouse PYQ exists: to make quality PYQs simple, organized, and affordable, so every aspirant can spend less time searching and more time learning.</p>
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 mt-3">— Rajendra</p>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3">
+                <p className="text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2">Built with <span className="text-rose-500">❤️</span></p>
+                <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-1">Powered by my brother, a software engineer at Microsoft and an IIT Delhi alumnus, who brings the technology behind the platform while I bring the UPSC journey behind it.</p>
+                <p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mt-2">Built by aspirants, for aspirants.</p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                <a href="mailto:raj48354835@gmail.com" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <Mail className="w-3.5 h-3.5" /> raj48354835@gmail.com
+                </a>
+                <a href="tel:+917665872210" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <Phone className="w-3.5 h-3.5" /> +91 76658 72210
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legal / Policy Pages Modal */}
+      {legalPage && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-5 sm:px-7 py-4 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90">
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">{LEGAL_TITLES[legalPage]}</h2>
+              <button
+                onClick={() => setLegalPage(null)}
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-7 py-5">
+              <LegalPageContent page={legalPage} />
+            </div>
           </div>
         </div>
       )}

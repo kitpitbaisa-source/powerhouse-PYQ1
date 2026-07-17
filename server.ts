@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import { timingSafeEqual } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
@@ -22,10 +23,37 @@ console.log("Cosmos DB client initialized for:", endpoint);
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
+// Secret admin key (server-side only, never sent to the browser).
+// Set ADMIN_API_KEY in .env locally and in the Vercel dashboard for production.
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+
 const serverApp = express();
 const PORT = 3000;
 
 serverApp.use(express.json());
+// PayU posts its callbacks as application/x-www-form-urlencoded
+serverApp.use(express.urlencoded({ extended: true }));
+
+// Guard: every /api/admin/* route requires a valid admin key in the
+// Authorization header. Requests without it are rejected with 401.
+function requireAdmin(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const expected = ADMIN_API_KEY;
+  const authorized =
+    expected.length > 0 &&
+    token.length === expected.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  if (!authorized) {
+    return res.status(401).json({ error: "Unauthorized: valid admin key required" });
+  }
+  next();
+}
+serverApp.use("/api/admin", requireAdmin);
 
 // Export for Vercel
 export default serverApp;
@@ -108,10 +136,19 @@ async function getEnglishQuestions() {
   return resources;
 }
 
-// API to get all questions (cached)
+// API to get all questions (cached). Supports ?limit=N to return only the
+// top N in display order (year desc, id desc) for fast initial paint.
 serverApp.get("/api/questions", async (req, res) => {
   try {
     const questions = await getQuestions();
+    const limit = parseInt(req.query.limit as string, 10);
+    if (!isNaN(limit) && limit > 0) {
+      const top = [...questions]
+        .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
+        .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
+        .slice(0, limit);
+      return res.json(top);
+    }
     questions.sort((a: any, b: any) => a.id - b.id);
     res.json(questions);
   } catch (error: any) {
