@@ -348,12 +348,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           
           <div className="w-full space-y-2">
             <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
-              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
-                <QrCode className="w-3 h-3" /> Subscribe
+              <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1.5 font-bold uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> What you unlock
               </p>
-              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all {question.year} questions.
-              </p>
+              <ul className="space-y-1">
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All PYQs with detailed solutions
+                </li>
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Topper copies &amp; all-in-one ebooks
+                </li>
+                <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Advanced filters, search &amp; bookmarks
+                </li>
+              </ul>
               <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                 1 Year ₹899 · 2 Years ₹1299
               </p>
@@ -394,7 +402,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div 
-      className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full group"
+      className="bg-white dark:bg-slate-800/80 p-4 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-slate-200/60 dark:hover:shadow-black/20 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-500/50 hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full group"
     >
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
@@ -1998,12 +2006,12 @@ export default function App() {
   return (
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
-        <header className="bg-white dark:bg-slate-900 shadow-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm border-b border-slate-200/70 dark:border-slate-800/70 sticky top-0 z-50">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
           <div className="flex flex-wrap items-center py-2.5 gap-y-2">
             <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-              <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex items-center justify-center w-8 h-8 flex-shrink-0">
+              <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white p-1.5 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center w-8 h-8 flex-shrink-0 ring-1 ring-white/20">
                 <Landmark className="w-4 h-4" />
               </div>
               <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
@@ -2025,7 +2033,7 @@ export default function App() {
                     className={cn(
                       "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1",
                       activeTab === tab.id
-                        ? "bg-blue-600 text-white shadow-sm"
+                        ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     )}
                   >
@@ -2079,7 +2087,7 @@ export default function App() {
                     <button 
                       onClick={resetQuiz}
                       title="Reset Score"
-                      className="ml-2 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                      className="ml-2 p-1 rounded-md text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       <RotateCcw className="w-3 h-3" />
                     </button>
@@ -2099,7 +2107,7 @@ export default function App() {
                   <button
                     onClick={() => startRandomPractice(randomSelectLimit)}
                     title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -2123,7 +2131,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -2156,7 +2164,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startCSATRandomPractice(csatRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -2189,7 +2197,7 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => startEnglishRandomPractice(englishRandomSelectLimit)}
-                    className="px-2 py-0.5 rounded-md transition-all shadow-sm text-[11px] font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-500/20"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -2632,9 +2640,9 @@ export default function App() {
               </h2>
               <button 
                 onClick={resetFilters} 
-                className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
               >
-                Reset
+                <RotateCcw className="w-3 h-3" /> Reset
               </button>
             </div>
 
@@ -2902,9 +2910,9 @@ export default function App() {
                   </h2>
                   <button
                     onClick={resetMainsFilters}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    Reset
+                    <RotateCcw className="w-3 h-3" /> Reset
                   </button>
                 </div>
 
@@ -3068,9 +3076,9 @@ export default function App() {
                       setCSATVisibleCount(30);
                       setCSATRandomMode(false);
                     }}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    Reset
+                    <RotateCcw className="w-3 h-3" /> Reset
                   </button>
                 </div>
 
@@ -3201,9 +3209,9 @@ export default function App() {
                       setEnglishVisibleCount(30);
                       setEnglishRandomMode(false);
                     }}
-                    className="text-xs bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-900/20 text-white py-1 px-3 rounded-lg transition-all font-bold active:scale-95"
+                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    Reset
+                    <RotateCcw className="w-3 h-3" /> Reset
                   </button>
                 </div>
 
@@ -3476,12 +3484,20 @@ export default function App() {
                                 </p>
                                 <div className="w-full max-w-xs space-y-2">
                                   <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
-                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
-                                      <QrCode className="w-3 h-3" /> Subscribe
+                                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1.5 font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <Sparkles className="w-3 h-3" /> What you unlock
                                     </p>
-                                    <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                                      Contact <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">@UPSC_powerhouse_helpbot</a> on Telegram to unlock all topper answers.
-                                    </p>
+                                    <ul className="space-y-1">
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All topper copies with model answers
+                                      </li>
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> Every PYQ with detailed solutions
+                                      </li>
+                                      <li className="flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                        <Check className="w-2.5 h-2.5 shrink-0 text-emerald-500" /> All-in-one ebooks &amp; advanced search
+                                      </li>
+                                    </ul>
                                     <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold text-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                                       1 Year ₹899 · 2 Years ₹1299
                                     </p>
@@ -3545,74 +3561,81 @@ export default function App() {
       {/* Login Modal */}
       {showLoginModal && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade"
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
+            className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop"
           >
-            <button 
-              onClick={() => { setShowLoginModal(false); setPendingPlan(null); }}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex justify-center mb-6">
-              <div className="bg-blue-600 p-4 rounded-full shadow-lg shadow-blue-500/30 w-16 h-16 flex items-center justify-center relative">
-                <User className="w-8 h-8 text-orange-400 absolute" />
-                <Lock className="w-5 h-5 text-yellow-400 absolute bottom-1 right-1" />
-              </div>
-            </div>
-            
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
-
-            {pendingPlan && (
-              <div className="mb-5 -mt-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/70 dark:border-indigo-500/30 px-4 py-2.5 text-center">
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                  Please log in to continue to your {pendingPlan === '2yr' ? '2 Years' : '1 Year'} plan payment.
+            {/* Gradient header */}
+            <div className="relative bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 pt-7 pb-8 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <button
+                onClick={() => { setShowLoginModal(false); setPendingPlan(null); }}
+                className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="relative flex flex-col items-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shadow-lg ring-2 ring-white/25 mb-3">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-extrabold text-white">Welcome Back</h2>
+                <p className="text-blue-100 text-xs sm:text-sm mt-1 max-w-xs mx-auto">
+                  Enter your email address to access the powerhouse.
                 </p>
               </div>
-            )}
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
-                <div className="relative">
-                  <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    id="email"
-                    type="email"
-                    required
-                    value={loginEmailInput}
-                    onChange={(e) => setLoginEmailInput(e.target.value)}
-                    placeholder="e.g. user@example.com"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                  />
+            </div>
+
+            {/* Body */}
+            <div className="px-6 sm:px-8 pt-6 pb-7">
+              {pendingPlan && (
+                <div className="mb-5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/70 dark:border-indigo-500/30 px-4 py-2.5 text-center">
+                  <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                    Please log in to continue to your {pendingPlan === '2yr' ? '2 Years' : '1 Year'} plan payment.
+                  </p>
                 </div>
-              </div>
-              
-              <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-              >
-                {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
-                {!isLoggingIn && <Check className="w-5 h-5" />}
-              </button>
-            </form>
-            
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
-              Your session will be remembered for 7 days.
-            </p>
+              )}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="email" className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="email"
+                      type="email"
+                      required
+                      value={loginEmailInput}
+                      onChange={(e) => setLoginEmailInput(e.target.value)}
+                      placeholder="e.g. user@example.com"
+                      className="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 hover:from-indigo-500 hover:via-blue-500 hover:to-violet-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-600/25 transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? "Logging in..." : "Continue to UPSC Powerhouse"}
+                  {!isLoggingIn && <Check className="w-5 h-5" />}
+                </button>
+              </form>
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-6">
+                Your session will be remembered for 7 days.
+              </p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Premium Modal */}
       {showPremiumModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl max-h-[96vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl max-h-[96vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
             <button
               onClick={() => setShowPremiumModal(false)}
               className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
@@ -3637,8 +3660,8 @@ export default function App() {
               </div>
             </div>
 
-            <div className="px-4 sm:px-6 pb-6 pt-4 overflow-y-auto flex-1 min-h-0">
-              <div className="grid md:grid-cols-3 gap-4 sm:gap-5">
+            <div className="px-4 sm:px-6 pb-4 pt-3 overflow-y-auto flex-1 min-h-0">
+              <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
                 {([
                   {
                     id: 'pyq1',
@@ -3695,7 +3718,7 @@ export default function App() {
                     titleClass: 'text-amber-400',
                     checkClass: 'text-amber-400',
                     btnClass: 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/25',
-                    features: ['Polity - Laxmikant summary 🇮🇳', 'Geography - 11th and 12th NCERT summary 🌍', 'Ancient and Medieval - From Upendra and old NCERT 🏛️', 'Modern History - Spectrum summary ⏳', 'Theme 1 and Theme 2 - 12th NCERT 📖', 'Economics - 12th Micro and Macro summary + Mrunal Sir 📈'],
+                    features: ['Polity - Laxmikant summary', 'Geography - 11th and 12th NCERT summary', 'Ancient and Medieval - From Upendra and old NCERT', 'Modern History - Spectrum summary', 'Theme 1 and Theme 2 - 12th NCERT', 'Economics - 12th Micro and Macro summary + Mrunal Sir'],
                     cta: 'Get Ebooks Plan',
                     link: 'https://t.me/+7DfVmsKSI4FmNzg1',
                     plan: 'ebooks',
@@ -3704,7 +3727,7 @@ export default function App() {
                   <div
                     key={card.id}
                     className={cn(
-                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-4 shadow-sm",
+                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-3 shadow-sm",
                       card.cardClass
                     )}
                   >
@@ -3717,23 +3740,23 @@ export default function App() {
                       {card.label}
                     </span>
 
-                    <div className="flex flex-col items-center text-center mt-3">
-                      <div className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-2", card.iconClass)}>
-                        {card.icon === 'book' ? <BookOpen className="w-6 h-6" /> : <Calendar className="w-6 h-6" />}
+                    <div className="flex flex-col items-center text-center mt-2">
+                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center mb-1.5", card.iconClass)}>
+                        {card.icon === 'book' ? <BookOpen className="w-5 h-5" /> : <Calendar className="w-5 h-5" />}
                       </div>
                       <h3 className={cn("text-lg font-extrabold", card.titleClass)}>{card.title}</h3>
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{card.subtitle}</p>
-                      <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">{card.price}</p>
-                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 px-2">{card.per}</p>
+                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{card.price}</p>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 px-2">{card.per}</p>
                     </div>
 
-                    <div className="border-t border-slate-100 dark:border-slate-700 my-3" />
+                    <div className="border-t border-slate-100 dark:border-slate-700 my-2" />
 
-                    <ul className="space-y-2 flex-1">
+                    <ul className="space-y-1.5 flex-1">
                       {card.features.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
+                        <li key={i} className="flex items-start gap-2">
                           <Check className={cn("w-4 h-4 shrink-0 mt-0.5", card.checkClass)} />
-                          <span className="text-[13px] text-slate-700 dark:text-slate-300">{f}</span>
+                          <span className="text-[12px] text-slate-700 dark:text-slate-300">{f}</span>
                         </li>
                       ))}
                     </ul>
@@ -3742,7 +3765,7 @@ export default function App() {
                       <button
                         onClick={() => initiatePayment(card.plan)}
                         className={cn(
-                          "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+                          "mt-3 w-full text-white font-bold py-2 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
                           card.btnClass
                         )}
                       >
@@ -3754,7 +3777,7 @@ export default function App() {
               </div>
 
               {/* Queries footer */}
-              <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 flex flex-col sm:flex-row items-center gap-3 justify-between">
+              <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 flex flex-col sm:flex-row items-center gap-2 justify-between">
                 <p className="text-[12px] text-slate-500 dark:text-slate-400 text-center sm:text-left">
                   For any queries or activation help, reach us on Telegram.
                 </p>
@@ -3762,13 +3785,13 @@ export default function App() {
                   href="https://telegram.me/UPSC_powerhouse_helpbot"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                  className="shrink-0 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                 >
                   <Send className="w-4 h-4" /> Queries on Telegram
                 </a>
               </div>
 
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3">
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">
                 PYQ plans include the same features — only the duration & per-month cost differ. Secure activation via Telegram.
               </p>
             </div>
@@ -3778,8 +3801,8 @@ export default function App() {
 
       {/* Founder Modal */}
       {showFounderModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm" onClick={() => setShowFounderModal(false)}>
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade" onClick={() => setShowFounderModal(false)}>
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop" onClick={(e) => e.stopPropagation()}>
             <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 px-6 pt-7 pb-7 text-center overflow-hidden">
               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
               <button
