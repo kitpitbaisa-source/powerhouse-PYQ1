@@ -1061,12 +1061,12 @@ export default function App() {
             });
             const result = await verifyRes.json();
             if (verifyRes.ok && result.success) {
-              await checkUserStatus(userEmail);
               setShowPremiumModal(false);
               if (plan === 'ebooks') {
                 alert("✅ Payment successful! Redirecting you to the PowerHouse Ebooks Telegram channel...");
                 window.open("https://t.me/+7DfVmsKSI4FmNzg1", "_blank", "noopener,noreferrer");
               } else {
+                await checkUserStatus(userEmail);
                 alert("✅ Payment successful! Your premium access is now active.");
               }
             } else {

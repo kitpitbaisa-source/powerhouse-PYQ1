@@ -540,10 +540,11 @@ serverApp.post("/api/payment/verify", async (req, res) => {
       existing = resource;
     } catch (e) {}
     const expiryDate = new Date(Date.now() + p.days * 24 * 60 * 60 * 1000).toISOString();
+    const newStatus = plan === "ebooks" ? "none" : "subscribed";
     await usersContainer.items.upsert({
       id: userEmail,
       email: userEmail,
-      status: "subscribed",
+      status: newStatus,
       plan,
       createdAt: existing?.createdAt || now,
       modifiedAt: now,
@@ -551,7 +552,7 @@ serverApp.post("/api/payment/verify", async (req, res) => {
       isActive: true,
       lastPaymentId: razorpay_payment_id,
     });
-    res.json({ success: true, status: "subscribed", expiryDate });
+    res.json({ success: true, status: newStatus, expiryDate });
   } catch (error: any) {
     console.error("verify error:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
