@@ -89,8 +89,9 @@ const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
 const PLANS: Record<string, { amount: number; days: number; label: string }> = {
-  "1yr": { amount: 89900, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
+  "1yr": { amount: 100, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
   "2yr": { amount: 129900, days: 730, label: "Powerhouse PYQ Premium - 2 Years" },
+  "ebooks": { amount: 94900, days: 3650, label: "PowerHouse Ebooks - All-in-One Study Material" },
 };
 
 // In-memory cache for questions (12h TTL, invalidated via cache-version doc in Cosmos)

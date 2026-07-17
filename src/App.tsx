@@ -250,6 +250,7 @@ interface QuestionCardProps {
   isLocked?: boolean;
   userEmail?: string | null;
   onCheckStatus?: () => void;
+  onOpenPremium?: () => void;
   onSubjectClick?: (subject: string) => void;
   onTopicClick?: (topic: string) => void;
   onExamClick?: (exam: string) => void;
@@ -316,6 +317,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   isLocked,
   userEmail,
   onCheckStatus,
+  onOpenPremium,
   onSubjectClick,
   onTopicClick,
   onExamClick,
@@ -357,10 +359,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </p>
             </div>
             <button 
-              onClick={onCheckStatus}
+              onClick={onOpenPremium}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
             >
-              <RotateCcw className="w-3 h-3" /> Refresh Status
+              <Crown className="w-3 h-3" /> View Premium Plans
             </button>
           </div>
         </div>
@@ -1010,8 +1012,9 @@ export default function App() {
       document.body.appendChild(script);
     });
 
-  const initiatePayment = async (plan: '1yr' | '2yr') => {
+  const initiatePayment = async (plan: '1yr' | '2yr' | 'ebooks') => {
     if (!userEmail) {
+      setPendingPlan(plan);
       setShowPremiumModal(false);
       setShowLoginModal(true);
       return;
@@ -1038,7 +1041,7 @@ export default function App() {
         currency: order.currency,
         order_id: order.orderId,
         name: "UPSC PYQ Powerhouse",
-        description: plan === '2yr' ? "Premium Access - 2 Years" : "Premium Access - 1 Year",
+        description: plan === 'ebooks' ? "PowerHouse Ebooks - All-in-One" : plan === '2yr' ? "Premium Access - 2 Years" : "Premium Access - 1 Year",
         prefill: { email: userEmail },
         theme: { color: "#4f46e5" },
         handler: async (response: any) => {
@@ -1052,7 +1055,12 @@ export default function App() {
             if (verifyRes.ok && result.success) {
               await checkUserStatus(userEmail);
               setShowPremiumModal(false);
-              alert("✅ Payment successful! Your premium access is now active.");
+              if (plan === 'ebooks') {
+                alert("✅ Payment successful! Redirecting you to the PowerHouse Ebooks Telegram channel...");
+                window.open("https://t.me/+7DfVmsKSI4FmNzg1", "_blank", "noopener,noreferrer");
+              } else {
+                alert("✅ Payment successful! Your premium access is now active.");
+              }
             } else {
               alert("Payment received but verification failed. Please contact support with Payment ID: " + response.razorpay_payment_id);
             }
@@ -1434,6 +1442,18 @@ export default function App() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
+
+  // After a not-logged-in user logs in, resume the payment they intended.
+  useEffect(() => {
+    if (userEmail && pendingPlan) {
+      const plan = pendingPlan;
+      setPendingPlan(null);
+      setShowLoginModal(false);
+      initiatePayment(plan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail, pendingPlan]);
   const [loginEmailInput, setLoginEmailInput] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
@@ -2274,6 +2294,20 @@ export default function App() {
                     </button>
                   )}
 
+                  {/* Telegram */}
+                  <a
+                    href="https://t.me/upsc_pyq_powerhouse"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
+                      <Send className="w-4 h-4 text-sky-500" />
+                    </span>
+                    <span>Join Telegram</span>
+                  </a>
+
                   <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
 
                   {/* Login / Logout */}
@@ -2729,7 +2763,7 @@ export default function App() {
                         onToggleRevealed={() => toggleAnswer(q.id)}
                         isLocked={isLocked}
                         userEmail={userEmail}
-                        onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                        onOpenPremium={() => setShowPremiumModal(true)}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
                         onUpdateQuestion={handleUpdateQuestion}
@@ -3115,7 +3149,7 @@ export default function App() {
                           isLocked={isLocked}
                           userEmail={userEmail}
                           searchQuery={csatSearchQuery}
-                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onOpenPremium={() => setShowPremiumModal(true)}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -3263,7 +3297,7 @@ export default function App() {
                           isLocked={isLocked}
                           userEmail={userEmail}
                           searchQuery={englishSearchQuery}
-                          onCheckStatus={() => userEmail && checkUserStatus(userEmail)}
+                          onOpenPremium={() => setShowPremiumModal(true)}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -3453,10 +3487,10 @@ export default function App() {
                                     </p>
                                   </div>
                                   <button 
-                                    onClick={() => userEmail && checkUserStatus(userEmail)}
+                                    onClick={() => setShowPremiumModal(true)}
                                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
                                   >
-                                    <RotateCcw className="w-3 h-3" /> Refresh Status
+                                    <Crown className="w-3 h-3" /> View Premium Plans
                                   </button>
                                 </div>
                               </div>
@@ -3517,7 +3551,7 @@ export default function App() {
             className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700 relative"
           >
             <button 
-              onClick={() => setShowLoginModal(false)}
+              onClick={() => { setShowLoginModal(false); setPendingPlan(null); }}
               className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -3532,6 +3566,14 @@ export default function App() {
             
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center mb-2">Welcome Back</h2>
             <p className="text-slate-500 dark:text-slate-400 text-center text-sm mb-8">Enter your email address to access the powerhouse.</p>
+
+            {pendingPlan && (
+              <div className="mb-5 -mt-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/70 dark:border-indigo-500/30 px-4 py-2.5 text-center">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                  Please log in to continue to your {pendingPlan === '2yr' ? '2 Years' : '1 Year'} plan payment.
+                </p>
+              </div>
+            )}
             
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -3580,16 +3622,16 @@ export default function App() {
             </button>
 
             {/* Header banner */}
-            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 sm:px-10 pt-5 pb-6 text-center overflow-hidden">
+            <div className="relative shrink-0 bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-6 sm:px-10 pt-3 pb-3 text-center overflow-hidden">
               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
               <div className="relative">
-                <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-white/15 backdrop-blur mb-2 shadow-lg">
-                  <Crown className="w-6 h-6 text-amber-300" />
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/15 backdrop-blur mb-1 shadow-lg">
+                  <Crown className="w-4 h-4 text-amber-300" />
                 </div>
-                <h2 className="text-lg sm:text-2xl font-extrabold text-white flex items-center justify-center gap-2">
+                <h2 className="text-base sm:text-xl font-extrabold text-white flex items-center justify-center gap-2">
                   Powerhouse Premium
                 </h2>
-                <p className="text-blue-100 text-xs sm:text-sm mt-1 max-w-md mx-auto">
+                <p className="text-blue-100 text-[11px] sm:text-xs mt-0.5 max-w-md mx-auto">
                   Unlock every PYQ, topper copies and all-in-one ebooks. Pick the plan that fits your prep.
                 </p>
               </div>
@@ -3604,8 +3646,8 @@ export default function App() {
                     icon: 'calendar',
                     title: '1 Year',
                     subtitle: 'Premium PYQ Access',
-                    price: '₹899',
-                    per: '≈ ₹75 / month',
+                    price: '₹1',
+                    per: 'Test price (temporary)',
                     ribbon: '',
                     labelClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
                     cardClass: 'border-emerald-500/40',
@@ -3656,6 +3698,7 @@ export default function App() {
                     features: ['Polity - Laxmikant summary 🇮🇳', 'Geography - 11th and 12th NCERT summary 🌍', 'Ancient and Medieval - From Upendra and old NCERT 🏛️', 'Modern History - Spectrum summary ⏳', 'Theme 1 and Theme 2 - 12th NCERT 📖', 'Economics - 12th Micro and Macro summary + Mrunal Sir 📈'],
                     cta: 'Get Ebooks Plan',
                     link: 'https://t.me/+7DfVmsKSI4FmNzg1',
+                    plan: 'ebooks',
                   },
                 ] as const).map(card => (
                   <div
@@ -3695,7 +3738,7 @@ export default function App() {
                       ))}
                     </ul>
 
-                    {'plan' in card ? (
+                    {(
                       <button
                         onClick={() => initiatePayment(card.plan)}
                         className={cn(
@@ -3705,35 +3748,24 @@ export default function App() {
                       >
                         <Lock className="w-4 h-4" /> {card.cta}
                       </button>
-                    ) : (
-                      <a
-                        href={card.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(
-                          "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
-                          card.btnClass
-                        )}
-                      >
-                        <Lock className="w-4 h-4" /> {card.cta}
-                      </a>
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* Activation footer */}
+              {/* Queries footer */}
               <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 flex flex-col sm:flex-row items-center gap-3 justify-between">
                 <p className="text-[12px] text-slate-500 dark:text-slate-400 text-center sm:text-left">
-                  After paying on Telegram, share your email{userEmail ? <> (<span className="font-bold text-slate-700 dark:text-white break-all">{userEmail}</span>)</> : ""} to get activated, then tap check status.
+                  For any queries or activation help, reach us on Telegram.
                 </p>
-                <button
-                  onClick={() => userEmail && checkUserStatus(userEmail)}
-                  disabled={!userEmail}
-                  className="shrink-0 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                <a
+                  href="https://telegram.me/UPSC_powerhouse_helpbot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                 >
-                  <RotateCcw className="w-4 h-4" /> Check status
-                </button>
+                  <Send className="w-4 h-4" /> Queries on Telegram
+                </a>
               </div>
 
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3">
