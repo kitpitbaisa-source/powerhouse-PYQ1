@@ -17,6 +17,7 @@ const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
+const settingsContainer = database.container("settings");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -34,10 +35,37 @@ const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
 // Plans and their price (in paise) + subscription length. Amount is decided
 // here on the server so it can never be tampered with from the client.
 const PLANS: Record<string, { amount: number; days: number; label: string }> = {
-  "1yr": { amount: 100, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
-  "2yr": { amount: 100, days: 730, label: "Powerhouse PYQ Premium - 2 Years" },
-  "ebooks": { amount: 100, days: 3650, label: "PowerHouse Ebooks - All-in-One Study Material" },
+  "1yr": { amount: 89900, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
+  "2yr": { amount: 129900, days: 730, label: "Powerhouse PYQ Premium - 2 Years" },
+  "ebooks": { amount: 94900, days: 3650, label: "PowerHouse Ebooks - All-in-One Study Material" },
 };
+
+// Plan prices can be overridden live from the admin panel (stored in the
+// "settings" container). Amounts are always in paise and enforced server-side.
+let settingsContainerReady = false;
+async function ensureSettingsContainer() {
+  if (settingsContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "settings",
+    partitionKey: { paths: ["/id"] },
+  });
+  settingsContainerReady = true;
+}
+async function getEffectivePlans() {
+  const merged: Record<string, { amount: number; days: number; label: string }> =
+    JSON.parse(JSON.stringify(PLANS));
+  try {
+    await ensureSettingsContainer();
+    const { resource } = await settingsContainer.item("plan-prices", "plan-prices").read();
+    if (resource?.amounts) {
+      for (const k of Object.keys(merged)) {
+        const a = resource.amounts[k];
+        if (typeof a === "number" && a >= 100) merged[k].amount = a;
+      }
+    }
+  } catch (e) {}
+  return merged;
+}
 
 const serverApp = express();
 const PORT = 3000;
@@ -565,7 +593,8 @@ serverApp.get("/api/user-status", async (req, res) => {
 serverApp.post("/api/payment/create-order", async (req, res) => {
   try {
     const { email, plan } = req.body || {};
-    const p = PLANS[plan];
+    const plans = await getEffectivePlans();
+    const p = plans[plan];
     if (!email || !p) {
       return res.status(400).json({ error: "Valid email and plan are required" });
     }
@@ -636,6 +665,58 @@ serverApp.post("/api/payment/verify", async (req, res) => {
     res.json({ success: true, status: newStatus, expiryDate });
   } catch (error: any) {
     console.error("verify error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Public: current subscription prices (paise) so the UI can display them ──
+serverApp.get("/api/plans", async (_req, res) => {
+  try {
+    const plans = await getEffectivePlans();
+    const out: Record<string, number> = {};
+    for (const k of Object.keys(plans)) out[k] = plans[k].amount;
+    res.json(out);
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: read current prices (in rupees) ──
+serverApp.get("/api/admin/prices", async (_req, res) => {
+  try {
+    const plans = await getEffectivePlans();
+    const out: Record<string, number> = {};
+    for (const k of Object.keys(plans)) out[k] = Math.round(plans[k].amount / 100);
+    res.json(out);
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: update prices (body { prices: { "1yr": 899, "2yr": 1299, "ebooks": 949 } } in rupees) ──
+serverApp.post("/api/admin/prices", async (req, res) => {
+  try {
+    const { prices } = req.body || {};
+    if (!prices || typeof prices !== "object") {
+      return res.status(400).json({ error: "prices object is required" });
+    }
+    const amounts: Record<string, number> = {};
+    for (const k of Object.keys(PLANS)) {
+      const rupees = Number(prices[k]);
+      if (!Number.isFinite(rupees) || rupees < 1) {
+        return res.status(400).json({ error: `Invalid price for ${k} (must be at least ₹1)` });
+      }
+      amounts[k] = Math.round(rupees * 100);
+    }
+    await ensureSettingsContainer();
+    await settingsContainer.items.upsert({
+      id: "plan-prices",
+      amounts,
+      modifiedAt: new Date().toISOString(),
+    });
+    res.json({ success: true, amounts });
+  } catch (error: any) {
+    console.error("set-prices error:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });

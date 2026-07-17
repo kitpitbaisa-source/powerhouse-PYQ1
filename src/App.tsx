@@ -31,6 +31,8 @@ import {
   Sparkles,
   BookOpen,
   UserPlus,
+  RefreshCw,
+  IndianRupee,
   User,
   Mail,
   Phone,
@@ -45,16 +47,16 @@ import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
 const subjectColors: SubjectColorMap = {
-  "Polity": "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 ring-purple-400/20",
-  "History": "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-500 ring-amber-500/20",
-  "Geography": "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-blue-400/20",
-  "Economy": "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-emerald-400/20",
-  "Environment": "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-green-400/20",
-  "Science & Technology": "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 ring-cyan-400/20",
-  "Art & Culture": "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400 ring-pink-400/20",
-  "Current Affairs": "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 ring-orange-400/20",
-  "International Relations": "bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 ring-sky-400/20",
-  "Default": "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-slate-400/20"
+  "Polity": "bg-gradient-to-r from-indigo-500 to-violet-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20",
+  "History": "bg-gradient-to-r from-blue-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-blue-500/20",
+  "Geography": "bg-gradient-to-r from-sky-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
+  "Economy": "bg-gradient-to-r from-cyan-500 to-sky-500 text-white ring-white/15 shadow-sm shadow-cyan-500/20",
+  "Environment": "bg-gradient-to-r from-teal-500 to-cyan-500 text-white ring-white/15 shadow-sm shadow-teal-500/20",
+  "Science & Technology": "bg-gradient-to-r from-cyan-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-cyan-500/20",
+  "Art & Culture": "bg-gradient-to-r from-violet-500 to-purple-500 text-white ring-white/15 shadow-sm shadow-violet-500/20",
+  "Current Affairs": "bg-gradient-to-r from-blue-500 to-cyan-500 text-white ring-white/15 shadow-sm shadow-blue-500/20",
+  "International Relations": "bg-gradient-to-r from-sky-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
+  "Default": "bg-gradient-to-r from-indigo-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20"
 };
 
 // ── Business / legal details (used across policy pages & PayU) ──
@@ -144,7 +146,6 @@ function LegalPageContent({ page }: { page: 'about' | 'contact' | 'privacy' | 't
           <li className={li}><strong>Phone / WhatsApp:</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={`tel:${BUSINESS.phone.replace(/\s/g, '')}`}>{BUSINESS.phone}</a></li>
           <li className={li}><strong>Address:</strong> {BUSINESS.location}</li>
           <li className={li}><strong>Telegram (Support):</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={BUSINESS.telegramHelp} target="_blank" rel="noopener noreferrer">Help Bot</a></li>
-          <li className={li}><strong>Telegram (Ebooks Channel):</strong> <a className="text-blue-600 dark:text-blue-400 underline" href={BUSINESS.telegramChannel} target="_blank" rel="noopener noreferrer">Join Channel</a></li>
         </ul>
         <h3 className={h}>Support Hours</h3>
         <p className={p}>Monday to Saturday, 10:00 AM – 7:00 PM IST. We usually respond within 24 hours.</p>
@@ -379,7 +380,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="opacity-20 pointer-events-none filter blur-[1px]">
           <div className="flex justify-between items-start mb-3 gap-2">
             <div className="flex gap-1.5 items-center">
-              <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
                 {question.exam}
               </span>
             </div>
@@ -402,26 +403,29 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div 
-      className="bg-white dark:bg-slate-800/80 p-4 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-slate-200/60 dark:hover:shadow-black/20 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-500/50 hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full group"
+      className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-4 sm:p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group animate-fadeInUp overflow-hidden"
+      style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, animationFillMode: 'both' }}
     >
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
           <span 
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
           <span 
             onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
           >
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             {question.subject}
           </span>
           {question.topic && (
             <span 
               onClick={() => onTopicClick?.(question.topic!)}
-              className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 ring-1 ring-inset ring-blue-400/20 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors"
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
               {question.topic}
             </span>
@@ -429,14 +433,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
         <span 
           onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         >
           <Calendar className="w-3 h-3 mr-1" />{question.year}
         </span>
       </div>
       
-      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-3 leading-[20px] whitespace-pre-wrap px-1">
-        <span className="text-blue-600 dark:text-blue-400 mr-1.5 font-normal">Q{question.id}.</span> 
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[21px] whitespace-pre-wrap px-1">
+        <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
       
@@ -452,10 +456,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               disabled={hasAttempted}
               onClick={() => onOptionClick(opt)}
               className={cn(
-                "w-full text-left py-2.5 px-4 border rounded-lg text-[13px] font-normal transition-all flex justify-between items-center group/btn leading-[19px]",
-                !hasAttempted && "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 cursor-pointer active:scale-[0.98]",
-                hasAttempted && isCorrectAnswer && "bg-emerald-100/50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400",
-                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-100/50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400",
+                "w-full text-left py-2.5 px-4 border rounded-xl text-[13px] font-medium transition-all flex justify-between items-center group/btn leading-[19px]",
+                !hasAttempted && "bg-slate-50/80 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600/70 text-slate-700 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-600/70 hover:border-blue-300 dark:hover:border-blue-500/60 hover:shadow-sm cursor-pointer active:scale-[0.98]",
+                hasAttempted && isCorrectAnswer && "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10",
+                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400 shadow-sm shadow-red-500/10",
                 hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
             >
@@ -472,7 +476,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className={cn("flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700/50 mt-auto", isRevealed && "mb-3")}>
         <button 
           onClick={onToggleRevealed} 
-          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center focus:outline-none"
+          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-white bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-600 dark:hover:bg-blue-600 px-3 py-1.5 rounded-full flex items-center focus:outline-none transition-colors ring-1 ring-blue-500/20"
         >
           <div
             className={cn("mr-1.5 transition-transform duration-200", isRevealed ? "rotate-180" : "rotate-0")}
@@ -487,22 +491,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           target="_blank" 
           rel="noopener noreferrer" 
           title="Search Google for this question" 
-          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white flex items-center transition-colors px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
+          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-white flex items-center transition-colors px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
         >
           <ExternalLink className="w-3 h-3 mr-1.5" /> Search
         </a>
       </div>
       
       {isRevealed && (
-        <div className="pt-2 px-1">
-          <p className="text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5 leading-[18px]">
-            Answer: <span className="text-emerald-600 dark:text-emerald-400 font-normal">{question.answer}</span>
-          </p>
+        <div className="pt-3 px-1 animate-fadeInUp">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-full ring-1 ring-emerald-500/20 mb-2.5">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Answer: {question.answer}
+          </div>
           {question.explanation && (
-            <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-3 rounded-r-lg shadow-sm">
-              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px] italic">
-                <span className="font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider block mb-1.5 not-italic">Explanation</span>
-                <HighlightText text={question.explanation} query={searchQuery} />
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-slate-800/40 border border-indigo-100 dark:border-indigo-500/20 p-3.5 rounded-xl shadow-sm">
+              <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px]">
+                <span className="inline-flex items-center gap-1 font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider mb-1.5"><Sparkles className="w-3 h-3" /> Explanation</span>
+                <span className="block">
+                  <HighlightText text={question.explanation} query={searchQuery} />
+                </span>
               </p>
             </div>
           )}
@@ -601,48 +607,50 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   const hasModelAnswer = !!answer.trim();
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-blue-500/50 transition-colors duration-200 flex flex-col h-full">
+    <div className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
           <span
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
           <span
             onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity", colorClasses)}
+            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
           >
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             {question.subject}
           </span>
           {question.paper && (
-            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800">
+            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
               {question.paper}
             </span>
           )}
           {question.topic && (
-            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
               {question.topic}
             </span>
           )}
         </div>
         <span
           onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 font-medium whitespace-nowrap bg-slate-100/50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/50 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         >
           <Calendar className="w-3 h-3 mr-1" />{question.year}
         </span>
       </div>
 
-      <h3 className="text-[13px] font-normal text-slate-900 dark:text-slate-100 mb-4 leading-[20px] whitespace-pre-wrap flex-grow">
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[21px] whitespace-pre-wrap flex-grow">
         <HighlightText text={question.question} query={searchQuery} />
       </h3>
 
       {question.keywords && question.keywords.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-1.5 mb-3">
           {question.keywords.map((kw, i) => (
-            <span key={i} className="text-[9px] px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/15 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-700/40 font-medium">
+            <span key={i} className="text-[9.5px] px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full ring-1 ring-inset ring-blue-500/20 font-semibold">
               {kw}
             </span>
           ))}
@@ -878,6 +886,14 @@ export default function App() {
     localStorage.setItem('visibleCount', String(visibleCount));
   }, [visibleCount]);
 
+  // Slim the header once the page is scrolled
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -885,6 +901,7 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('user_session');
@@ -1419,6 +1436,46 @@ export default function App() {
     return k ? { ...base, Authorization: `Bearer ${k}` } : base;
   };
 
+  const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
+  const [priceForm, setPriceForm] = useState<{ '1yr': string; '2yr': string; 'ebooks': string }>({ '1yr': '', '2yr': '', 'ebooks': '' });
+  const [savingPrices, setSavingPrices] = useState(false);
+  useEffect(() => {
+    if (Object.keys(planPrices).length) {
+      setPriceForm({
+        '1yr': String(Math.round((planPrices['1yr'] || 89900) / 100)),
+        '2yr': String(Math.round((planPrices['2yr'] || 129900) / 100)),
+        'ebooks': String(Math.round((planPrices['ebooks'] || 94900) / 100)),
+      });
+    }
+  }, [planPrices]);
+  const savePrices = async () => {
+    setSavingPrices(true);
+    try {
+      const res = await fetch('/api/admin/prices', {
+        method: 'POST',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ prices: {
+          '1yr': Number(priceForm['1yr']),
+          '2yr': Number(priceForm['2yr']),
+          'ebooks': Number(priceForm['ebooks']),
+        } }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminMessage({ text: "✓ Subscription prices updated.", type: "success" });
+        const pr = await fetch('/api/plans');
+        if (pr.ok) setPlanPrices(await pr.json());
+      } else {
+        throw new Error(data.error || "Failed to update prices");
+      }
+    } catch (e: any) {
+      setAdminMessage({ text: `Failed to update prices: ${e.message}`, type: "error" });
+    } finally {
+      setSavingPrices(false);
+      setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
+    }
+  };
+
   const checkUserStatus = async (email: string) => {
     try {
       const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
@@ -1451,6 +1508,13 @@ export default function App() {
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
+
+  useEffect(() => {
+    fetch('/api/plans')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && typeof d === 'object') setPlanPrices(d); })
+      .catch(() => {});
+  }, []);
 
   // After a not-logged-in user logs in, resume the payment they intended.
   useEffect(() => {
@@ -2006,16 +2070,22 @@ export default function App() {
   return (
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
-        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm border-b border-slate-200/70 dark:border-slate-800/70 sticky top-0 z-50">
+        <header className={cn(
+          "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/70 dark:border-slate-800/70 sticky top-0 z-50 transition-all duration-300",
+          isScrolled ? "shadow-lg shadow-slate-900/5 dark:shadow-black/20" : "shadow-sm"
+        )}>
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
-          <div className="flex flex-wrap items-center py-2.5 gap-y-2">
+          <div className={cn(
+            "flex flex-wrap items-center gap-y-2 transition-all duration-300",
+            isScrolled ? "py-1.5" : "py-2.5"
+          )}>
             <div className="flex items-center gap-1 sm:gap-2 min-w-0">
               <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white p-1.5 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center w-8 h-8 flex-shrink-0 ring-1 ring-white/20">
                 <Landmark className="w-4 h-4" />
               </div>
-              <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
-              <h1 className="text-sm font-bold text-slate-900 dark:text-white leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
+              <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight hidden lg:block">UPSC PYQ Powerhouse</h1>
+              <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
 
               {/* Compact tab pills inline */}
               <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
@@ -2063,26 +2133,35 @@ export default function App() {
                     ? "bg-red-900/30 text-red-400 border-red-800/50"
                     : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
                 )}>
-                  <Trophy className={cn(
-                    "w-4 h-4 mr-2",
-                    score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-500" : "text-emerald-500"
-                  )} /> 
+                  {(() => {
+                    const pct = score.total > 0 ? score.correct / score.total : 0;
+                    const low = score.total > 0 && pct < 0.5;
+                    const C = 2 * Math.PI * 13;
+                    return (
+                      <div className="relative w-8 h-8 mr-2 flex-shrink-0">
+                        <svg className="w-8 h-8 -rotate-90" viewBox="0 0 32 32">
+                          <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200 dark:stroke-slate-700" />
+                          <circle
+                            cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
+                            className={low ? "stroke-red-500" : "stroke-emerald-500"}
+                            style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }}
+                          />
+                        </svg>
+                        <span className={cn(
+                          "absolute inset-0 flex items-center justify-center text-[9px] font-bold",
+                          low ? "text-red-500" : "text-emerald-500"
+                        )}>
+                          {score.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-3 h-3" />}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <span>{score.correct}</span>
                   <span className={cn(
                     "font-medium mx-1",
                     score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
                   )}>/</span>
                   <span>{score.total}</span>
-                  {score.total > 0 && (
-                    <span className={cn(
-                      "ml-2 text-[10px] px-1.5 py-0.5 rounded-md",
-                      (score.correct / score.total) < 0.5 
-                        ? "bg-red-500/20 text-red-400" 
-                        : "bg-emerald-500/20 text-emerald-400"
-                    )}>
-                      {Math.round((score.correct / score.total) * 100)}%
-                    </span>
-                  )}
                   {score.total > 0 && (
                     <button 
                       onClick={resetQuiz}
@@ -2359,12 +2438,47 @@ export default function App() {
 
       <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
         {isAppLoading ? (
-          <div className="w-full flex flex-col items-center justify-center py-20 gap-4">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-blue-100 dark:border-blue-900/30 rounded-full animate-pulse"></div>
-              <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-blue-600 rounded-full animate-spin"></div>
+          <div className="w-full flex flex-col md:flex-row items-start gap-6 animate-fadeIn">
+            {/* Filter sidebar skeleton */}
+            <aside className="w-full md:w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="skeleton h-4 w-24"></div>
+                <div className="skeleton h-6 w-16 rounded-lg"></div>
+              </div>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="skeleton h-3 w-20"></div>
+                  <div className="skeleton h-9 w-full rounded-lg"></div>
+                </div>
+              ))}
+            </aside>
+            {/* Question card grid skeleton */}
+            <div className="flex-grow w-full grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col gap-3 animate-fadeInUp"
+                  style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'both' }}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex gap-1.5">
+                      <div className="skeleton h-4 w-14 rounded-md"></div>
+                      <div className="skeleton h-4 w-20 rounded-md"></div>
+                    </div>
+                    <div className="skeleton h-4 w-12 rounded-md"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="skeleton h-3.5 w-full"></div>
+                    <div className="skeleton h-3.5 w-5/6"></div>
+                  </div>
+                  <div className="space-y-2 mt-1">
+                    {[...Array(4)].map((_, j) => (
+                      <div key={j} className="skeleton h-9 w-full rounded-lg"></div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-            <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Loading Questions from Database...</p>
           </div>
         ) : isAdmin && isAdminView ? (
           <div className="w-full space-y-8">
@@ -2377,74 +2491,41 @@ export default function App() {
                 onClick={() => setIsAdminView(false)}
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold"
               >
-                Back to App
-              </button>
-            </div>
-
-            {/* Admin Key — required to perform admin actions */}
-            <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">🔑 Admin Key</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {adminKey
-                      ? "Key saved in this browser. Admin actions are unlocked."
-                      : "Enter your admin key to unlock admin actions. Stored only in this browser."}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    placeholder="Paste admin key"
-                    defaultValue={adminKey}
-                    onChange={(e) => saveAdminKey(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 w-56"
-                  />
-                  {adminKey && (
-                    <button
-                      onClick={() => saveAdminKey("")}
-                      className="px-3 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-xs font-bold"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Refresh Questions Cache Button */}
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Questions Cache</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
-              </div>
-              <button 
-                onClick={async () => {
-                  try {
-                    setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
-                    const res = await fetch('/api/admin/refresh-questions', { method: 'POST', headers: adminHeaders() });
-                    const data = await res.json();
-                    if (res.ok) {
-                      setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
-                      fetchQuestions();
-                      fetchMainsQuestions();
-                    } else {
-                      throw new Error(data.error);
-                    }
-                  } catch (err: any) {
-                    setAdminMessage({ text: `Failed to refresh: ${err.message}`, type: "error" });
-                  }
-                  setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
-              >
-                🔄 Refresh Questions
+                Back
               </button>
             </div>
 
             <div className="grid md:grid-cols-3 gap-8">
+              {/* Left column: Add User + admin tools */}
+              <div className="md:col-span-1 space-y-8">
+              {/* Admin Key — required to perform admin actions */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-blue-500" /> Admin Key
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                  {adminKey
+                    ? "Key saved in this browser. Admin actions are unlocked."
+                    : "Enter your admin key to unlock admin actions. Stored only in this browser."}
+                </p>
+                <input
+                  type="password"
+                  placeholder="Paste admin key"
+                  defaultValue={adminKey}
+                  onChange={(e) => saveAdminKey(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {adminKey && (
+                  <button
+                    onClick={() => saveAdminKey("")}
+                    className="mt-3 w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-bold transition-all"
+                  >
+                    Clear Key
+                  </button>
+                )}
+              </div>
               {/* Add New User */}
-              <div className="md:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
                 </h3>
@@ -2484,6 +2565,73 @@ export default function App() {
                     Add/Update User
                   </button>
                 </form>
+              </div>
+
+              {/* Questions Cache */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-blue-500" /> Questions Cache
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
+                      const res = await fetch('/api/admin/refresh-questions', { method: 'POST', headers: adminHeaders() });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setAdminMessage({ text: `✓ Cache refreshed! ${data.count} prelims and ${data.mainsCount ?? 0} mains questions loaded.`, type: "success" });
+                        fetchQuestions();
+                        fetchMainsQuestions();
+                      } else {
+                        throw new Error(data.error);
+                      }
+                    } catch (err: any) {
+                      setAdminMessage({ text: `Failed to refresh: ${err.message}`, type: "error" });
+                    }
+                    setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                >
+                  Refresh Questions
+                </button>
+              </div>
+
+              {/* Subscription Prices — edit live, saved to the database */}
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
+                <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+                  <IndianRupee className="w-5 h-5 text-blue-500" /> Subscription Prices
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Set the price (in ₹) per plan. Saved instantly — no redeploy. Razorpay charges this exact amount.</p>
+                <div className="space-y-3">
+                  {([
+                    { key: '1yr', label: '1 Year Plan' },
+                    { key: '2yr', label: '2 Years Plan' },
+                    { key: 'ebooks', label: 'Ebooks Plan' },
+                  ] as const).map(pl => (
+                    <div key={pl.key}>
+                      <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">{pl.label}</label>
+                      <div className="flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                        <span className="pl-3 text-slate-400 text-sm font-bold">₹</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={priceForm[pl.key]}
+                          onChange={(e) => setPriceForm(prev => ({ ...prev, [pl.key]: e.target.value }))}
+                          className="w-full px-2 py-2 text-sm bg-transparent outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={savePrices}
+                    disabled={savingPrices}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                  >
+                    {savingPrices ? "Saving..." : "Save Prices"}
+                  </button>
+                </div>
+              </div>
               </div>
 
               {/* User List */}
@@ -2633,7 +2781,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+          <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                 <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -2642,7 +2790,7 @@ export default function App() {
                 onClick={resetFilters} 
                 className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
               >
-                <RotateCcw className="w-3 h-3" /> Reset
+                Reset
               </button>
             </div>
 
@@ -2903,7 +3051,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -2912,7 +3060,7 @@ export default function App() {
                     onClick={resetMainsFilters}
                     className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    <RotateCcw className="w-3 h-3" /> Reset
+                    Reset
                   </button>
                 </div>
 
@@ -3063,7 +3211,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -3078,7 +3226,7 @@ export default function App() {
                     }}
                     className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    <RotateCcw className="w-3 h-3" /> Reset
+                    Reset
                   </button>
                 </div>
 
@@ -3195,7 +3343,7 @@ export default function App() {
               "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
@@ -3211,7 +3359,7 @@ export default function App() {
                     }}
                     className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
-                    <RotateCcw className="w-3 h-3" /> Reset
+                    Reset
                   </button>
                 </div>
 
@@ -3359,12 +3507,12 @@ export default function App() {
               <div className="flex flex-col lg:flex-row gap-6">
                 {/* Filters sidebar */}
                 <div className="lg:w-64 flex-shrink-0">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm sticky top-4">
+                  <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl border border-slate-200/70 dark:border-slate-700/70 p-4 shadow-sm sticky top-4">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Filters</h3>
                       <button
                         onClick={() => { setToppersYearFilter("All"); setToppersTopperFilter("All"); setToppersSubjectFilter("All"); setToppersPaperFilter("All"); setToppersSearchQuery(""); }}
-                        className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold"
+                        className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                       >Reset</button>
                     </div>
 
@@ -3434,11 +3582,11 @@ export default function App() {
                       <div className="p-4 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex flex-wrap gap-1.5">
-                            <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-semibold">{q.year}</span>
-                            <span className="text-[10px] px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-semibold">{q.exam}</span>
-                            {q.paper && <span className="text-[10px] px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded font-semibold">{q.paper}</span>}
-                            <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-semibold">{q.subject}</span>
-                            {q.topic && <span className="text-[10px] px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-semibold">{q.topic}</span>}
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold"><Calendar className="w-3 h-3" />{q.year}</span>
+                            <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.exam}</span>
+                            {q.paper && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.paper}</span>}
+                            <span className="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-300/90 rounded-full ring-1 ring-inset ring-indigo-400/15 font-semibold tracking-wide"><span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />{q.subject}</span>
+                            {q.topic && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.topic}</span>}
                           </div>
                           <div className="flex gap-1.5">
                             {q.marks && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.marks} marks</span>}
@@ -3669,8 +3817,8 @@ export default function App() {
                     icon: 'calendar',
                     title: '1 Year',
                     subtitle: 'Premium PYQ Access',
-                    price: '₹1',
-                    per: 'Test price (temporary)',
+                    price: '₹899',
+                    per: '≈ ₹75 / month',
                     ribbon: '',
                     labelClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
                     cardClass: 'border-emerald-500/40',
@@ -3746,7 +3894,7 @@ export default function App() {
                       </div>
                       <h3 className={cn("text-lg font-extrabold", card.titleClass)}>{card.title}</h3>
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{card.subtitle}</p>
-                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{card.price}</p>
+                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{planPrices[card.plan] ? `₹${Math.round(planPrices[card.plan] / 100).toLocaleString('en-IN')}` : card.price}</p>
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 px-2">{card.per}</p>
                     </div>
 
