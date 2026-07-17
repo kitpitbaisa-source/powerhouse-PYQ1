@@ -9,6 +9,7 @@ import {
   Trophy, 
   Search, 
   RotateCcw, 
+  LogOut,
   Dice5, 
   ChevronDown, 
   ExternalLink,
@@ -66,6 +67,24 @@ const BUSINESS = {
   telegramHelp: "https://telegram.me/UPSC_powerhouse_helpbot",
   telegramChannel: "https://t.me/+7DfVmsKSI4FmNzg1",
 };
+
+// Razorpay checkout script loader (loads once, resolves true when ready).
+declare global {
+  interface Window { Razorpay?: any }
+}
+let razorpayScriptPromise: Promise<boolean> | null = null;
+function loadRazorpayScript(): Promise<boolean> {
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+  razorpayScriptPromise = new Promise<boolean>((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => { razorpayScriptPromise = null; resolve(false); };
+    document.body.appendChild(script);
+  });
+  return razorpayScriptPromise;
+}
 
 const LEGAL_TITLES: Record<string, string> = {
   about: "About Us",
@@ -963,33 +982,104 @@ export default function App() {
     }
   };
 
-  // Fast initial paint: fetch the top 150 prelims (display order) from the backend.
+  // Fast initial paint: fetch the top 30 prelims (display order) from the backend.
   const fetchInitialQuestions = async () => {
     try {
-      const response = await fetch('/api/questions?limit=150');
+      const response = await fetch('/api/questions?limit=30');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
         setQuestions(data as Question[]);
-        console.log(`Showing ${data.length} prelims from backend (top 150)`);
+        console.log(`Showing ${data.length} prelims from backend (top 30)`);
         return;
       }
       throw new Error("Empty data from API");
     } catch (error) {
       console.warn("Initial questions fetch failed, using local fallback:", error);
-      setQuestions(fallbackQuestions.slice(0, 150) as Question[]);
+      setQuestions(fallbackQuestions.slice(0, 30) as Question[]);
+    }
+  };
+
+  const loadRazorpay = () =>
+    new Promise<boolean>((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const initiatePayment = async (plan: '1yr' | '2yr') => {
+    if (!userEmail) {
+      setShowPremiumModal(false);
+      setShowLoginModal(true);
+      return;
+    }
+    try {
+      const ok = await loadRazorpay();
+      if (!ok) {
+        alert("Couldn't load the payment gateway. Check your connection and try again.");
+        return;
+      }
+      const orderRes = await fetch("/api/payment/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, plan }),
+      });
+      const order = await orderRes.json();
+      if (!orderRes.ok || !order.orderId) {
+        alert(order.error || "Could not start payment. Please try again.");
+        return;
+      }
+      const rzp = new (window as any).Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "UPSC PYQ Powerhouse",
+        description: plan === '2yr' ? "Premium Access - 2 Years" : "Premium Access - 1 Year",
+        prefill: { email: userEmail },
+        theme: { color: "#4f46e5" },
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch("/api/payment/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...response, email: userEmail, plan }),
+            });
+            const result = await verifyRes.json();
+            if (verifyRes.ok && result.success) {
+              await checkUserStatus(userEmail);
+              setShowPremiumModal(false);
+              alert("✅ Payment successful! Your premium access is now active.");
+            } else {
+              alert("Payment received but verification failed. Please contact support with Payment ID: " + response.razorpay_payment_id);
+            }
+          } catch (e) {
+            alert("Could not verify the payment. If money was deducted, please contact support.");
+          }
+        },
+      });
+      rzp.on("payment.failed", (resp: any) => {
+        alert("Payment failed: " + (resp?.error?.description || "please try again."));
+      });
+      rzp.open();
+    } catch (e) {
+      alert("Payment error. Please try again.");
     }
   };
 
   useEffect(() => {
+    // Keep the loader running until the first batch of prelims has loaded
+    setIsLoadingQuestions(true);
     // Load the first batch of prelims from the backend (falls back to local data)
-    fetchInitialQuestions();
+    fetchInitialQuestions().finally(() => setIsLoadingQuestions(false));
 
     // Restore previously saved scroll position
     const savedVisibleCount = localStorage.getItem('visibleCount');
     const initialCount = savedVisibleCount ? parseInt(savedVisibleCount) : 100;
     setVisibleCount(initialCount);
-    setIsLoadingQuestions(false);
 
     // Scroll to saved position after a brief delay to let DOM render
     const scrollTimer = setTimeout(() => {
@@ -2169,20 +2259,6 @@ export default function App() {
                     <span>{isDarkMode ? "Light mode" : "Dark mode"}</span>
                   </button>
 
-                  {/* Telegram */}
-                  <a
-                    href="https://t.me/upsc_pyq_powerhouse"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <span className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
-                      <Send className="w-4 h-4 text-sky-500" />
-                    </span>
-                    <span>Join Telegram</span>
-                  </a>
-
                   {/* Admin / Login section */}
 
                   {/* Admin Panel */}
@@ -2217,7 +2293,7 @@ export default function App() {
                       className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
                     >
                       <span className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center shrink-0">
-                        <RotateCcw className="w-4 h-4 text-rose-500" />
+                        <LogOut className="w-4 h-4 text-rose-500" />
                       </span>
                       <span>Logout</span>
                     </button>
@@ -3540,6 +3616,7 @@ export default function App() {
                     features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Cancel anytime'],
                     cta: 'Get 1 Year Plan',
                     link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                    plan: '1yr',
                   },
                   {
                     id: 'pyq2',
@@ -3559,6 +3636,7 @@ export default function App() {
                     features: ['Unlimited access to all sections', 'All PYQs with solutions', 'Advanced filters & search', 'Download & bookmark', 'Regular updates', 'Priority support', 'Cancel anytime'],
                     cta: 'Get 2 Years Plan',
                     link: 'https://telegram.me/UPSC_powerhouse_helpbot',
+                    plan: '2yr',
                   },
                   {
                     id: 'ebooks',
@@ -3617,17 +3695,29 @@ export default function App() {
                       ))}
                     </ul>
 
-                    <a
-                      href={card.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={cn(
-                        "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
-                        card.btnClass
-                      )}
-                    >
-                      <Lock className="w-4 h-4" /> {card.cta}
-                    </a>
+                    {'plan' in card ? (
+                      <button
+                        onClick={() => initiatePayment(card.plan)}
+                        className={cn(
+                          "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+                          card.btnClass
+                        )}
+                      >
+                        <Lock className="w-4 h-4" /> {card.cta}
+                      </button>
+                    ) : (
+                      <a
+                        href={card.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "mt-4 w-full text-white font-bold py-2.5 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+                          card.btnClass
+                        )}
+                      >
+                        <Lock className="w-4 h-4" /> {card.cta}
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

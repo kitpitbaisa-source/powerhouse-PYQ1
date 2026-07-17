@@ -1,6 +1,9 @@
 import "dotenv/config";
 import express from "express";
+import { createHmac, timingSafeEqual } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
+import Razorpay from "razorpay";
+import crypto from "crypto";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
 const key = process.env.COSMOS_KEY || "";
@@ -13,14 +16,82 @@ const mainsQuestionsContainer = database.container("mains-questions");
 const csatQuestionsContainer = database.container("csat-questions");
 const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
+const paymentsContainer = database.container("payments");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
 
 const serverApp = express();
-serverApp.use(express.json());
+// Capture raw body so we can verify Razorpay webhook signatures.
+serverApp.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf;
+  },
+}));
+
+// --- Razorpay payment config ---
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID || "";
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
+const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+
+const razorpay = razorpayKeyId && razorpayKeySecret
+  ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret })
+  : null;
+
+// Server-side plan catalogue — amount (paise) and duration are trusted from here,
+// never from the client, to prevent tampering.
+const PAYMENT_PLANS: Record<string, { amount: number; durationDays: number; label: string }> = {
+  pyq1: { amount: 89900, durationDays: 365, label: "Powerhouse PYQ Premium - 1 Year" },
+  pyq2: { amount: 129900, durationDays: 730, label: "Powerhouse PYQ Premium - 2 Years" },
+};
+
+// Ensure the payments container exists (idempotent, cached after first call).
+let paymentsContainerReady = false;
+async function ensurePaymentsContainer() {
+  if (paymentsContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "payments",
+    partitionKey: { paths: ["/email"] },
+  });
+  paymentsContainerReady = true;
+}
+
+// Grant/extend a subscription for a user. If already subscribed and not expired,
+// the new duration stacks on top of the remaining time.
+async function grantSubscription(email: string, durationDays: number) {
+  const userEmail = email.toLowerCase().trim();
+  const now = new Date();
+  let existing: any = null;
+  try {
+    const { resource } = await usersContainer.item(userEmail, userEmail).read();
+    existing = resource;
+  } catch (e: any) {}
+
+  const currentExpiry = existing?.expiryDate ? new Date(existing.expiryDate) : now;
+  const base = currentExpiry > now ? currentExpiry : now;
+  const expiryDate = new Date(base.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  await usersContainer.items.upsert({
+    id: userEmail,
+    email: userEmail,
+    status: "subscribed",
+    createdAt: existing?.createdAt || now.toISOString(),
+    modifiedAt: now.toISOString(),
+    expiryDate,
+    isActive: true,
+  });
+  return expiryDate;
+}
 
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
+
+// Razorpay payment gateway (server-side only; secret never sent to the browser)
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+const PLANS: Record<string, { amount: number; days: number; label: string }> = {
+  "1yr": { amount: 89900, days: 365, label: "Powerhouse PYQ Premium - 1 Year" },
+  "2yr": { amount: 129900, days: 730, label: "Powerhouse PYQ Premium - 2 Years" },
+};
 
 // In-memory cache for questions (12h TTL, invalidated via cache-version doc in Cosmos)
 let questionsCache: any[] | null = null;
@@ -408,6 +479,84 @@ serverApp.get("/api/user-status", async (req, res) => {
   }
 });
 
+// ── Razorpay: create an order (amount fixed server-side per plan) ──
+serverApp.post("/api/payment/create-order", async (req, res) => {
+  try {
+    const { email, plan } = req.body || {};
+    const p = PLANS[plan];
+    if (!email || !p) {
+      return res.status(400).json({ error: "Valid email and plan are required" });
+    }
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ error: "Payment gateway not configured" });
+    }
+    const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
+    const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify({
+        amount: p.amount,
+        currency: "INR",
+        receipt: `rcpt_${Date.now()}`,
+        notes: { email: String(email).toLowerCase().trim(), plan },
+      }),
+    });
+    const order: any = await rzpRes.json();
+    if (!rzpRes.ok) {
+      console.error("Razorpay order error:", order);
+      return res.status(502).json({ error: "Could not create order", details: order?.error?.description });
+    }
+    res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: RAZORPAY_KEY_ID, plan });
+  } catch (error: any) {
+    console.error("create-order error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Razorpay: verify the payment signature and activate the subscription ──
+serverApp.post("/api/payment/verify", async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, email, plan } = req.body || {};
+    const p = PLANS[plan];
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !email || !p) {
+      return res.status(400).json({ error: "Missing verification fields" });
+    }
+    const expected = createHmac("sha256", RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+    if (
+      expected.length !== razorpay_signature.length ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature))
+    ) {
+      return res.status(400).json({ error: "Payment signature verification failed" });
+    }
+
+    const userEmail = String(email).toLowerCase().trim();
+    const now = new Date().toISOString();
+    let existing: any = null;
+    try {
+      const { resource } = await usersContainer.item(userEmail, userEmail).read();
+      existing = resource;
+    } catch (e) {}
+    const expiryDate = new Date(Date.now() + p.days * 24 * 60 * 60 * 1000).toISOString();
+    await usersContainer.items.upsert({
+      id: userEmail,
+      email: userEmail,
+      status: "subscribed",
+      plan,
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      expiryDate,
+      isActive: true,
+      lastPaymentId: razorpay_payment_id,
+    });
+    res.json({ success: true, status: "subscribed", expiryDate });
+  } catch (error: any) {
+    console.error("verify error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 // API to update status
 serverApp.post("/api/admin/update-status", async (req, res) => {
   const { email, status } = req.body;
@@ -588,6 +737,177 @@ serverApp.get("/api/admin/active-sessions", async (req, res) => {
     res.json(resources);
   } catch (error: any) {
     console.error("Error fetching active sessions:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============ RAZORPAY PAYMENT ENDPOINTS ============
+
+// Create a Razorpay order for a plan.
+serverApp.post("/api/payment/create-order", async (req, res) => {
+  try {
+    if (!razorpay) {
+      return res.status(500).json({ error: "Payment gateway not configured" });
+    }
+    const { email, planId } = req.body || {};
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    const plan = PAYMENT_PLANS[planId];
+    if (!plan) return res.status(400).json({ error: "Invalid planId" });
+
+    const userEmail = String(email).toLowerCase().trim();
+    await ensurePaymentsContainer();
+
+    const receipt = `rcpt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const order = await razorpay.orders.create({
+      amount: plan.amount,
+      currency: "INR",
+      receipt,
+      notes: { email: userEmail, planId },
+    });
+
+    await paymentsContainer.items.upsert({
+      id: order.id,
+      email: userEmail,
+      orderId: order.id,
+      planId,
+      amount: plan.amount,
+      durationDays: plan.durationDays,
+      productInfo: plan.label,
+      status: "created",
+      gateway: "razorpay",
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({
+      orderId: order.id,
+      amount: plan.amount,
+      currency: "INR",
+      keyId: razorpayKeyId,
+      productInfo: plan.label,
+      planId,
+    });
+  } catch (error: any) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Verify a completed payment (called by the frontend after checkout).
+serverApp.post("/api/payment/verify", async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, email, planId } = req.body || {};
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: "Missing payment fields" });
+    }
+    const plan = PAYMENT_PLANS[planId];
+    if (!plan) return res.status(400).json({ error: "Invalid planId" });
+
+    const expectedSignature = crypto
+      .createHmac("sha256", razorpayKeySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      await ensurePaymentsContainer();
+      try {
+        const { resource } = await paymentsContainer.item(razorpay_order_id, String(email).toLowerCase().trim()).read();
+        if (resource) {
+          await paymentsContainer.items.upsert({ ...resource, status: "signature_failed", modifiedAt: new Date().toISOString() });
+        }
+      } catch (e: any) {}
+      return res.status(400).json({ error: "Payment verification failed" });
+    }
+
+    await ensurePaymentsContainer();
+    const userEmail = String(email).toLowerCase().trim();
+
+    // Read the pending order to trust the server-side amount/duration.
+    let record: any = null;
+    try {
+      const { resource } = await paymentsContainer.item(razorpay_order_id, userEmail).read();
+      record = resource;
+    } catch (e: any) {}
+
+    const durationDays = record?.durationDays || plan.durationDays;
+    const expiryDate = await grantSubscription(userEmail, durationDays);
+
+    await paymentsContainer.items.upsert({
+      id: razorpay_order_id,
+      email: userEmail,
+      orderId: razorpay_order_id,
+      paymentId: razorpay_payment_id,
+      planId,
+      amount: record?.amount || plan.amount,
+      durationDays,
+      productInfo: plan.label,
+      status: "success",
+      gateway: "razorpay",
+      createdAt: record?.createdAt || new Date().toISOString(),
+      verifiedAt: new Date().toISOString(),
+    });
+
+    res.json({ success: true, status: "subscribed", expiryDate });
+  } catch (error: any) {
+    console.error("Error verifying payment:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Server-to-server webhook (backup confirmation if the browser closes early).
+serverApp.post("/api/payment/webhook", async (req, res) => {
+  try {
+    if (!razorpayWebhookSecret) {
+      return res.status(200).json({ ok: true, note: "webhook secret not configured" });
+    }
+    const signature = req.headers["x-razorpay-signature"] as string;
+    const rawBody = (req as any).rawBody;
+    if (!signature || !rawBody) return res.status(400).json({ error: "Missing signature" });
+
+    const expected = crypto.createHmac("sha256", razorpayWebhookSecret).update(rawBody).digest("hex");
+    if (expected !== signature) {
+      return res.status(400).json({ error: "Invalid webhook signature" });
+    }
+
+    const event = req.body?.event;
+    const entity = req.body?.payload?.payment?.entity;
+    if (event === "payment.captured" && entity) {
+      await ensurePaymentsContainer();
+      const orderId = entity.order_id;
+      const email = (entity.notes?.email || "").toLowerCase().trim();
+      const planId = entity.notes?.planId;
+      const plan = PAYMENT_PLANS[planId];
+      if (orderId && email && plan) {
+        let record: any = null;
+        try {
+          const { resource } = await paymentsContainer.item(orderId, email).read();
+          record = resource;
+        } catch (e: any) {}
+        // Only act if not already marked success by the verify endpoint.
+        if (!record || record.status !== "success") {
+          const durationDays = record?.durationDays || plan.durationDays;
+          const expiryDate = await grantSubscription(email, durationDays);
+          await paymentsContainer.items.upsert({
+            id: orderId,
+            email,
+            orderId,
+            paymentId: entity.id,
+            planId,
+            amount: entity.amount,
+            durationDays,
+            productInfo: plan.label,
+            status: "success",
+            gateway: "razorpay",
+            source: "webhook",
+            createdAt: record?.createdAt || new Date().toISOString(),
+            verifiedAt: new Date().toISOString(),
+            expiryDate,
+          });
+        }
+      }
+    }
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error("Webhook error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
