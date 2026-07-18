@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="col" x1="0" y1="460" x2="0" y2="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cfd8ee"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="440" x2="0" y2="475" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d6def1"/>
+    </linearGradient>
+    <linearGradient id="ped" x1="512" y1="280" x2="512" y2="446" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c6d1ec"/>
+    </linearGradient>
+    <linearGradient id="plinth" x1="0" y1="702" x2="0" y2="748" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c2cde9"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="470" y1="500" x2="560" y2="672" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff3c4"/>
+      <stop offset="0.5" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ground drop shadow -->
+  <ellipse cx="512" cy="770" rx="252" ry="34" fill="#0a1547" opacity="0.28"/>
+
+  <!-- ===== extrusion (3D thickness), offset down-right ===== -->
+  <g fill="#243a86" opacity="0.55">
+    <path d="M512 292 L744 408 Q756 414 756 426 L756 438 Q756 452 742 452 L282 452 Q268 452 268 438 L268 426 Q268 414 280 408 Z" transform="translate(12,14)"/>
+    <rect x="296" y="452" width="452" height="26" rx="10" transform="translate(12,14)"/>
+    <rect x="316" y="474" width="60" height="196" rx="14" transform="translate(12,14)"/>
+    <rect x="404" y="474" width="60" height="196" rx="14" transform="translate(12,14)"/>
+    <rect x="492" y="474" width="60" height="196" rx="14" transform="translate(12,14)"/>
+    <rect x="580" y="474" width="60" height="196" rx="14" transform="translate(12,14)"/>
+    <rect x="668" y="474" width="60" height="196" rx="14" transform="translate(12,14)"/>
+    <rect x="296" y="668" width="452" height="26" rx="10" transform="translate(12,14)"/>
+    <rect x="268" y="704" width="500" height="44" rx="18" transform="translate(12,14)"/>
+  </g>
+
+  <!-- ===== pediment (roof) ===== -->
+  <path d="M512 292 L744 408 Q756 414 756 426 L756 438 Q756 452 742 452 L282 452 Q268 452 268 438 L268 426 Q268 414 280 408 Z" fill="url(#ped)"/>
+  <path d="M512 292 L512 452 L282 452 Q268 452 268 438 L268 426 Q268 414 280 408 Z" fill="#ffffff" opacity="0.35"/>
+
+  <!-- capital beam -->
+  <rect x="296" y="452" width="452" height="26" rx="10" fill="url(#beam)"/>
+
+  <!-- ===== columns with cylindrical shading ===== -->
+  <g>
+    <rect x="316" y="474" width="60" height="196" rx="14" fill="url(#col)"/>
+    <rect x="322" y="480" width="10" height="184" rx="5" fill="#ffffff" opacity="0.75"/>
+    <rect x="360" y="480" width="12" height="184" rx="6" fill="#98a8cf" opacity="0.55"/>
+
+    <rect x="404" y="474" width="60" height="196" rx="14" fill="url(#col)"/>
+    <rect x="410" y="480" width="10" height="184" rx="5" fill="#ffffff" opacity="0.75"/>
+    <rect x="448" y="480" width="12" height="184" rx="6" fill="#98a8cf" opacity="0.55"/>
+
+    <rect x="492" y="474" width="60" height="196" rx="14" fill="url(#col)"/>
+    <rect x="498" y="480" width="10" height="184" rx="5" fill="#ffffff" opacity="0.75"/>
+    <rect x="536" y="480" width="12" height="184" rx="6" fill="#98a8cf" opacity="0.55"/>
+
+    <rect x="580" y="474" width="60" height="196" rx="14" fill="url(#col)"/>
+    <rect x="586" y="480" width="10" height="184" rx="5" fill="#ffffff" opacity="0.75"/>
+    <rect x="624" y="480" width="12" height="184" rx="6" fill="#98a8cf" opacity="0.55"/>
+
+    <rect x="668" y="474" width="60" height="196" rx="14" fill="url(#col)"/>
+    <rect x="674" y="480" width="10" height="184" rx="5" fill="#ffffff" opacity="0.75"/>
+    <rect x="712" y="480" width="12" height="184" rx="6" fill="#98a8cf" opacity="0.55"/>
+  </g>
+
+  <!-- base beam -->
+  <rect x="296" y="668" width="452" height="26" rx="10" fill="url(#beam)"/>
+  <!-- plinth -->
+  <rect x="268" y="704" width="500" height="44" rx="18" fill="url(#plinth)"/>
+  <rect x="268" y="704" width="500" height="12" rx="6" fill="#ffffff" opacity="0.6"/>
+
+  <!-- ===== power bolt ===== -->
+  <path d="M540 486 L452 612 L508 612 L484 690 L578 556 L518 556 Z" fill="#c67f0a" opacity="0.35" transform="translate(6,8)"/>
+  <path d="M540 486 L452 612 L508 612 L484 690 L578 556 L518 556 Z" fill="url(#gold)"/>
+  <path d="M540 486 L505 556 L518 556 L540 486 Z" fill="#fffbe6" opacity="0.8"/>
+</svg>
