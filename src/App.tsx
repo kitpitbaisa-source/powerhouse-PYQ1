@@ -642,7 +642,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   value={editExplanation}
                   onChange={(e) => setEditExplanation(e.target.value)}
                   rows={3}
-                  className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded-none px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
+                  className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
                   placeholder="Enter explanation... (# Heading, **bold**, new lines supported)"
                 />
               </div>
@@ -2428,7 +2428,7 @@ export default function App() {
               <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
 
               {/* Compact tab pills inline */}
-              <div className="app-tab-scroll flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
+              <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2 min-w-0 overflow-x-auto scrollbar-hide">
                {([
                   { id: 'prelims', label: 'Prelims', count: questions.length },
                   { id: 'mains', label: 'Mains', count: mainsQuestions.length },
@@ -2844,7 +2844,7 @@ export default function App() {
                   placeholder="Paste admin key"
                   value={adminKey}
                   onChange={(e) => saveAdminKey(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-none text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {!adminUnlocked && (
                   <button
@@ -2890,7 +2890,7 @@ export default function App() {
                       placeholder="user@example.com"
                       value={isAdminUserEmail}
                       onChange={(e) => setIsAdminUserEmail(e.target.value)}
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-none text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -3174,7 +3174,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
           <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3199,7 +3199,7 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Constitution, GDP..." 
-                  className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                  className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                 />
                 <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
               </div>
@@ -3425,7 +3425,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3450,7 +3450,7 @@ export default function App() {
                       value={mainsSearchQuery}
                       onChange={(e) => setMainsSearchQuery(e.target.value)}
                       placeholder="Essay, governance..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3569,7 +3569,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3600,7 +3600,7 @@ export default function App() {
                       value={csatSearchQuery}
                       onChange={(e) => setCSATSearchQuery(e.target.value)}
                       placeholder="Reasoning, logic..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3695,7 +3695,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3727,7 +3727,7 @@ export default function App() {
                       value={englishSearchQuery}
                       onChange={(e) => setEnglishSearchQuery(e.target.value)}
                       placeholder="Vocabulary, grammar..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3864,7 +3864,7 @@ export default function App() {
                         value={toppersSearchQuery}
                         onChange={(e) => setToppersSearchQuery(e.target.value)}
                         placeholder="Search questions..."
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                       />
                     </div>
 
