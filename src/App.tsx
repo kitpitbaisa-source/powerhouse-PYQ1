@@ -41,7 +41,8 @@ import {
   Database,
   Trash2,
   Pencil,
-  MessageSquareText
+  MessageSquareText,
+  BarChart3
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -242,6 +243,77 @@ function LegalPageContent({ page }: { page: 'about' | 'contact' | 'privacy' | 't
     </div>
   );
 }
+
+interface FancyOption { value: string; label: string }
+// Reusable modern dropdown: rounded control + rounded, themed options list box (replaces native <select>).
+const FancySelect: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: FancyOption[];
+  className?: string;
+  buttonClassName?: string;
+  size?: 'sm' | 'md';
+  ariaLabel?: string;
+}> = ({ value, onChange, options, className, buttonClassName, size = 'md', ariaLabel }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const selected = options.find(o => o.value === value);
+  const pad = size === 'sm' ? 'px-2 py-1 text-[11px] font-bold' : 'text-xs p-2';
+  return (
+    <div ref={ref} className={cn('relative', className)}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={cn(
+          'w-full flex items-center justify-between gap-2 rounded-xl border bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white shadow-sm transition-colors hover:border-blue-400 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-500/20',
+          pad,
+          buttonClassName
+        )}
+      >
+        <span className="truncate text-left">{selected ? selected.label : ''}</span>
+        <ChevronDown className={cn('w-4 h-4 flex-shrink-0 text-slate-400 transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full mt-1.5 z-[80] max-h-60 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 dark:shadow-black/40 p-1.5 animate-modalPop"
+        >
+          {options.map(o => {
+            const active = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn(
+                  'w-full text-left rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+                  active
+                    ? 'bg-blue-500 text-white font-semibold'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700'
+                )}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface QuestionCardProps {
   question: Question;
@@ -556,16 +628,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg space-y-2">
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 w-16">Answer</label>
-                <select
+                <FancySelect
                   value={editAnswer}
-                  onChange={(e) => setEditAnswer(e.target.value)}
-                  className="flex-1 text-xs border border-amber-300 dark:border-amber-600 rounded px-2 py-1 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                >
-                  <option value="">-- Select --</option>
-                  {(question.options || []).map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setEditAnswer(v)}
+                  ariaLabel="Answer"
+                  className="flex-1"
+                  options={[{ value: "", label: "-- Select --" }, ...(question.options || []).map(opt => ({ value: opt, label: opt }))]}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 block mb-1">Explanation <span className="font-normal text-amber-600/70">— # Heading, ## Sub-heading, **bold**, Enter = new line</span></label>
@@ -573,7 +642,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   value={editExplanation}
                   onChange={(e) => setEditExplanation(e.target.value)}
                   rows={3}
-                  className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
+                  className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded-none px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
                   placeholder="Enter explanation... (# Heading, **bold**, new lines supported)"
                 />
               </div>
@@ -894,6 +963,11 @@ export default function App() {
   }, [englishRandomMode]);
   
   const [score, setScore] = useState({ correct: 0, total: 0 });
+  // Per-section score for the current practice session (prelims/csat/english).
+  const [sectionScores, setSectionScores] = useState<Record<string, { correct: number; total: number }>>({});
+  // An attempt = questions answered in one run, until the user presses Reset or reloads.
+  const newAttemptId = () => `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const [attemptId, setAttemptId] = useState<string>(newAttemptId);
   const [visibleCount, setVisibleCount] = useState(() => {
     const saved = localStorage.getItem('visibleCount');
     return saved ? parseInt(saved) : 30;
@@ -1609,6 +1683,38 @@ export default function App() {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }, [showPremiumModal]);
+
+  // ── Performance report (opened from the header chart icon) ──
+  type ReportBucket = { correct: number; total: number };
+  type ReportAttempt = { questionId?: number; questionType: string; subject: string | null; topic: string | null; isCorrect: boolean; attemptId?: string | null; ts?: string };
+  type ReportData = {
+    attempts: ReportAttempt[];
+    score: ReportBucket;
+    sections: Record<string, ReportBucket>;
+    subjects: Record<string, ReportBucket>;
+    topics: Record<string, ReportBucket & { subject: string | null }>;
+    attemptCount: number;
+  };
+  const [showReport, setShowReport] = useState(false);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const openReport = async () => {
+    setShowReport(true);
+    if (!userEmail) return;
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const res = await fetch(`/api/attempts?email=${encodeURIComponent(userEmail)}`);
+      if (!res.ok) throw new Error('Failed to load report');
+      const data = await res.json();
+      setReportData(data);
+    } catch {
+      setReportError('Could not load your report. Please try again.');
+    } finally {
+      setReportLoading(false);
+    }
+  };
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
@@ -2106,7 +2212,7 @@ export default function App() {
     setMainsVisibleCount(30);
   }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery]);
 
-  const handleOptionClick = (qid: number, option: string, isCorrect: boolean) => {
+  const handleOptionClick = (qid: number, option: string, isCorrect: boolean, questionType: string = 'prelims', subject?: string, topic?: string) => {
     if (userAttempts[qid]) return;
     setUserAttempts(prev => ({ ...prev, [qid]: option }));
     setRevealedAnswers(prev => ({ ...prev, [qid]: true }));
@@ -2114,6 +2220,18 @@ export default function App() {
       correct: prev.correct + (isCorrect ? 1 : 0),
       total: prev.total + 1
     }));
+    setSectionScores(prev => {
+      const cur = prev[questionType] || { correct: 0, total: 0 };
+      return { ...prev, [questionType]: { correct: cur.correct + (isCorrect ? 1 : 0), total: cur.total + 1 } };
+    });
+    // Persist the attempt (id + correct/wrong) for the logged-in user so the score survives reloads.
+    if (userEmail) {
+      fetch('/api/attempts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail, questionId: qid, questionType, option, isCorrect, attemptId, subject, topic }),
+      }).catch(() => {});
+    }
   };
 
   const toggleAnswer = (qid: number) => {
@@ -2186,7 +2304,50 @@ export default function App() {
     setUserAttempts({});
     setRevealedAnswers({});
     setScore({ correct: 0, total: 0 });
+    setSectionScores({});
+    setAttemptId(newAttemptId());
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // An attempt = one practice run until the user presses Reset or reloads the page.
+  // We do NOT restore prior runs onto the screen; each load starts a fresh attempt.
+  // Every answered question is still saved to the DB (grouped by attemptId) for the record.
+
+  // Reusable score chip (used by Prelims, CSAT and English section headers).
+  const renderScoreChip = (sc: { correct: number; total: number }) => {
+    const pct = sc.total > 0 ? sc.correct / sc.total : 0;
+    const low = sc.total > 0 && pct < 0.5;
+    const C = 2 * Math.PI * 13;
+    return (
+      <div className={cn(
+        "h-[38px] pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm",
+        low
+          ? "bg-red-50/80 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/25"
+          : "bg-emerald-50/80 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/25"
+      )}>
+        <div className="relative w-7 h-7 flex-shrink-0">
+          <svg className="w-7 h-7 -rotate-90" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200/70 dark:stroke-slate-700" />
+            <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
+              className={low ? "stroke-red-500" : "stroke-emerald-500"}
+              style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }} />
+          </svg>
+          <span className={cn("absolute inset-0 flex items-center justify-center text-[8px] font-extrabold", low ? "text-red-500" : "text-emerald-500")}>
+            {sc.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-2.5 h-2.5" />}
+          </span>
+        </div>
+        <div className="flex items-baseline gap-0.5 leading-none">
+          <span className="text-[13px] tabular-nums">{sc.correct}</span>
+          <span className="text-[10px] font-medium opacity-60">/</span>
+          <span className="text-[13px] tabular-nums opacity-70">{sc.total}</span>
+        </div>
+        {sc.total > 0 && (
+          <button onClick={resetQuiz} title="Reset Score" className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors">
+            <X className="w-3 h-3" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+    );
   };
 
   const isAppLoading = 
@@ -2306,62 +2467,17 @@ export default function App() {
             {/* Score + Random controls - inline on wide, wraps on narrow */}
             {activeTab === 'prelims' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
-                <div className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center shadow-sm",
-                  score.total > 0 && (score.correct / score.total) < 0.5
-                    ? "bg-red-900/30 text-red-400 border-red-800/50"
-                    : "bg-emerald-900/30 text-emerald-400 border-emerald-800/50"
-                )}>
-                  {(() => {
-                    const pct = score.total > 0 ? score.correct / score.total : 0;
-                    const low = score.total > 0 && pct < 0.5;
-                    const C = 2 * Math.PI * 13;
-                    return (
-                      <div className="relative w-8 h-8 mr-2 flex-shrink-0">
-                        <svg className="w-8 h-8 -rotate-90" viewBox="0 0 32 32">
-                          <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200 dark:stroke-slate-700" />
-                          <circle
-                            cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
-                            className={low ? "stroke-red-500" : "stroke-emerald-500"}
-                            style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }}
-                          />
-                        </svg>
-                        <span className={cn(
-                          "absolute inset-0 flex items-center justify-center text-[9px] font-bold",
-                          low ? "text-red-500" : "text-emerald-500"
-                        )}>
-                          {score.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-3 h-3" />}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  <span>{score.correct}</span>
-                  <span className={cn(
-                    "font-medium mx-1",
-                    score.total > 0 && (score.correct / score.total) < 0.5 ? "text-red-600" : "text-emerald-600"
-                  )}>/</span>
-                  <span>{score.total}</span>
-                  {score.total > 0 && (
-                    <button 
-                      onClick={resetQuiz}
-                      title="Reset Score"
-                      className="ml-2 p-1 rounded-md text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                {renderScoreChip(sectionScores.prelims || { correct: 0, total: 0 })}
 
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <select
-                    value={randomSelectLimit}
-                    onChange={(e) => setRandomSelectLimit(Number(e.target.value))}
-                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                  >
-                    {[10, 20, 50, 100].map(n => (
-                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                  <FancySelect
+                    value={String(randomSelectLimit)}
+                    onChange={(v) => setRandomSelectLimit(Number(v))}
+                    size="sm"
+                    ariaLabel="Random question count"
+                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
+                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
+                  />
                   <button
                     onClick={() => startRandomPractice(randomSelectLimit)}
                     title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
@@ -2377,16 +2493,15 @@ export default function App() {
 
             {activeTab === 'mains' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <select
-                    value={mainsRandomSelectLimit}
-                    onChange={(e) => setMainsRandomSelectLimit(Number(e.target.value))}
-                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                  >
-                    {[5, 10, 20, 50].map(n => (
-                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                  <FancySelect
+                    value={String(mainsRandomSelectLimit)}
+                    onChange={(v) => setMainsRandomSelectLimit(Number(v))}
+                    size="sm"
+                    ariaLabel="Random question count"
+                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
+                    options={[5, 10, 20, 50].map(n => ({ value: String(n), label: String(n) }))}
+                  />
                   <button
                     onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
                     className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
@@ -2410,16 +2525,16 @@ export default function App() {
 
             {activeTab === 'csat' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <select
-                    value={csatRandomSelectLimit}
-                    onChange={(e) => setCSATRandomSelectLimit(Number(e.target.value))}
-                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                  >
-                    {[10, 20, 50, 100].map(n => (
-                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                    ))}
-                  </select>
+                {renderScoreChip(sectionScores.csat || { correct: 0, total: 0 })}
+                <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                  <FancySelect
+                    value={String(csatRandomSelectLimit)}
+                    onChange={(v) => setCSATRandomSelectLimit(Number(v))}
+                    size="sm"
+                    ariaLabel="Random question count"
+                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
+                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
+                  />
                   <button
                     onClick={() => startCSATRandomPractice(csatRandomSelectLimit)}
                     className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
@@ -2443,16 +2558,16 @@ export default function App() {
 
             {activeTab === 'english' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <select
-                    value={englishRandomSelectLimit}
-                    onChange={(e) => setEnglishRandomSelectLimit(Number(e.target.value))}
-                    className="bg-transparent text-slate-700 dark:text-slate-200 text-[11px] font-bold px-1.5 py-0.5 focus:outline-none border-none cursor-pointer"
-                  >
-                    {[10, 20, 50, 100].map(n => (
-                      <option key={n} value={n} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{n}</option>
-                    ))}
-                  </select>
+                {renderScoreChip(sectionScores.english || { correct: 0, total: 0 })}
+                <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
+                  <FancySelect
+                    value={String(englishRandomSelectLimit)}
+                    onChange={(v) => setEnglishRandomSelectLimit(Number(v))}
+                    size="sm"
+                    ariaLabel="Random question count"
+                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
+                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
+                  />
                   <button
                     onClick={() => startEnglishRandomPractice(englishRandomSelectLimit)}
                     className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
@@ -2481,7 +2596,7 @@ export default function App() {
                   className={cn(
                     "p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center",
                     isUserMenuOpen
-                      ? "bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                      ? "bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 border-transparent text-white shadow-lg shadow-indigo-500/30"
                       : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                   )}
                   title="Menu"
@@ -2531,6 +2646,19 @@ export default function App() {
                         <Crown className="w-4 h-4 text-amber-600 dark:text-amber-300" />
                       </span>
                       <span>Go Premium</span>
+                    </button>
+                  )}
+
+                  {/* My report */}
+                  {userEmail && (
+                    <button
+                      onClick={() => { openReport(); setIsUserMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center shrink-0">
+                        <BarChart3 className="w-4 h-4 text-indigo-500" />
+                      </span>
+                      <span>My report</span>
                     </button>
                   )}
 
@@ -2716,7 +2844,7 @@ export default function App() {
                   placeholder="Paste admin key"
                   value={adminKey}
                   onChange={(e) => saveAdminKey(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-none text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {!adminUnlocked && (
                   <button
@@ -2762,20 +2890,22 @@ export default function App() {
                       placeholder="user@example.com"
                       value={isAdminUserEmail}
                       onChange={(e) => setIsAdminUserEmail(e.target.value)}
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-none text-sm outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Status</label>
-                    <select 
+                    <FancySelect
                       value={isAdminUserStatus}
-                      onChange={(e) => setIsAdminUserStatus(e.target.value as "subscribed" | "not_subscribed" | "admin")}
-                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none"
-                    >
-                      <option value="subscribed">Subscribed</option>
-                      <option value="not_subscribed">Not Subscribed</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                      onChange={(v) => setIsAdminUserStatus(v as "subscribed" | "not_subscribed" | "admin")}
+                      ariaLabel="Status"
+                      buttonClassName="px-4 py-2"
+                      options={[
+                        { value: "subscribed", label: "Subscribed" },
+                        { value: "not_subscribed", label: "Not Subscribed" },
+                        { value: "admin", label: "Admin" },
+                      ]}
+                    />
                   </div>
                   <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20">
                     Add/Update User
@@ -3069,7 +3199,7 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Constitution, GDP..." 
-                  className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                  className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                 />
                 <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
               </div>
@@ -3077,50 +3207,32 @@ export default function App() {
             
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam Year</label>
-              <select 
+              <FancySelect
                 value={yearFilter}
-                onChange={(e) => setYearFilter(e.target.value)}
-                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-              >
-                {yearsList.options.map(y => (
-                  <option key={y} value={y}>
-                    {y === "All" ? "All Years" : `${y} (${yearsList.counts[y] || 0})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setYearFilter(v)}
+                ariaLabel="Exam Year"
+                options={yearsList.options.map(y => ({ value: y, label: y === "All" ? "All Years" : `${y} (${yearsList.counts[y] || 0})` }))}
+              />
             </div>
 
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
-              <select 
+              <FancySelect
                 value={examFilter}
-                onChange={(e) => setExamFilter(e.target.value)}
-                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-              >
-                {examsList.options.map(e => (
-                  <option key={e} value={e}>
-                    {e === "All" ? "All Exams" : `${e} (${examsList.counts[e] || 0})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setExamFilter(v)}
+                ariaLabel="Examination"
+                options={examsList.options.map(e => ({ value: e, label: e === "All" ? "All Exams" : `${e} (${examsList.counts[e] || 0})` }))}
+              />
             </div>
 
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
-              <select 
+              <FancySelect
                 value={subjectFilter}
-                onChange={(e) => {
-                  setSubjectFilter(e.target.value);
-                  setTopicFilter("All");
-                }}
-                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-              >
-                {subjectsList.options.map(s => (
-                  <option key={s} value={s}>
-                    {s === "All" ? "All Subjects" : `${s} (${subjectsList.counts[s] || 0})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => { setSubjectFilter(v); setTopicFilter("All"); }}
+                ariaLabel="Subject"
+                options={subjectsList.options.map(s => ({ value: s, label: s === "All" ? "All Subjects" : `${s} (${subjectsList.counts[s] || 0})` }))}
+              />
               
               <button
                 onClick={() => setExcludeSciMath(!excludeSciMath)}
@@ -3141,17 +3253,12 @@ export default function App() {
 
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic (by frequency)</label>
-              <select 
+              <FancySelect
                 value={topicFilter}
-                onChange={(e) => setTopicFilter(e.target.value)}
-                className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-              >
-                {topicsList.options.map(t => (
-                  <option key={t} value={t}>
-                    {t === "All" ? "All Topics" : `${t} (${topicsList.counts[t] || 0})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setTopicFilter(v)}
+                ariaLabel="Topic"
+                options={topicsList.options.map(t => ({ value: t, label: t === "All" ? "All Topics" : `${t} (${topicsList.counts[t] || 0})` }))}
+              />
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -3181,7 +3288,7 @@ export default function App() {
                         index={idx}
                         attemptedOption={userAttempts[q.id]}
                         isRevealed={revealedAnswers[q.id]}
-                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'prelims', q.subject, q.topic)}
                         onToggleRevealed={() => toggleAnswer(q.id)}
                         isLocked={isLocked}
                         userEmail={userEmail}
@@ -3343,7 +3450,7 @@ export default function App() {
                       value={mainsSearchQuery}
                       onChange={(e) => setMainsSearchQuery(e.target.value)}
                       placeholder="Essay, governance..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3351,62 +3458,42 @@ export default function App() {
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam Year</label>
-                  <select
+                  <FancySelect
                     value={mainsYearFilter}
-                    onChange={(e) => setMainsYearFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {mainsYearsList.options.map(y => (
-                      <option key={y} value={y}>
-                        {y === "All" ? "All Years" : `${y} (${mainsYearsList.counts[y] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setMainsYearFilter(v)}
+                    ariaLabel="Exam Year"
+                    options={mainsYearsList.options.map(y => ({ value: y, label: y === "All" ? "All Years" : `${y} (${mainsYearsList.counts[y] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
-                  <select
+                  <FancySelect
                     value={mainsExamFilter}
-                    onChange={(e) => setMainsExamFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {mainsExamsList.options.map(exam => (
-                      <option key={exam} value={exam}>
-                        {exam === "All" ? "All Exams" : `${exam} (${mainsExamsList.counts[exam] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setMainsExamFilter(v)}
+                    ariaLabel="Examination"
+                    options={mainsExamsList.options.map(exam => ({ value: exam, label: exam === "All" ? "All Exams" : `${exam} (${mainsExamsList.counts[exam] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
-                  <select
+                  <FancySelect
                     value={mainsSubjectFilter}
-                    onChange={(e) => setMainsSubjectFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {mainsSubjectsList.options.map(subject => (
-                      <option key={subject} value={subject}>
-                        {subject === "All" ? "All Subjects" : `${subject} (${mainsSubjectsList.counts[subject] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setMainsSubjectFilter(v)}
+                    ariaLabel="Subject"
+                    options={mainsSubjectsList.options.map(subject => ({ value: subject, label: subject === "All" ? "All Subjects" : `${subject} (${mainsSubjectsList.counts[subject] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic (by frequency)</label>
-                  <select
+                  <FancySelect
                     value={mainsTopicFilter}
-                    onChange={(e) => setMainsTopicFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {mainsTopicsList.options.map(topic => (
-                      <option key={topic} value={topic}>
-                        {topic === "All" ? "All Topics" : `${topic} (${mainsTopicsList.counts[topic] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setMainsTopicFilter(v)}
+                    ariaLabel="Topic"
+                    options={mainsTopicsList.options.map(topic => ({ value: topic, label: topic === "All" ? "All Topics" : `${topic} (${mainsTopicsList.counts[topic] || 0})` }))}
+                  />
                 </div>
 
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -3513,7 +3600,7 @@ export default function App() {
                       value={csatSearchQuery}
                       onChange={(e) => setCSATSearchQuery(e.target.value)}
                       placeholder="Reasoning, logic..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3521,32 +3608,22 @@ export default function App() {
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
-                  <select
+                  <FancySelect
                     value={csatYearFilter}
-                    onChange={(e) => setCSATYearFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {csatYearsList.options.map(y => (
-                      <option key={y} value={y}>
-                        {y === "All" ? "All Years" : `${y} (${csatYearsList.counts[y] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setCSATYearFilter(v)}
+                    ariaLabel="Year"
+                    options={csatYearsList.options.map(y => ({ value: y, label: y === "All" ? "All Years" : `${y} (${csatYearsList.counts[y] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic</label>
-                  <select
+                  <FancySelect
                     value={csatSubjectFilter}
-                    onChange={(e) => setCSATSubjectFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {csatSubjectsList.options.map(s => (
-                      <option key={s} value={s}>
-                        {s === "All" ? "All Topics" : `${s} (${csatSubjectsList.counts[s] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setCSATSubjectFilter(v)}
+                    ariaLabel="Topic"
+                    options={csatSubjectsList.options.map(s => ({ value: s, label: s === "All" ? "All Topics" : `${s} (${csatSubjectsList.counts[s] || 0})` }))}
+                  />
                 </div>
 
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -3574,7 +3651,7 @@ export default function App() {
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
-                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'csat', q.subject, q.topic)}
                           onToggleRevealed={() => toggleAnswer(q.id)}
                           isLocked={isLocked}
                           userEmail={userEmail}
@@ -3650,7 +3727,7 @@ export default function App() {
                       value={englishSearchQuery}
                       onChange={(e) => setEnglishSearchQuery(e.target.value)}
                       placeholder="Vocabulary, grammar..."
-                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   </div>
@@ -3658,47 +3735,32 @@ export default function App() {
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam</label>
-                  <select
+                  <FancySelect
                     value={englishExamFilter}
-                    onChange={(e) => setEnglishExamFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {englishExamsList.options.map(ex => (
-                      <option key={ex} value={ex}>
-                        {ex === "All" ? "All Exams" : `${ex} (${englishExamsList.counts[ex] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setEnglishExamFilter(v)}
+                    ariaLabel="Exam"
+                    options={englishExamsList.options.map(ex => ({ value: ex, label: ex === "All" ? "All Exams" : `${ex} (${englishExamsList.counts[ex] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
-                  <select
+                  <FancySelect
                     value={englishYearFilter}
-                    onChange={(e) => setEnglishYearFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {englishYearsList.options.map(y => (
-                      <option key={y} value={y}>
-                        {y === "All" ? "All Years" : `${y} (${englishYearsList.counts[y] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setEnglishYearFilter(v)}
+                    ariaLabel="Year"
+                    options={englishYearsList.options.map(y => ({ value: y, label: y === "All" ? "All Years" : `${y} (${englishYearsList.counts[y] || 0})` }))}
+                  />
                 </div>
 
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic</label>
-                  <select
+                  <FancySelect
                     value={englishTopicFilter}
-                    onChange={(e) => setEnglishTopicFilter(e.target.value)}
-                    className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
-                  >
-                    {englishTopicsList.options.map(t => (
-                      <option key={t} value={t}>
-                        {t === "All" ? "All Topics" : `${t} (${englishTopicsList.counts[t] || 0})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setEnglishTopicFilter(v)}
+                    ariaLabel="Topic"
+                    options={englishTopicsList.options.map(t => ({ value: t, label: t === "All" ? "All Topics" : `${t} (${englishTopicsList.counts[t] || 0})` }))}
+                  />
                 </div>
 
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -3726,7 +3788,7 @@ export default function App() {
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
-                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer)}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'english', q.subject, q.topic)}
                           onToggleRevealed={() => toggleAnswer(q.id)}
                           isLocked={isLocked}
                           userEmail={userEmail}
@@ -3802,44 +3864,32 @@ export default function App() {
                         value={toppersSearchQuery}
                         onChange={(e) => setToppersSearchQuery(e.target.value)}
                         placeholder="Search questions..."
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                        className="w-full border-slate-200 dark:border-slate-600 rounded-none shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                       />
                     </div>
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
-                      <select value={toppersYearFilter} onChange={(e) => setToppersYearFilter(e.target.value)}
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
-                        <option value="All">All Years</option>
-                        {toppersYearsList.map(y => <option key={y} value={y}>{y}</option>)}
-                      </select>
+                      <FancySelect value={toppersYearFilter} onChange={(v) => setToppersYearFilter(v)} ariaLabel="Year"
+                        options={[{ value: 'All', label: 'All Years' }, ...toppersYearsList.map(y => ({ value: y, label: y }))]} />
                     </div>
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
-                      <select value={toppersPaperFilter} onChange={(e) => setToppersPaperFilter(e.target.value)}
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
-                        <option value="All">All Papers</option>
-                        {toppersPapersList.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      <FancySelect value={toppersPaperFilter} onChange={(v) => setToppersPaperFilter(v)} ariaLabel="Paper"
+                        options={[{ value: 'All', label: 'All Papers' }, ...toppersPapersList.map(p => ({ value: p, label: p }))]} />
                     </div>
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject</label>
-                      <select value={toppersSubjectFilter} onChange={(e) => setToppersSubjectFilter(e.target.value)}
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
-                        <option value="All">All Subjects</option>
-                        {toppersSubjectsList.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <FancySelect value={toppersSubjectFilter} onChange={(v) => setToppersSubjectFilter(v)} ariaLabel="Subject"
+                        options={[{ value: 'All', label: 'All Subjects' }, ...toppersSubjectsList.map(s => ({ value: s, label: s }))]} />
                     </div>
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topper</label>
-                      <select value={toppersTopperFilter} onChange={(e) => setToppersTopperFilter(e.target.value)}
-                        className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white">
-                        <option value="All">All Toppers</option>
-                        {toppersToppersList.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                      <FancySelect value={toppersTopperFilter} onChange={(v) => setToppersTopperFilter(v)} ariaLabel="Topper"
+                        options={[{ value: 'All', label: 'All Toppers' }, ...toppersToppersList.map(t => ({ value: t, label: t }))]} />
                     </div>
 
                     <div className="text-xs text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-700">
@@ -4149,6 +4199,231 @@ export default function App() {
       )}
 
       {/* Premium Modal */}
+      {showReport && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-6xl h-[92vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
+            {/* Header (slim) */}
+            <div className="flex items-center justify-between px-5 py-2.5 border-b border-indigo-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900">
+              <div className="flex items-center gap-2 min-w-0">
+                <BarChart3 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                <h2 className="text-sm font-bold text-indigo-900 dark:text-slate-100 leading-tight">My Performance Report</h2>
+                <span className="text-[11px] text-indigo-400/80 dark:text-slate-500 truncate hidden sm:inline">· {userEmail || 'Not signed in'}</span>
+              </div>
+              <button
+                onClick={() => setShowReport(false)}
+                className="p-1.5 rounded-full text-indigo-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors flex-shrink-0"
+                aria-label="Close report"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto px-5 sm:px-7 py-5 space-y-6 flex-1">
+              {!userEmail ? (
+                <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your performance report.</p>
+              ) : reportLoading ? (
+                <p className="text-center text-slate-500 dark:text-slate-400 py-10">Loading your report…</p>
+              ) : reportError ? (
+                <p className="text-center text-rose-500 py-10">{reportError}</p>
+              ) : !reportData || reportData.score.total === 0 ? (
+                <p className="text-center text-slate-500 dark:text-slate-400 py-10">No attempts yet. Answer some questions and your report will appear here.</p>
+              ) : (() => {
+                const pct = (b: { correct: number; total: number }) => b.total > 0 ? Math.round((b.correct / b.total) * 100) : 0;
+                const barColor = (p: number) => p >= 70 ? 'bg-emerald-500' : p >= 40 ? 'bg-amber-500' : 'bg-rose-500';
+                const attempts = reportData.attempts || [];
+                // Backfill subject/topic for older attempts (saved before we stored them) using loaded question metadata.
+                const qMeta: Record<string, Map<number, { subject?: string; topic?: string }>> = {
+                  prelims: new Map(questions.map(q => [q.id, { subject: q.subject, topic: q.topic }])),
+                  csat: new Map(csatQuestions.map(q => [q.id, { subject: q.subject, topic: q.topic }])),
+                  english: new Map(englishQuestions.map(q => [q.id, { subject: q.subject, topic: q.topic }])),
+                };
+                const resolveKey = (a: ReportAttempt, key: 'subject' | 'topic') => {
+                  const direct = (a[key] || '').toString().trim();
+                  if (direct) return direct;
+                  const meta = a.questionId != null ? qMeta[a.questionType]?.get(a.questionId) : undefined;
+                  return (meta?.[key] || '').toString().trim();
+                };
+                // Group a section's attempts by subject or topic → sorted [name, {correct,total}] entries.
+                const groupBy = (type: string, key: 'subject' | 'topic') => {
+                  const map: Record<string, { correct: number; total: number }> = {};
+                  for (const a of attempts) {
+                    if (a.questionType !== type) continue;
+                    const name = resolveKey(a, key);
+                    if (!name) continue;
+                    if (!map[name]) map[name] = { correct: 0, total: 0 };
+                    map[name].total += 1;
+                    if (a.isCorrect) map[name].correct += 1;
+                  }
+                  return Object.entries(map).sort((x, y) => y[1].total - x[1].total);
+                };
+
+                // A titled section card: own score summary + a vertical bar graph.
+                const SectionReport: React.FC<{
+                  title: string;
+                  accent: string;
+                  score: { correct: number; total: number };
+                  accentText: string;
+                  groupLabel: string;
+                  entries: [string, { correct: number; total: number }][];
+                }> = ({ title, accent, accentText, score, groupLabel, entries }) => {
+                  const sp = pct(score);
+                  return (
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 overflow-hidden">
+                      <div className={cn('flex items-center justify-between px-4 py-2.5 border-b border-slate-200/70 dark:border-slate-700/70', accent)}>
+                        <h3 className={cn('text-sm font-bold', accentText)}>{title}</h3>
+                        <div className={cn('text-right', accentText)}>
+                          <span className="text-base font-extrabold">{sp}%</span>
+                          <span className="text-[11px] font-semibold opacity-70 ml-1.5">{score.correct}/{score.total}</span>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-3">{groupLabel}</p>
+                        {entries.length === 0 ? (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 py-4 text-center">No data yet.</p>
+                        ) : (
+                          <div className="flex items-end gap-2 sm:gap-3 h-44 overflow-x-auto">
+                            {entries.map(([k, b]) => {
+                              const p = pct(b);
+                              return (
+                                <div key={k} className="flex-1 min-w-[44px] h-full flex flex-col items-center">
+                                  <div className="flex-1 w-full flex items-end justify-center">
+                                    <div className="w-7 sm:w-9 flex flex-col items-center justify-end h-full">
+                                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1">{p}%</span>
+                                      <div
+                                        className={cn('w-full rounded-t-md transition-all duration-500', barColor(p))}
+                                        style={{ height: `${Math.max(p, 3)}%` }}
+                                        title={`${k}: ${b.correct}/${b.total} (${p}%)`}
+                                      />
+                                    </div>
+                                  </div>
+                                  <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 mt-1.5 text-center leading-tight line-clamp-2 w-full break-words">{k}</span>
+                                  <span className="text-[8px] text-slate-400 dark:text-slate-500">{b.correct}/{b.total}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                };
+
+                const empty = { correct: 0, total: 0 };
+                const prelimsScore = reportData.sections.prelims || empty;
+                const csatScore = reportData.sections.csat || empty;
+                const englishScore = reportData.sections.english || empty;
+                const overallPct = pct(reportData.score);
+                // Group by session (attemptId = one run until reset/reload), ordered oldest → newest.
+                const sessionMap: Record<string, { correct: number; total: number; ts: string }> = {};
+                for (const a of attempts) {
+                  const id = a.attemptId || 'legacy';
+                  if (!sessionMap[id]) sessionMap[id] = { correct: 0, total: 0, ts: a.ts || '' };
+                  sessionMap[id].total += 1;
+                  if (a.isCorrect) sessionMap[id].correct += 1;
+                  if (a.ts && (!sessionMap[id].ts || a.ts < sessionMap[id].ts)) sessionMap[id].ts = a.ts;
+                }
+                const sessions = Object.values(sessionMap).sort((x, y) => (x.ts || '').localeCompare(y.ts || ''));
+                return (
+                  <>
+                    {/* Overall summary */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
+                        <div className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400">{reportData.score.total}</div>
+                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Attempted</div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
+                        <div className={cn('text-xl font-extrabold', overallPct >= 70 ? 'text-emerald-600 dark:text-emerald-400' : overallPct >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>{overallPct}%</div>
+                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Correct</div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
+                        <div className="text-xl font-extrabold text-violet-600 dark:text-violet-400">{reportData.attemptCount}</div>
+                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Sessions</div>
+                      </div>
+                    </div>
+
+                    {/* Section-wise scores */}
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { label: 'Prelims', s: prelimsScore, c: 'text-blue-600 dark:text-blue-400' },
+                        { label: 'CSAT / Maths', s: csatScore, c: 'text-violet-600 dark:text-violet-400' },
+                        { label: 'English', s: englishScore, c: 'text-emerald-600 dark:text-emerald-400' },
+                      ]).map(({ label, s, c }) => (
+                        <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-2.5 text-center">
+                          <div className={cn('text-lg font-extrabold', c)}>{pct(s)}%</div>
+                          <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 leading-tight">{label}</div>
+                          <div className="text-[9px] text-slate-400 dark:text-slate-500">{s.correct}/{s.total}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Three per-section bar graphs */}
+                    <SectionReport
+                      title="Prelims"
+                      accent="bg-blue-50 dark:bg-blue-500/10"
+                      accentText="text-blue-700 dark:text-blue-300"
+                      score={prelimsScore}
+                      groupLabel="Subject-wise"
+                      entries={groupBy('prelims', 'subject')}
+                    />
+                    <SectionReport
+                      title="CSAT / Maths"
+                      accent="bg-violet-50 dark:bg-violet-500/10"
+                      accentText="text-violet-700 dark:text-violet-300"
+                      score={csatScore}
+                      groupLabel="Topic-wise"
+                      entries={groupBy('csat', 'topic')}
+                    />
+                    <SectionReport
+                      title="English"
+                      accent="bg-emerald-50 dark:bg-emerald-500/10"
+                      accentText="text-emerald-700 dark:text-emerald-300"
+                      score={englishScore}
+                      groupLabel="Topic-wise"
+                      entries={groupBy('english', 'topic')}
+                    />
+
+                    {/* Session-wise graph (each run until reset/reload) — shown last */}
+                    {sessions.length > 0 && (
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-amber-50 dark:bg-amber-500/10">
+                          <h3 className="text-sm font-bold text-amber-700 dark:text-amber-300">Session-wise</h3>
+                          <span className="text-[11px] font-semibold text-amber-700/70 dark:text-amber-300/70">{sessions.length} sessions</span>
+                        </div>
+                        <div className="p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-3">% correct per session</p>
+                          <div className="flex items-end gap-2 sm:gap-3 h-44 overflow-x-auto">
+                            {sessions.map((s, i) => {
+                              const p = pct(s);
+                              return (
+                                <div key={i} className="flex-1 min-w-[40px] h-full flex flex-col items-center">
+                                  <div className="flex-1 w-full flex items-end justify-center">
+                                    <div className="w-7 sm:w-9 flex flex-col items-center justify-end h-full">
+                                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1">{p}%</span>
+                                      <div
+                                        className={cn('w-full rounded-t-md transition-all duration-500', barColor(p))}
+                                        style={{ height: `${Math.max(p, 3)}%` }}
+                                        title={`Session ${i + 1}: ${s.correct}/${s.total} (${p}%)`}
+                                      />
+                                    </div>
+                                  </div>
+                                  <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 mt-1.5">S{i + 1}</span>
+                                  <span className="text-[8px] text-slate-400 dark:text-slate-500">{s.correct}/{s.total}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPremiumModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
           <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl max-h-[96vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">

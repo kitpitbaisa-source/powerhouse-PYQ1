@@ -19,6 +19,7 @@ const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
 const settingsContainer = database.container("settings");
 const feedbackContainer = database.container("feedback");
+const userAttemptsContainer = database.container("user-attempts");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -62,6 +63,17 @@ async function ensureFeedbackContainer() {
     partitionKey: { paths: ["/id"] },
   });
   feedbackContainerReady = true;
+}
+
+// Ensure the per-user attempts container exists (partitioned by user email).
+let userAttemptsContainerReady = false;
+async function ensureUserAttemptsContainer() {
+  if (userAttemptsContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "user-attempts",
+    partitionKey: { paths: ["/email"] },
+  });
+  userAttemptsContainerReady = true;
 }
 async function getEffectivePlans() {
   const merged: Record<string, { amount: number; days: number; label: string }> =
@@ -958,6 +970,88 @@ serverApp.get("/api/admin/feedback", async (_req, res) => {
     res.json(resources);
   } catch (error: any) {
     console.error("Error fetching feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user attempts: save one attempt (id + correct/wrong) so score persists ──
+serverApp.post("/api/attempts", async (req, res) => {
+  try {
+    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic } = req.body || {};
+    const userEmail = String(email || "").toLowerCase().trim();
+    if (!userEmail || questionId === undefined || questionId === null) {
+      return res.status(400).json({ error: "email and questionId are required" });
+    }
+    const type = (questionType && String(questionType).trim()) || "prelims";
+    await ensureUserAttemptsContainer();
+    const item = {
+      id: `${userEmail}:${type}:${questionId}`,
+      email: userEmail,
+      questionId,
+      questionType: type,
+      option: option ?? null,
+      isCorrect: !!isCorrect,
+      attemptId: (attemptId && String(attemptId)) || "legacy",
+      subject: (subject && String(subject).trim()) || null,
+      topic: (topic && String(topic).trim()) || null,
+      ts: new Date().toISOString(),
+    };
+    await userAttemptsContainer.items.upsert(item);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error saving attempt:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user attempts: fetch a user's saved attempts + score (overall & per section) ──
+serverApp.get("/api/attempts", async (req, res) => {
+  try {
+    const userEmail = String(req.query.email || "").toLowerCase().trim();
+    if (!userEmail) return res.status(400).json({ error: "email is required" });
+    await ensureUserAttemptsContainer();
+    const { resources } = await userAttemptsContainer.items
+      .query({
+        query: "SELECT c.questionId, c.questionType, c.option, c.isCorrect, c.attemptId, c.subject, c.topic, c.ts FROM c WHERE c.email = @e",
+        parameters: [{ name: "@e", value: userEmail }],
+      })
+      .fetchAll();
+    const sections: Record<string, { correct: number; total: number }> = {};
+    const subjects: Record<string, { correct: number; total: number }> = {};
+    const topics: Record<string, { correct: number; total: number; subject: string | null }> = {};
+    let correct = 0;
+    let latestAttemptId: string | null = null;
+    let latestTs = "";
+    const attemptSet = new Set<string>();
+    for (const a of resources) {
+      const t = a.questionType || "prelims";
+      if (!sections[t]) sections[t] = { correct: 0, total: 0 };
+      sections[t].total += 1;
+      if (a.isCorrect) { sections[t].correct += 1; correct += 1; }
+      if (a.subject) {
+        if (!subjects[a.subject]) subjects[a.subject] = { correct: 0, total: 0 };
+        subjects[a.subject].total += 1;
+        if (a.isCorrect) subjects[a.subject].correct += 1;
+      }
+      if (a.topic) {
+        if (!topics[a.topic]) topics[a.topic] = { correct: 0, total: 0, subject: a.subject || null };
+        topics[a.topic].total += 1;
+        if (a.isCorrect) topics[a.topic].correct += 1;
+      }
+      if (a.attemptId) attemptSet.add(a.attemptId);
+      if (a.ts && a.ts > latestTs) { latestTs = a.ts; latestAttemptId = a.attemptId || null; }
+    }
+    res.json({
+      attempts: resources,
+      score: { correct, total: resources.length },
+      sections,
+      subjects,
+      topics,
+      attemptCount: attemptSet.size,
+      latestAttemptId,
+    });
+  } catch (error: any) {
+    console.error("Error fetching attempts:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
