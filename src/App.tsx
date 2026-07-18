@@ -2428,7 +2428,7 @@ export default function App() {
               <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 dark:from-blue-400 dark:via-indigo-400 dark:to-violet-400 bg-clip-text text-transparent leading-tight lg:hidden hidden sm:block">PYQHouse</h1>
 
               {/* Compact tab pills inline */}
-              <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
+              <div className="app-tab-scroll flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 ml-1 sm:ml-2">
                {([
                   { id: 'prelims', label: 'Prelims', count: questions.length },
                   { id: 'mains', label: 'Mains', count: mainsQuestions.length },
