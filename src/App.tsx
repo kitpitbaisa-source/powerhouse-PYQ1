@@ -39,7 +39,8 @@ import {
   X,
   Database,
   Trash2,
-  Pencil
+  Pencil,
+  MessageSquareText
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -252,6 +253,7 @@ interface QuestionCardProps {
   userEmail?: string | null;
   onCheckStatus?: () => void;
   onOpenPremium?: () => void;
+  onFeedback?: () => void;
   onSubjectClick?: (subject: string) => void;
   onTopicClick?: (topic: string) => void;
   onExamClick?: (exam: string) => void;
@@ -263,7 +265,13 @@ interface QuestionCardProps {
 
 const parseMarkdownBold = (text: string | undefined) => {
   if (!text) return '';
-  return text.replace(/\*\*([^\*]+)\*\*/g, '<b>$1</b>');
+  let html = text;
+  // Headings: a line starting with ## or # becomes a themed heading band (consumes its line break)
+  html = html.replace(/^#\s+(.+?)[ \t]*(?:\r?\n|$)/gm, '<span class="block bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-sm px-3 py-1.5 rounded-lg shadow-sm mt-2 mb-1.5">$1</span>');
+  html = html.replace(/^##\s+(.+?)[ \t]*(?:\r?\n|$)/gm, '<span class="block bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-200 font-bold text-[13px] px-2.5 py-1 rounded-md mt-2 mb-1">$1</span>');
+  // Bold
+  html = html.replace(/\*\*([^\*]+)\*\*/g, '<b>$1</b>');
+  return html;
 };
 
 const HighlightText: React.FC<{ text: string | undefined; query: string }> = ({ text, query }) => {
@@ -319,6 +327,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   userEmail,
   onCheckStatus,
   onOpenPremium,
+  onFeedback,
   onSubjectClick,
   onTopicClick,
   onExamClick,
@@ -431,12 +440,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </span>
           )}
         </div>
-        <span 
-          onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-        >
-          <Calendar className="w-3 h-3 mr-1" />{question.year}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onFeedback && (
+            <button
+              type="button"
+              onClick={onFeedback}
+              title="Report an issue or give feedback on this question"
+              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+            >
+              <MessageSquareText className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span 
+            onClick={() => onYearClick?.(question.year)}
+            className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <Calendar className="w-3 h-3 mr-1" />{question.year}
+          </span>
+        </div>
       </div>
       
       <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[21px] whitespace-pre-wrap px-1">
@@ -486,6 +507,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <span>{isRevealed ? "Hide Answer" : "Show Answer"}</span>
         </button>
         
+        <div className="flex items-center gap-2">
         <a 
           href={`https://www.google.com/search?q=${encodeURIComponent((question.question || '').replace(/<[^>]*>?/gm, ' '))}`} 
           target="_blank" 
@@ -495,6 +517,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         >
           <ExternalLink className="w-3 h-3 mr-1.5" /> Search
         </a>
+        </div>
       </div>
       
       {isRevealed && (
@@ -506,7 +529,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-slate-800/40 border border-indigo-100 dark:border-indigo-500/20 p-3.5 rounded-xl shadow-sm">
               <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-[18px]">
                 <span className="inline-flex items-center gap-1 font-bold text-indigo-700 dark:text-indigo-300 uppercase text-[10px] tracking-wider mb-1.5"><Sparkles className="w-3 h-3" /> Explanation</span>
-                <span className="block">
+                <span className="block whitespace-pre-wrap">
                   <HighlightText text={question.explanation} query={searchQuery} />
                 </span>
               </p>
@@ -544,13 +567,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 block mb-1">Explanation</label>
+                <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 block mb-1">Explanation <span className="font-normal text-amber-600/70">— # Heading, ## Sub-heading, **bold**, Enter = new line</span></label>
                 <textarea
                   value={editExplanation}
                   onChange={(e) => setEditExplanation(e.target.value)}
                   rows={3}
                   className="w-full text-xs border border-amber-300 dark:border-amber-600 rounded px-2 py-1.5 bg-white dark:bg-slate-700 text-slate-900 dark:text-white resize-y"
-                  placeholder="Enter explanation..."
+                  placeholder="Enter explanation... (# Heading, **bold**, new lines supported)"
                 />
               </div>
               <div className="flex gap-2">
@@ -591,6 +614,7 @@ interface MainsQuestionCardProps {
   onSubjectClick?: (subject: string) => void;
   onExamClick?: (exam: string) => void;
   onYearClick?: (year: string) => void;
+  onFeedback?: () => void;
 }
 
 const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
@@ -601,6 +625,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onSubjectClick,
   onExamClick,
   onYearClick,
+  onFeedback,
 }) => {
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
   const answer = question.modelAnswer || question.model_answer || "";
@@ -635,12 +660,24 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
             </span>
           )}
         </div>
-        <span
-          onClick={() => onYearClick?.(question.year)}
-          className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-        >
-          <Calendar className="w-3 h-3 mr-1" />{question.year}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onFeedback && (
+            <button
+              type="button"
+              onClick={onFeedback}
+              title="Report an issue or give feedback on this question"
+              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+            >
+              <MessageSquareText className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span
+            onClick={() => onYearClick?.(question.year)}
+            className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <Calendar className="w-3 h-3 mr-1" />{question.year}
+          </span>
+        </div>
       </div>
 
       <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[21px] whitespace-pre-wrap flex-grow">
@@ -1436,6 +1473,46 @@ export default function App() {
     return k ? { ...base, Authorization: `Bearer ${k}` } : base;
   };
 
+  // Portal opens only for an admin email login + a server-verified key, and
+  // stays unlocked for 7 days before the key must be re-verified.
+  const ADMIN_UNLOCK_MS = 7 * 24 * 60 * 60 * 1000;
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const verifyAdminKey = async (rawKey?: string): Promise<boolean> => {
+    const k = (rawKey ?? localStorage.getItem('admin_api_key') ?? "").trim();
+    if (!k) { setAdminUnlocked(false); return false; }
+    try {
+      const res = await fetch('/api/admin/verify', { headers: { Authorization: `Bearer ${k}` } });
+      if (res.ok) {
+        localStorage.setItem('admin_api_key', k);
+        localStorage.setItem('admin_unlock_expiry', String(Date.now() + ADMIN_UNLOCK_MS));
+        setAdminKey(k);
+        setAdminUnlocked(true);
+        return true;
+      }
+    } catch { /* ignore */ }
+    setAdminUnlocked(false);
+    return false;
+  };
+  // Re-open the portal automatically (up to 7 days) once the admin email is
+  // logged in and a previously verified key is still stored and unexpired.
+  useEffect(() => {
+    if (!isAdmin) { setAdminUnlocked(false); return; }
+    const key = localStorage.getItem('admin_api_key');
+    const expiry = Number(localStorage.getItem('admin_unlock_expiry') || 0);
+    if (key && expiry > Date.now()) verifyAdminKey(key);
+    else setAdminUnlocked(false);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [isAdmin]);
+
+  // Blocks admin write actions (prices / user operations) until the key is verified.
+  const requireAdminKey = (): boolean => {
+    if (!adminUnlocked) {
+      setAdminMessage({ text: "Add and verify your admin key first to perform admin actions.", type: "error" });
+      return false;
+    }
+    return true;
+  };
+
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
   const [priceForm, setPriceForm] = useState<{ '1yr': string; '2yr': string; 'ebooks': string }>({ '1yr': '', '2yr': '', 'ebooks': '' });
   const [savingPrices, setSavingPrices] = useState(false);
@@ -1449,6 +1526,7 @@ export default function App() {
     }
   }, [planPrices]);
   const savePrices = async () => {
+    if (!requireAdminKey()) return;
     setSavingPrices(true);
     try {
       const res = await fetch('/api/admin/prices', {
@@ -1508,6 +1586,75 @@ export default function App() {
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
+
+  // ── Feedback (global + per-question) ──
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackTarget, setFeedbackTarget] = useState<{ questionId: number | null; questionType: string }>({ questionId: null, questionType: 'global' });
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackAlias, setFeedbackAlias] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+
+  const openFeedback = (questionId: number | null, questionType: string) => {
+    setFeedbackTarget({ questionId, questionType });
+    setFeedbackComment("");
+    setFeedbackError("");
+    setFeedbackDone(false);
+    setFeedbackAlias(userEmail || "");
+    setShowFeedbackModal(true);
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackComment.trim()) {
+      setFeedbackError("Please enter your feedback.");
+      return;
+    }
+    setFeedbackSubmitting(true);
+    setFeedbackError("");
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: feedbackTarget.questionId,
+          questionType: feedbackTarget.questionType,
+          comment: feedbackComment,
+          userAlias: feedbackAlias.trim() || userEmail || 'Anonymous',
+        }),
+      });
+      if (res.ok) {
+        setFeedbackDone(true);
+        setFeedbackComment("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setFeedbackError(data.error || "Could not send feedback. Please try again.");
+      }
+    } catch (e) {
+      setFeedbackError("Network error. Please try again.");
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
+  // ── Admin: all feedback list ──
+  const [adminFeedback, setAdminFeedback] = useState<any[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const fetchAdminFeedback = useCallback(async () => {
+    setLoadingFeedback(true);
+    try {
+      const res = await fetch('/api/admin/feedback', { headers: adminHeaders() });
+      if (res.ok) setAdminFeedback(await res.json());
+    } catch (e) {
+      // ignore
+    } finally {
+      setLoadingFeedback(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (adminUnlocked && isAdminView) fetchAdminFeedback();
+  }, [isAdmin, isAdminView, fetchAdminFeedback]);
 
   useEffect(() => {
     fetch('/api/plans')
@@ -1610,6 +1757,7 @@ export default function App() {
   }, [isAdmin, userEmail]);
 
   const handleUpdateUser = async (email: string, status: string) => {
+    if (!requireAdminKey()) return;
     const userEmailToUpdate = email.toLowerCase().trim();
     try {
       console.log(`Updating user ${userEmailToUpdate} to ${status}...`);
@@ -1636,6 +1784,7 @@ export default function App() {
   };
 
   const handleDeleteUser = async (email: string) => {
+    if (!requireAdminKey()) return;
     if (email === userEmail) return; // Don't delete self
     if (!window.confirm(`Are you sure you want to deactivate "${email}"? This user will no longer have access.`)) return;
     const userEmailToDelete = email.toLowerCase().trim();
@@ -1714,6 +1863,10 @@ export default function App() {
     }
     localStorage.removeItem('user_session');
     localStorage.removeItem('login_session_id');
+    localStorage.removeItem('admin_api_key');
+    localStorage.removeItem('admin_unlock_expiry');
+    setAdminUnlocked(false);
+    setIsAdminView(false);
     setUserEmail(null);
     setIsSubscribed(false);
     setShowLoginModal(true);
@@ -2071,8 +2224,8 @@ export default function App() {
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
         <header className={cn(
-          "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/70 dark:border-slate-800/70 sticky top-0 z-50 transition-all duration-300",
-          isScrolled ? "shadow-lg shadow-slate-900/5 dark:shadow-black/20" : "shadow-sm"
+          "header-3d bg-gradient-to-b from-slate-50/90 via-white/85 to-indigo-50/60 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950 backdrop-blur-xl border-b border-slate-200/70 dark:border-indigo-900/50 sticky top-0 z-50 transition-all duration-300",
+          isScrolled ? "is-scrolled" : ""
         )}>
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
@@ -2368,7 +2521,7 @@ export default function App() {
 
                   {/* Admin / Login section */}
 
-                  {/* Admin Panel */}
+                  {/* Admin Panel — shown to a logged-in admin email */}
                   {isAdmin && (
                     <button
                       onClick={() => { setIsAdminView(!isAdminView); setIsUserMenuOpen(false); }}
@@ -2394,6 +2547,17 @@ export default function App() {
                     </span>
                     <span>Join Telegram</span>
                   </a>
+
+                  {/* Send Feedback */}
+                  <button
+                    onClick={() => { openFeedback(null, 'global'); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <MessageSquareText className="w-4 h-4 text-emerald-500" />
+                    </span>
+                    <span>Send Feedback</span>
+                  </button>
 
                   <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
 
@@ -2502,28 +2666,54 @@ export default function App() {
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
                   <KeyRound className="w-5 h-5 text-blue-500" /> Admin Key
+                  {adminUnlocked ? (
+                    <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">UNLOCKED</span>
+                  ) : (
+                    <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 flex items-center gap-1"><Lock className="w-3 h-3" /> LOCKED</span>
+                  )}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  {adminKey
-                    ? "Key saved in this browser. Admin actions are unlocked."
-                    : "Enter your admin key to unlock admin actions. Stored only in this browser."}
+                  {adminUnlocked
+                    ? "Admin actions are unlocked on this browser for 7 days."
+                    : "Enter your admin key and verify to enable price and user actions. Stored only in this browser."}
                 </p>
+                {!adminUnlocked && adminMessage.text && (
+                  <div className={cn(
+                    "mb-3 p-3 rounded-lg text-xs font-bold",
+                    adminMessage.type === "success" ? "bg-emerald-100/50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100/50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                  )}>
+                    {adminMessage.text}
+                  </div>
+                )}
                 <input
                   type="password"
                   placeholder="Paste admin key"
-                  defaultValue={adminKey}
+                  value={adminKey}
                   onChange={(e) => saveAdminKey(e.target.value)}
                   className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {!adminUnlocked && (
+                  <button
+                    onClick={async () => {
+                      const ok = await verifyAdminKey(adminKey);
+                      if (!ok) setAdminMessage({ text: "Invalid admin key.", type: "error" });
+                    }}
+                    className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all"
+                  >
+                    Verify & Unlock
+                  </button>
+                )}
                 {adminKey && (
                   <button
-                    onClick={() => saveAdminKey("")}
-                    className="mt-3 w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-bold transition-all"
+                    onClick={() => { saveAdminKey(""); localStorage.removeItem('admin_unlock_expiry'); setAdminUnlocked(false); }}
+                    className="mt-2 w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-bold transition-all"
                   >
                     Clear Key
                   </button>
                 )}
               </div>
+              {/* Admin tools below require a verified key */}
+              {adminUnlocked && (<>
               {/* Add New User */}
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -2575,6 +2765,7 @@ export default function App() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Added new questions in Cosmos DB? Refresh to show them instantly.</p>
                 <button
                   onClick={async () => {
+                    if (!requireAdminKey()) return;
                     try {
                       setAdminMessage({ text: "Refreshing questions cache...", type: "success" });
                       const res = await fetch('/api/admin/refresh-questions', { method: 'POST', headers: adminHeaders() });
@@ -2632,6 +2823,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              </>)}
               </div>
 
               {/* User List */}
@@ -2763,17 +2955,65 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* All User Feedback */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquareText className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">User Feedback</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">{adminFeedback.length}</span>
+                </div>
+                <button
+                  onClick={fetchAdminFeedback}
+                  className="text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", loadingFeedback && "animate-spin")} /> Refresh
+                </button>
+              </div>
+              {loadingFeedback ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">Loading feedback…</p>
+              ) : adminFeedback.length === 0 ? (
+                <div className="py-8 text-center">
+                  <MessageSquareText className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400 dark:text-slate-500">No feedback submitted yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                  {adminFeedback.map((f) => (
+                    <div key={f.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 bg-slate-50/60 dark:bg-slate-900/40">
+                      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">{f.questionType || 'global'}</span>
+                          {f.questionId != null && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">Q#{f.questionId}</span>
+                          )}
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 break-all">{f.userAlias || 'Anonymous'}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                          {f.createdAt ? new Date(f.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{f.comment}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : activeTab === 'prelims' ? (
           <>
             {/* Mobile Filters Toggle Button */}
-            <div className="md:hidden w-full mb-4 flex gap-2">
+            <div className="md:hidden w-full mb-4">
               <button 
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
-                <Filter className="w-4 h-4" />
-                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+                <span className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {isMobileFiltersOpen ? 'Hide Filters' : 'Show Filters'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isMobileFiltersOpen && "rotate-180")} />
               </button>
             </div>
 
@@ -2920,6 +3160,7 @@ export default function App() {
                         isLocked={isLocked}
                         userEmail={userEmail}
                         onOpenPremium={() => setShowPremiumModal(true)}
+                        onFeedback={() => openFeedback(q.id, 'prelims')}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
                         onUpdateQuestion={handleUpdateQuestion}
@@ -3037,13 +3278,16 @@ export default function App() {
         ) : activeTab === 'mains' ? (
           <>
             {/* Mobile Filters Toggle Button */}
-            <div className="md:hidden w-full mb-4 flex gap-2">
+            <div className="md:hidden w-full mb-4">
               <button 
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
-                <Filter className="w-4 h-4" />
-                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+                <span className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {isMobileFiltersOpen ? 'Hide Filters' : 'Show Filters'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isMobileFiltersOpen && "rotate-180")} />
               </button>
             </div>
 
@@ -3168,6 +3412,7 @@ export default function App() {
                       isAnswerVisible={revealedMainsAnswers[q.id]}
                       onToggleAnswer={() => toggleMainsAnswer(q.id)}
                       searchQuery={mainsSearchQuery}
+                      onFeedback={() => openFeedback(q.id, 'mains')}
                       onSubjectClick={(subject) => {
                         setMainsSubjectFilter(subject);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3197,13 +3442,16 @@ export default function App() {
         ) : activeTab === 'csat' ? (
           <>
             {/* Mobile Filters Toggle Button */}
-            <div className="md:hidden w-full mb-4 flex gap-2">
+            <div className="md:hidden w-full mb-4">
               <button 
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
-                <Filter className="w-4 h-4" />
-                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+                <span className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {isMobileFiltersOpen ? 'Hide Filters' : 'Show Filters'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isMobileFiltersOpen && "rotate-180")} />
               </button>
             </div>
 
@@ -3306,6 +3554,7 @@ export default function App() {
                           userEmail={userEmail}
                           searchQuery={csatSearchQuery}
                           onOpenPremium={() => setShowPremiumModal(true)}
+                          onFeedback={() => openFeedback(q.id, 'csat')}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -3329,13 +3578,16 @@ export default function App() {
         ) : activeTab === 'english' ? (
           <>
             {/* Mobile Filters Toggle Button */}
-            <div className="md:hidden w-full mb-4 flex gap-2">
+            <div className="md:hidden w-full mb-4">
               <button 
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-md"
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
-                <Filter className="w-4 h-4" />
-                {isMobileFiltersOpen ? 'Hide' : 'Show'} Filters
+                <span className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {isMobileFiltersOpen ? 'Hide Filters' : 'Show Filters'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isMobileFiltersOpen && "rotate-180")} />
               </button>
             </div>
 
@@ -3454,6 +3706,7 @@ export default function App() {
                           userEmail={userEmail}
                           searchQuery={englishSearchQuery}
                           onOpenPremium={() => setShowPremiumModal(true)}
+                          onFeedback={() => openFeedback(q.id, 'english')}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -3588,9 +3841,17 @@ export default function App() {
                             <span className="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-300/90 rounded-full ring-1 ring-inset ring-indigo-400/15 font-semibold tracking-wide"><span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />{q.subject}</span>
                             {q.topic && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.topic}</span>}
                           </div>
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 items-center">
                             {q.marks && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.marks} marks</span>}
                             {q.words && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.words} words</span>}
+                            <button
+                              type="button"
+                              onClick={() => openFeedback(q.id, 'toppers')}
+                              title="Report an issue or give feedback on this question"
+                              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+                            >
+                              <MessageSquareText className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                         <p className="text-sm text-slate-900 dark:text-slate-100 leading-relaxed">
@@ -3707,6 +3968,87 @@ export default function App() {
       </footer>
 
       {/* Login Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
+            {/* Gradient header */}
+            <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 py-5 text-center overflow-hidden">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="absolute top-3 right-3 text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="w-11 h-11 mx-auto mb-2 rounded-2xl bg-white/15 ring-1 ring-white/25 flex items-center justify-center">
+                <MessageSquareText className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                {feedbackTarget.questionId != null ? 'Feedback on this question' : 'Send Feedback'}
+              </h2>
+              <p className="text-[11px] text-white/80 mt-0.5">
+                {feedbackTarget.questionId != null
+                  ? `${feedbackTarget.questionType.toUpperCase()} · Q#${feedbackTarget.questionId}`
+                  : 'Tell us what we can improve'}
+              </p>
+            </div>
+
+            <div className="p-6">
+              {feedbackDone ? (
+                <div className="text-center py-4">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Thank you!</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Your feedback has been received.</p>
+                  <button
+                    onClick={() => setShowFeedbackModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Your name / alias <span className="font-normal text-slate-400">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={feedbackAlias}
+                    onChange={(e) => setFeedbackAlias(e.target.value)}
+                    placeholder="Anonymous"
+                    className="w-full mb-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400"
+                  />
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Feedback</label>
+                  <textarea
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    rows={4}
+                    placeholder={feedbackTarget.questionId != null ? "Is something wrong with this question? Let us know…" : "Share your suggestions, issues, or ideas…"}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400 resize-none"
+                  />
+                  {feedbackError && <p className="text-xs text-rose-500 mt-2">{feedbackError}</p>}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setShowFeedbackModal(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={submitFeedback}
+                      disabled={feedbackSubmitting || !feedbackComment.trim()}
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      {feedbackSubmitting ? 'Sending…' : (<><Send className="w-3.5 h-3.5" /> Send</>)}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLoginModal && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade"

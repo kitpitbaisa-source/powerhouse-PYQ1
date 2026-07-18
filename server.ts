@@ -18,6 +18,7 @@ const usersContainer = database.container("users");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
 const settingsContainer = database.container("settings");
+const feedbackContainer = database.container("feedback");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -50,6 +51,17 @@ async function ensureSettingsContainer() {
     partitionKey: { paths: ["/id"] },
   });
   settingsContainerReady = true;
+}
+
+// Ensure the feedback container exists (idempotent, cached after first call).
+let feedbackContainerReady = false;
+async function ensureFeedbackContainer() {
+  if (feedbackContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "feedback",
+    partitionKey: { paths: ["/id"] },
+  });
+  feedbackContainerReady = true;
 }
 async function getEffectivePlans() {
   const merged: Record<string, { amount: number; days: number; label: string }> =
@@ -681,6 +693,11 @@ serverApp.get("/api/plans", async (_req, res) => {
   }
 });
 
+// ── Admin: verify key (guarded by requireAdmin; 200 = valid, 401 = invalid) ──
+serverApp.get("/api/admin/verify", (_req, res) => {
+  res.json({ ok: true });
+});
+
 // ── Admin: read current prices (in rupees) ──
 serverApp.get("/api/admin/prices", async (_req, res) => {
   try {
@@ -900,6 +917,48 @@ serverApp.get("/api/admin/active-sessions", async (req, res) => {
   } catch (error: any) {
     console.error("Error fetching active sessions:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============ FEEDBACK ENDPOINTS ============
+
+// Submit feedback — global (questionId null) or tied to a specific question.
+serverApp.post("/api/feedback", async (req, res) => {
+  try {
+    const { questionId, questionType, comment, userAlias } = req.body || {};
+    if (!comment || !String(comment).trim()) {
+      return res.status(400).json({ error: "Feedback comment is required" });
+    }
+    await ensureFeedbackContainer();
+    const now = new Date().toISOString();
+    const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const item = {
+      id,
+      questionId: questionId ?? null,
+      questionType: (questionType && String(questionType).trim()) || "global",
+      comment: String(comment).trim().slice(0, 2000),
+      userAlias: (userAlias && String(userAlias).trim().slice(0, 120)) || "Anonymous",
+      createdAt: now,
+    };
+    await feedbackContainer.items.create(item);
+    res.json({ success: true, feedback: item });
+  } catch (error: any) {
+    console.error("Error saving feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Admin: list all feedback (most recent first).
+serverApp.get("/api/admin/feedback", async (_req, res) => {
+  try {
+    await ensureFeedbackContainer();
+    const { resources } = await feedbackContainer.items
+      .query("SELECT * FROM c ORDER BY c.createdAt DESC OFFSET 0 LIMIT 500")
+      .fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 

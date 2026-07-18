@@ -20,6 +20,7 @@ const paymentsContainer = database.container("payments");
 const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
 const settingsContainer = database.container("settings");
+const feedbackContainer = database.container("feedback");
 
 const serverApp = express();
 // Capture raw body so we can verify Razorpay webhook signatures.
@@ -38,8 +39,30 @@ const razorpay = razorpayKeyId && razorpayKeySecret
   ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret })
   : null;
 
-// Server-side plan catalogue — amount (paise) and duration are trusted from here,
-// never from the client, to prevent tampering.
+// Secret admin key (server-side only, never sent to the browser).
+// Set ADMIN_API_KEY in .env locally and in the Vercel dashboard for production.
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+
+// Guard: every /api/admin/* route requires a valid admin key in the
+// Authorization header. Requests without it are rejected with 401.
+function requireAdmin(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const expected = ADMIN_API_KEY;
+  const authorized =
+    expected.length > 0 &&
+    token.length === expected.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  if (!authorized) {
+    return res.status(401).json({ error: "Unauthorized: valid admin key required" });
+  }
+  next();
+}
+serverApp.use("/api/admin", requireAdmin);
 const PAYMENT_PLANS: Record<string, { amount: number; durationDays: number; label: string }> = {
   pyq1: { amount: 89900, durationDays: 365, label: "Powerhouse PYQ Premium - 1 Year" },
   pyq2: { amount: 129900, durationDays: 730, label: "Powerhouse PYQ Premium - 2 Years" },
@@ -105,6 +128,17 @@ async function ensureSettingsContainer() {
     partitionKey: { paths: ["/id"] },
   });
   settingsContainerReady = true;
+}
+
+// Ensure the feedback container exists (idempotent, cached after first call).
+let feedbackContainerReady = false;
+async function ensureFeedbackContainer() {
+  if (feedbackContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "feedback",
+    partitionKey: { paths: ["/id"] },
+  });
+  feedbackContainerReady = true;
 }
 async function getEffectivePlans() {
   const merged: Record<string, { amount: number; days: number; label: string }> =
@@ -600,6 +634,11 @@ serverApp.get("/api/plans", async (_req, res) => {
   }
 });
 
+// ── Admin: verify key (guarded by requireAdmin; 200 = valid, 401 = invalid) ──
+serverApp.get("/api/admin/verify", (_req, res) => {
+  res.json({ ok: true });
+});
+
 // ── Admin: read current prices (in rupees) ──
 serverApp.get("/api/admin/prices", async (_req, res) => {
   try {
@@ -821,6 +860,48 @@ serverApp.get("/api/admin/active-sessions", async (req, res) => {
   } catch (error: any) {
     console.error("Error fetching active sessions:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============ FEEDBACK ENDPOINTS ============
+
+// Submit feedback — global (questionId null) or tied to a specific question.
+serverApp.post("/api/feedback", async (req, res) => {
+  try {
+    const { questionId, questionType, comment, userAlias } = req.body || {};
+    if (!comment || !String(comment).trim()) {
+      return res.status(400).json({ error: "Feedback comment is required" });
+    }
+    await ensureFeedbackContainer();
+    const now = new Date().toISOString();
+    const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const item = {
+      id,
+      questionId: questionId ?? null,
+      questionType: (questionType && String(questionType).trim()) || "global",
+      comment: String(comment).trim().slice(0, 2000),
+      userAlias: (userAlias && String(userAlias).trim().slice(0, 120)) || "Anonymous",
+      createdAt: now,
+    };
+    await feedbackContainer.items.create(item);
+    res.json({ success: true, feedback: item });
+  } catch (error: any) {
+    console.error("Error saving feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Admin: list all feedback (most recent first).
+serverApp.get("/api/admin/feedback", async (_req, res) => {
+  try {
+    await ensureFeedbackContainer();
+    const { resources } = await feedbackContainer.items
+      .query("SELECT * FROM c ORDER BY c.createdAt DESC OFFSET 0 LIMIT 500")
+      .fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
