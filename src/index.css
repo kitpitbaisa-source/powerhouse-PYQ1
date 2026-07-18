@@ -10,17 +10,6 @@
     scroll-behavior: smooth;
     overflow-x: hidden;
   }
-  /* Let the header tab row scroll instead of overflowing the viewport on
-     narrow screens. No effect at normal widths (only engages when it can't fit). */
-  .app-tab-scroll {
-    min-width: 0;
-    overflow-x: auto;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .app-tab-scroll::-webkit-scrollbar {
-    display: none;
-  }
   body {
     @apply font-sans text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-950;
     overflow-x: hidden;
