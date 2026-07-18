@@ -998,14 +998,6 @@ export default function App() {
     localStorage.setItem('visibleCount', String(visibleCount));
   }, [visibleCount]);
 
-  // Flag the native (Capacitor) app so app-only CSS can apply without affecting the website
-  useEffect(() => {
-    const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
-    if (isNative) {
-      document.documentElement.classList.add('is-native-app');
-    }
-  }, []);
-
   // Slim the header once the page is scrolled
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 12);
