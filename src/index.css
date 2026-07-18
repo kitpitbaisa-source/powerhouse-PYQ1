@@ -9,6 +9,17 @@
   html {
     scroll-behavior: smooth;
   }
+  /* App-only (Capacitor native) fix: prevent horizontal overflow that offsets
+     the whole page left/right inside the WebView. No effect on the website. */
+  html.is-native-app,
+  html.is-native-app body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+  html.is-native-app .app-tab-scroll {
+    min-width: 0;
+    overflow-x: auto;
+  }
   body {
     @apply font-sans text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-950;
     overflow-x: hidden;
