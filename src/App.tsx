@@ -33,6 +33,7 @@ import {
   UserPlus,
   RefreshCw,
   IndianRupee,
+  Link2,
   User,
   Mail,
   Phone,
@@ -1583,6 +1584,31 @@ export default function App() {
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  // Shareable deep-link that opens the premium plans modal directly.
+  const premiumLink = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#premium` : '#premium';
+  const copyPremiumLink = async () => {
+    try {
+      await navigator.clipboard.writeText(premiumLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  };
+  // Open the premium modal when the URL hash is #premium (on load, paste, or navigation).
+  useEffect(() => {
+    const applyHash = () => { if (window.location.hash === '#premium') setShowPremiumModal(true); };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
+  // Keep the URL hash in sync with the modal so the link is always shareable.
+  useEffect(() => {
+    if (showPremiumModal) {
+      if (window.location.hash !== '#premium') window.history.replaceState(null, '', '#premium');
+    } else if (window.location.hash === '#premium') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, [showPremiumModal]);
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
@@ -4147,6 +4173,13 @@ export default function App() {
                 <p className="text-blue-100 text-[11px] sm:text-xs mt-0.5 max-w-md mx-auto">
                   Unlock every PYQ, topper copies and all-in-one ebooks. Pick the plan that fits your prep.
                 </p>
+                <button
+                  onClick={copyPremiumLink}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold backdrop-blur transition-colors"
+                  title="Copy a link that opens these plans"
+                >
+                  {linkCopied ? <><Check className="w-3.5 h-3.5" /> Link copied!</> : <><Link2 className="w-3.5 h-3.5" /> Copy plans link</>}
+                </button>
               </div>
             </div>
 
