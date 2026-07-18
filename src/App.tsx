@@ -1121,21 +1121,21 @@ export default function App() {
     }
   };
 
-  // Fast initial paint: fetch the top 30 prelims (display order) from the backend.
+  // Fast initial paint: fetch the top 100 prelims (display order) from the backend.
   const fetchInitialQuestions = async () => {
     try {
-      const response = await fetch('/api/questions?limit=30');
+      const response = await fetch('/api/questions?limit=100');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
         setQuestions(data as Question[]);
-        console.log(`Showing ${data.length} prelims from backend (top 30)`);
+        console.log(`Showing ${data.length} prelims from backend (top 100)`);
         return;
       }
       throw new Error("Empty data from API");
     } catch (error) {
       console.warn("Initial questions fetch failed, using local fallback:", error);
-      setQuestions(fallbackQuestions.slice(0, 30) as Question[]);
+      setQuestions(fallbackQuestions.slice(0, 100) as Question[]);
     }
   };
 

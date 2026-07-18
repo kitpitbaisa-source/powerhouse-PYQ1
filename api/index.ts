@@ -219,6 +219,17 @@ async function getQuestions() {
   return questionsCache;
 }
 
+// Fetch only the top N questions directly from Cosmos in display order
+// (year DESC, id DESC). Requires the composite index (year DESC, id DESC) —
+// see scripts/add-questions-composite-index.ts. Avoids reading the whole
+// collection just to slice the first N (important on serverless cold starts).
+async function getTopQuestions(limit: number) {
+  const n = Math.max(1, Math.min(Math.floor(limit), 500));
+  const query = `SELECT TOP ${n} * FROM c WHERE IS_DEFINED(c.question) AND c.question != "" AND NOT STARTSWITH(c.question, "Q_") ORDER BY c.year DESC, c.id DESC`;
+  const { resources } = await questionsContainer.items.query(query).fetchAll();
+  return resources.filter((r: any) => r.id !== "__cache_version__");
+}
+
 async function getMainsQuestions() {
   const now = Date.now();
   if (mainsCache && (now - mainsCacheTimestamp) < CACHE_TTL) {
@@ -248,16 +259,25 @@ async function getToppersQuestions() {
 // API to get all questions (cached)
 serverApp.get("/api/questions", async (req, res) => {
   try {
-    const questions = await getQuestions();
     const limit = parseInt(req.query.limit as string, 10);
     if (!isNaN(limit) && limit > 0) {
-      const top = [...questions]
-        .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
-        .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
-        .slice(0, limit);
-      res.setHeader("Cache-Control", "no-store");
-      return res.json(top);
+      try {
+        const top = await getTopQuestions(limit);
+        res.setHeader("Cache-Control", "no-store");
+        return res.json(top);
+      } catch (e: any) {
+        // Composite index may still be building; fall back to cached full read + slice.
+        console.warn("getTopQuestions failed, falling back to cached slice:", e?.message);
+        const questions = await getQuestions();
+        const top = [...questions]
+          .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
+          .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
+          .slice(0, limit);
+        res.setHeader("Cache-Control", "no-store");
+        return res.json(top);
+      }
     }
+    const questions = await getQuestions();
     questions.sort((a: any, b: any) => a.id - b.id);
     res.setHeader("Cache-Control", "no-store");
     res.json(questions);
