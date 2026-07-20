@@ -333,6 +333,7 @@ interface QuestionCardProps {
   onYearClick?: (year: string) => void;
   searchQuery?: string;
   isAdmin?: boolean;
+  isEditor?: boolean;
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
 }
 
@@ -407,6 +408,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onYearClick,
   searchQuery = "",
   isAdmin,
+  isEditor,
   onUpdateQuestion
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -609,8 +611,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
           )}
 
-          {/* Admin edit button */}
-          {isAdmin && onUpdateQuestion && !isEditing && (
+          {/* Admin/editor edit button */}
+          {(isAdmin || isEditor) && onUpdateQuestion && !isEditing && (
             <button
               onClick={() => {
                 setEditAnswer(question.answer || "");
@@ -623,8 +625,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </button>
           )}
 
-          {/* Admin edit form */}
-          {isAdmin && isEditing && (
+          {/* Admin/editor edit form */}
+          {(isAdmin || isEditor) && isEditing && (
             <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg space-y-2">
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-amber-700 dark:text-amber-300 w-16">Answer</label>
@@ -1010,6 +1012,7 @@ export default function App() {
 
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isEditor, setIsEditor] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
@@ -1221,9 +1224,11 @@ export default function App() {
     // Load the first batch of prelims from the backend (falls back to local data)
     fetchInitialQuestions().finally(() => setIsLoadingQuestions(false));
 
-    // Restore previously saved scroll position
+    // Restore a sane initial batch. We cap it because a previously inflated
+    // value would force a huge synchronous render and freeze the page on load;
+    // infinite scroll re-grows visibleCount naturally as the user scrolls.
     const savedVisibleCount = localStorage.getItem('visibleCount');
-    const initialCount = savedVisibleCount ? parseInt(savedVisibleCount) : 100;
+    const initialCount = Math.min(savedVisibleCount ? parseInt(savedVisibleCount) : 100, 150);
     setVisibleCount(initialCount);
 
     // Scroll to saved position after a brief delay to let DOM render
@@ -1646,13 +1651,15 @@ export default function App() {
       }
 
       const data = await response.json();
-      setIsSubscribed(data.status === 'subscribed' || data.status === 'admin');
+      setIsSubscribed(data.status === 'subscribed' || data.status === 'admin' || data.status === 'editor');
       // Admin status is decided solely by the backend role; never trust the client.
       setIsAdmin(data.status === 'admin');
+      setIsEditor(data.status === 'editor');
     } catch (error) {
       console.error("Failed to check status:", error);
       setIsSubscribed(false);
       setIsAdmin(false);
+      setIsEditor(false);
     }
   };
 
@@ -1784,9 +1791,23 @@ export default function App() {
     }
   }, []);
 
+  const [adminPayments, setAdminPayments] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const fetchAdminPayments = useCallback(async () => {
+    setLoadingPayments(true);
+    try {
+      const res = await fetch('/api/admin/payments', { headers: adminHeaders() });
+      if (res.ok) setAdminPayments(await res.json());
+    } catch (e) {
+      // ignore
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (adminUnlocked && isAdminView) fetchAdminFeedback();
-  }, [isAdmin, isAdminView, fetchAdminFeedback]);
+    if (adminUnlocked && isAdminView) { fetchAdminFeedback(); fetchAdminPayments(); }
+  }, [isAdmin, isAdminView, fetchAdminFeedback, fetchAdminPayments]);
 
   useEffect(() => {
     fetch('/api/plans')
@@ -1809,7 +1830,7 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
   const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
-  const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin">("subscribed");
+  const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin" | "editor">("subscribed");
   const [adminMessage, setAdminMessage] = useState({ text: "", type: "" });
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [expandedUserHistory, setExpandedUserHistory] = useState<string | null>(null);
@@ -2193,19 +2214,23 @@ export default function App() {
     setMainsVisibleCount(prev => prev + 50);
   }, []);
 
-  // Infinite scroll: load more on scroll near bottom
+  // Infinite scroll: load more on scroll near bottom.
+  // Guarded so it never runs while the admin dashboard is open (its tall page
+  // would otherwise silently inflate visibleCount and freeze the list on Back),
+  // and never grows visibleCount past what's actually available.
   useEffect(() => {
+    if (isAdminView) return;
     const handleScroll = () => {
       if (
         window.innerHeight + window.scrollY >= document.body.offsetHeight - 2500
       ) {
-        if (activeTab === 'prelims') handleLoadMore();
+        if (activeTab === 'prelims') { if (isMoreToLoad) handleLoadMore(); }
         else if (activeTab === 'mains') handleMainsLoadMore();
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleLoadMore, handleMainsLoadMore, activeTab]);
+  }, [handleLoadMore, handleMainsLoadMore, activeTab, isAdminView, isMoreToLoad]);
 
   // Reset mains pagination on filter change
   useEffect(() => {
@@ -2243,10 +2268,10 @@ export default function App() {
   };
 
   const handleUpdateQuestion = async (id: number, year: string, answer: string, explanation: string) => {
-    const res = await fetch("/api/admin/update-question", {
+    const res = await fetch("/api/update-question", {
       method: "PATCH",
-      headers: adminHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ id, answer, explanation }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, answer, explanation, email: userEmail }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -2807,7 +2832,7 @@ export default function App() {
               </div>
               <button 
                 onClick={() => setIsAdminView(false)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-bold"
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
                 Back
               </button>
@@ -2852,7 +2877,7 @@ export default function App() {
                       const ok = await verifyAdminKey(adminKey);
                       if (!ok) setAdminMessage({ text: "Invalid admin key.", type: "error" });
                     }}
-                    className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all"
+                    className="mt-3 w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                   >
                     Verify & Unlock
                   </button>
@@ -2860,7 +2885,7 @@ export default function App() {
                 {adminKey && (
                   <button
                     onClick={() => { saveAdminKey(""); localStorage.removeItem('admin_unlock_expiry'); setAdminUnlocked(false); }}
-                    className="mt-2 w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-bold transition-all"
+                    className="mt-2 w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                   >
                     Clear Key
                   </button>
@@ -2897,17 +2922,18 @@ export default function App() {
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Status</label>
                     <FancySelect
                       value={isAdminUserStatus}
-                      onChange={(v) => setIsAdminUserStatus(v as "subscribed" | "not_subscribed" | "admin")}
+                      onChange={(v) => setIsAdminUserStatus(v as "subscribed" | "not_subscribed" | "admin" | "editor")}
                       ariaLabel="Status"
                       buttonClassName="px-4 py-2"
                       options={[
                         { value: "subscribed", label: "Subscribed" },
                         { value: "not_subscribed", label: "Not Subscribed" },
+                        { value: "editor", label: "Editor" },
                         { value: "admin", label: "Admin" },
                       ]}
                     />
                   </div>
-                  <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20">
+                  <button type="submit" className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]">
                     Add/Update User
                   </button>
                 </form>
@@ -2938,7 +2964,7 @@ export default function App() {
                     }
                     setTimeout(() => setAdminMessage({ text: "", type: "" }), 5000);
                   }}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                 >
                   Refresh Questions
                 </button>
@@ -2973,7 +2999,7 @@ export default function App() {
                   <button
                     onClick={savePrices}
                     disabled={savingPrices}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-blue-600/20"
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-60 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                   >
                     {savingPrices ? "Saving..." : "Save Prices"}
                   </button>
@@ -2982,16 +3008,19 @@ export default function App() {
               </>)}
               </div>
 
+              {/* Right column: users list + payments stacked to fill the row height */}
+              <div className="md:col-span-2 flex flex-col gap-8 min-w-0">
               {/* User List */}
-              <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden flex flex-col flex-shrink-0">
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center flex-shrink-0">
                   <h3 className="font-bold text-slate-900 dark:text-white">All Registered Users ({allUsers.length})</h3>
-                  <button onClick={() => { fetchAllUsers(); fetchActiveSessions(); }} className="text-xs font-bold text-blue-500 hover:underline">Refresh</button>
+                  <button onClick={() => { fetchAllUsers(); fetchActiveSessions(); }} className="text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 px-3 py-1.5 rounded-lg transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]">Refresh</button>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+                      <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
+                        <th className="px-4 py-3 text-center w-12">#</th>
                         <th className="px-6 py-3">Email</th>
                         <th className="px-6 py-3 text-center">Status</th>
                        <th className="px-6 py-3 text-center">Expiry Date</th>
@@ -3002,19 +3031,20 @@ export default function App() {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                      {isLoadingUsers ? (
                        <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-500 animate-pulse">
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500 animate-pulse">
                            Loading user database...
                          </td>
                        </tr>
                      ) : allUsers.length === 0 ? (
                        <tr>
-                         <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                         <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                            No users found in database.
                          </td>
                        </tr>
-                     ) : allUsers.map((user) => (
+                     ) : allUsers.map((user, idx) => (
                        <React.Fragment key={user.email}>
                        <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
+                         <td className="px-4 py-4 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 tabular-nums">{idx + 1}</td>
                          <td className="px-6 py-4">
                            <button onClick={() => fetchLoginHistory(user.email)} className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate hover:text-blue-500 transition-colors text-left" title="Click to view login history">
                              {user.email}
@@ -3025,6 +3055,8 @@ export default function App() {
                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                user.status === 'admin'
                                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50'
+                                 : user.status === 'editor'
+                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50'
                                  : user.status === 'subscribed' 
                                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' 
                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600'
@@ -3034,6 +3066,7 @@ export default function App() {
                              <div className="flex gap-1 mt-1">
                                <button onClick={() => handleUpdateUser(user.email, 'subscribed')} className="text-[8px] text-slate-400 hover:text-emerald-500 font-bold uppercase transition-colors">Sub</button>
                                <button onClick={() => handleUpdateUser(user.email, 'not_subscribed')} className="text-[8px] text-slate-400 hover:text-slate-200 font-bold uppercase transition-colors">None</button>
+                               <button onClick={() => handleUpdateUser(user.email, 'editor')} className="text-[8px] text-slate-400 hover:text-amber-500 font-bold uppercase transition-colors">Editor</button>
                                <button onClick={() => handleUpdateUser(user.email, 'admin')} className="text-[8px] text-slate-400 hover:text-blue-500 font-bold uppercase transition-colors">Admin</button>
                              </div>
                            </div>
@@ -3077,7 +3110,7 @@ export default function App() {
                        </tr>
                        {expandedUserHistory === user.email && (
                          <tr>
-                           <td colSpan={5} className="px-6 py-3 bg-slate-50/50 dark:bg-slate-900/40">
+                           <td colSpan={6} className="px-6 py-3 bg-slate-50/50 dark:bg-slate-900/40">
                              {isLoadingHistory ? (
                                <p className="text-[11px] text-slate-400 animate-pulse">Loading login history...</p>
                              ) : loginHistory.length === 0 ? (
@@ -3110,6 +3143,80 @@ export default function App() {
                   </table>
                 </div>
               </div>
+
+            {/* Payments — fills the gap under the users list in the right column */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 flex-1 min-h-0 flex flex-col">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <IndianRupee className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Payments</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">{adminPayments.length}</span>
+                  {adminPayments.some(p => p.status === 'success') && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      ₹{(adminPayments.filter(p => p.status === 'success').reduce((s, p) => s + (p.amount || 0), 0) / 100).toLocaleString('en-IN')} collected
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={fetchAdminPayments}
+                  className="text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", loadingPayments && "animate-spin")} /> Refresh
+                </button>
+              </div>
+              {loadingPayments ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center flex-1">Loading payments…</p>
+              ) : adminPayments.length === 0 ? (
+                <div className="py-8 text-center flex-1 flex flex-col items-center justify-center">
+                  <IndianRupee className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400 dark:text-slate-500">No payments recorded yet.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto flex-1 min-h-0 overflow-y-auto">
+                  <table className="w-full text-left text-sm min-w-[640px]">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
+                        <th className="px-4 py-3">Email</th>
+                        <th className="px-4 py-3">Plan</th>
+                        <th className="px-4 py-3 text-right">Amount</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-center">Expiry</th>
+                        <th className="px-4 py-3 text-right">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {adminPayments.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors">
+                          <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300 max-w-[180px] truncate" title={p.email}>{p.email}</td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400" title={p.planLabel || p.plan}>{p.plan || '—'}</td>
+                          <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-800 dark:text-slate-200">
+                            {typeof p.amount === 'number' ? `₹${(p.amount / 100).toLocaleString('en-IN')}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              p.status === 'success'
+                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                                : p.status === 'created'
+                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'
+                                : 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400'
+                            }`}>
+                              {p.status === 'signature_failed' ? 'failed' : p.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center text-[11px] text-slate-500 dark:text-slate-400">
+                            {p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[11px] text-slate-400 whitespace-nowrap">
+                            {p.verifiedAt || p.createdAt ? new Date(p.verifiedAt || p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            </div>
             </div>
 
             {/* All User Feedback */}
@@ -3122,7 +3229,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={fetchAdminFeedback}
-                  className="text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                 >
                   <RefreshCw className={cn("w-3.5 h-3.5", loadingFeedback && "animate-spin")} /> Refresh
                 </button>
@@ -3174,7 +3281,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
           <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3296,6 +3403,7 @@ export default function App() {
                         onFeedback={() => openFeedback(q.id, 'prelims')}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
+                        isEditor={isEditor}
                         onUpdateQuestion={handleUpdateQuestion}
                         onSubjectClick={(subject) => {
                           setSubjectFilter(subject);
@@ -3425,7 +3533,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3569,7 +3677,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3695,7 +3803,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block",
+              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
