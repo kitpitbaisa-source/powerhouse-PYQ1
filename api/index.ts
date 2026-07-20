@@ -110,6 +110,22 @@ async function grantSubscription(email: string, durationDays: number) {
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
 
+// Returns true if the email is a permanent admin, or a stored user whose role
+// is 'admin' or 'editor'. Both admins and editors may edit question answers.
+// NOTE: there is no per-user login auth, so this trusts the client-supplied
+// email — matching the app's existing email-based access model.
+async function canEditQuestions(email: string): Promise<boolean> {
+  const e = (email || "").toLowerCase().trim();
+  if (!e) return false;
+  if (PERMANENT_ADMINS.includes(e)) return true;
+  try {
+    const { resource } = await usersContainer.item(e, e).read();
+    return !!resource && (resource.status === "admin" || resource.status === "editor");
+  } catch {
+    return false;
+  }
+}
+
 // Razorpay payment gateway (server-side only; secret never sent to the browser)
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
@@ -389,10 +405,15 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   }
 });
 
-// PATCH /api/admin/update-question - Update answer/explanation for a prelims question
-serverApp.patch("/api/admin/update-question", async (req, res) => {
+// PATCH /api/update-question - Update answer/explanation for a prelims question.
+// Authorized by the caller's email role (admin or editor), NOT the admin key,
+// so designated editors can edit answers without the master key.
+serverApp.patch("/api/update-question", async (req, res) => {
   try {
-    const { id, answer, explanation } = req.body;
+    const { id, answer, explanation, email } = req.body;
+    if (!(await canEditQuestions(email))) {
+      return res.status(403).json({ error: "Not authorized to edit questions" });
+    }
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
@@ -602,6 +623,27 @@ serverApp.post("/api/payment/create-order", async (req, res) => {
       console.error("Razorpay order error:", order);
       return res.status(502).json({ error: "Could not create order", details: order?.error?.description });
     }
+    // Record the pending payment so we always have an audit trail, even if the
+    // user abandons checkout after the order is created.
+    try {
+      await ensurePaymentsContainer();
+      const payerEmail = String(email).toLowerCase().trim();
+      await paymentsContainer.items.upsert({
+        id: order.id,
+        email: payerEmail,
+        orderId: order.id,
+        plan,
+        planLabel: p.label,
+        durationDays: p.days,
+        amount: order.amount ?? p.amount,
+        currency: order.currency || "INR",
+        status: "created",
+        gateway: "razorpay",
+        createdAt: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      console.error("payments record (create-order) failed:", e?.message);
+    }
     res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: RAZORPAY_KEY_ID, plan });
   } catch (error: any) {
     console.error("create-order error:", error);
@@ -624,6 +666,15 @@ serverApp.post("/api/payment/verify", async (req, res) => {
       expected.length !== razorpay_signature.length ||
       !timingSafeEqual(Buffer.from(expected), Buffer.from(razorpay_signature))
     ) {
+      // Best-effort: flag the pending payment record as failed for the audit trail.
+      try {
+        await ensurePaymentsContainer();
+        const failEmail = String(email).toLowerCase().trim();
+        const { resource } = await paymentsContainer.item(razorpay_order_id, failEmail).read();
+        if (resource) {
+          await paymentsContainer.items.upsert({ ...resource, status: "signature_failed", paymentId: razorpay_payment_id, modifiedAt: new Date().toISOString() });
+        }
+      } catch (e: any) {}
       return res.status(400).json({ error: "Payment signature verification failed" });
     }
 
@@ -647,6 +698,34 @@ serverApp.post("/api/payment/verify", async (req, res) => {
       isActive: true,
       lastPaymentId: razorpay_payment_id,
     });
+    // Record the successful payment (id = orderId, partitioned by email).
+    try {
+      await ensurePaymentsContainer();
+      let prior: any = null;
+      try {
+        const { resource } = await paymentsContainer.item(razorpay_order_id, userEmail).read();
+        prior = resource;
+      } catch (e: any) {}
+      await paymentsContainer.items.upsert({
+        id: razorpay_order_id,
+        email: userEmail,
+        orderId: razorpay_order_id,
+        paymentId: razorpay_payment_id,
+        plan,
+        planLabel: p.label,
+        durationDays: p.days,
+        amount: prior?.amount ?? p.amount,
+        currency: prior?.currency || "INR",
+        status: "success",
+        gateway: "razorpay",
+        subscriptionStatus: newStatus,
+        expiryDate,
+        createdAt: prior?.createdAt || now,
+        verifiedAt: now,
+      });
+    } catch (e: any) {
+      console.error("payments record (verify) failed:", e?.message);
+    }
     res.json({ success: true, status: newStatus, expiryDate });
   } catch (error: any) {
     console.error("verify error:", error);
@@ -933,6 +1012,20 @@ serverApp.get("/api/admin/feedback", async (_req, res) => {
     res.json(resources);
   } catch (error: any) {
     console.error("Error fetching feedback:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Admin: list all payments (most recent first).
+serverApp.get("/api/admin/payments", async (_req, res) => {
+  try {
+    await ensurePaymentsContainer();
+    const { resources } = await paymentsContainer.items
+      .query("SELECT * FROM c ORDER BY c.createdAt DESC OFFSET 0 LIMIT 500")
+      .fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching payments:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
