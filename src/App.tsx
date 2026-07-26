@@ -348,10 +348,30 @@ const parseMarkdownBold = (text: string | undefined) => {
   return html;
 };
 
-const HighlightText: React.FC<{ text: string | undefined; query: string }> = ({ text, query }) => {
+// Adds a little vertical breathing room around a numbered-statement list:
+// a gap between the question stem and the first "1.", and between the last
+// numbered point and the trailing "Select the correct answer…" line.
+const spaceNumberedList = (html: string) => {
+  const parts = html.split(/<br\s*\/?>/i);
+  if (parts.length < 2) return html;
+  const isNum = (s: string) => /^\s*\d+[.)]/.test(s.replace(/<[^>]*>/g, ''));
+  let out = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const curNum = isNum(parts[i]);
+    const prevNum = isNum(parts[i - 1]);
+    let sep = '<br/>';
+    if (curNum !== prevNum) sep = '<br/><span class="block h-3.5"></span>'; // list boundary
+    else if (curNum && prevNum) sep = '<br/><span class="block h-1.5"></span>'; // between statements
+    out += sep + parts[i];
+  }
+  return out;
+};
+
+const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLists?: boolean }> = ({ text, query, spaceLists }) => {
   if (!text) return null;
   // First convert markdown bold to HTML
-  const htmlText = parseMarkdownBold(text);
+  let htmlText = parseMarkdownBold(text);
+  if (spaceLists) htmlText = spaceNumberedList(htmlText);
   
   if (!query.trim()) {
     return <span dangerouslySetInnerHTML={{ __html: htmlText }} />;
@@ -535,9 +555,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       </div>
       
-      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[21px] whitespace-pre-wrap px-1">
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[23px] whitespace-pre-wrap px-1">
         <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>
-        <HighlightText text={question.question} query={searchQuery} />
+        <HighlightText text={question.question} query={searchQuery} spaceLists />
       </h3>
       
       <div className="space-y-2 mb-5 px-1">
@@ -752,8 +772,8 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       </div>
 
-      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[21px] whitespace-pre-wrap flex-grow">
-        <HighlightText text={question.question} query={searchQuery} />
+      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] whitespace-pre-wrap flex-grow">
+        <HighlightText text={question.question} query={searchQuery} spaceLists />
       </h3>
 
       {question.keywords && question.keywords.length > 0 && (
@@ -2464,7 +2484,7 @@ export default function App() {
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => { setActiveTab(tab.id); window.scrollTo(0, 0); }}
                     className={cn(
                       "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1",
                       activeTab === tab.id
@@ -3281,7 +3301,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
           <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3533,7 +3553,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3677,7 +3697,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -3803,7 +3823,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-72 lg:w-80 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
