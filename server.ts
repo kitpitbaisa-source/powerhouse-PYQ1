@@ -248,6 +248,7 @@ serverApp.get("/api/questions", async (req, res) => {
     if (!isNaN(limit) && limit > 0) {
       try {
         const top = await getTopQuestions(limit);
+        res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
         return res.json(top);
       } catch (e: any) {
         // Composite index may still be building; fall back to cached full read + slice.
@@ -257,11 +258,13 @@ serverApp.get("/api/questions", async (req, res) => {
           .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
           .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
           .slice(0, limit);
+        res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
         return res.json(top);
       }
     }
     const questions = await getQuestions();
     questions.sort((a: any, b: any) => a.id - b.id);
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
     res.json(questions);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
@@ -274,7 +277,7 @@ serverApp.get("/api/mains-questions", async (req, res) => {
   try {
     const mainsQuestions = await getMainsQuestions();
     mainsQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
     res.json(mainsQuestions);
   } catch (error: any) {
     console.error("Error fetching mains questions:", error);
@@ -285,7 +288,7 @@ serverApp.get("/api/mains-questions", async (req, res) => {
 serverApp.get("/api/toppers-copy", async (req, res) => {
   try {
     const toppersQuestions = await getToppersQuestions();
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
     res.json(toppersQuestions);
   } catch (error: any) {
     console.error("Error fetching toppers copy questions:", error);
@@ -298,7 +301,7 @@ serverApp.get("/api/csat-questions", async (req, res) => {
   try {
     const csatQuestions = await getCSATQuestions();
     csatQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
     res.json(csatQuestions);
   } catch (error: any) {
     console.error("Error fetching CSAT questions:", error);
@@ -311,7 +314,7 @@ serverApp.get("/api/english-questions", async (req, res) => {
   try {
     const englishQuestions = await getEnglishQuestions();
     englishQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
     res.json(englishQuestions);
   } catch (error: any) {
     console.error("Error fetching English questions:", error);
