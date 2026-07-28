@@ -185,6 +185,10 @@ async function getEffectivePlans() {
 }
 
 // In-memory cache for questions (12h TTL, invalidated via cache-version doc in Cosmos)
+// Public question banks rarely change, so let Vercel's edge CDN cache them instead of
+// hitting the serverless function + Cosmos on every page load (keeps bandwidth/function
+// usage down). Edge serves for up to 24h, revalidating in the background for a week.
+const PUBLIC_CACHE = "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800";
 let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
@@ -279,7 +283,7 @@ serverApp.get("/api/questions", async (req, res) => {
     if (!isNaN(limit) && limit > 0) {
       try {
         const top = await getTopQuestions(limit);
-        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Cache-Control", PUBLIC_CACHE);
         return res.json(top);
       } catch (e: any) {
         // Composite index may still be building; fall back to cached full read + slice.
@@ -289,13 +293,13 @@ serverApp.get("/api/questions", async (req, res) => {
           .filter((q: any) => q.question && String(q.question).trim() !== "" && !String(q.question).startsWith("Q_"))
           .sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || b.id - a.id)
           .slice(0, limit);
-        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Cache-Control", PUBLIC_CACHE);
         return res.json(top);
       }
     }
     const questions = await getQuestions();
     questions.sort((a: any, b: any) => a.id - b.id);
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     res.json(questions);
   } catch (error: any) {
     console.error("Error fetching questions:", error);
@@ -308,7 +312,7 @@ serverApp.get("/api/mains-questions", async (req, res) => {
   try {
     const mainsQuestions = await getMainsQuestions();
     mainsQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     res.json(mainsQuestions);
   } catch (error: any) {
     console.error("Error fetching mains questions:", error);
@@ -321,7 +325,7 @@ serverApp.get("/api/toppers-copy", async (req, res) => {
   try {
     const toppersQuestions = await getToppersQuestions();
     toppersQuestions.sort((a: any, b: any) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     res.json(toppersQuestions);
   } catch (error: any) {
     console.error("Error fetching toppers copy questions:", error);
@@ -340,7 +344,7 @@ serverApp.get("/api/csat-questions", async (req, res) => {
       csatCache = resources;
       csatCacheTimestamp = now;
     }
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     res.json(csatCache);
   } catch (error: any) {
     console.error("Error fetching CSAT questions:", error);
@@ -359,7 +363,7 @@ serverApp.get("/api/english-questions", async (req, res) => {
       englishCache = resources;
       englishCacheTimestamp = now;
     }
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", PUBLIC_CACHE);
     res.json(englishCache);
   } catch (error: any) {
     console.error("Error fetching English questions:", error);
