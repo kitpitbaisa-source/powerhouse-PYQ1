@@ -367,6 +367,217 @@ const spaceNumberedList = (html: string) => {
   return out;
 };
 
+// ---- "Match the following" detection & tabular rendering ----
+// Many PYQs cram List-I / List-II into one text blob with mixed delimiters
+// (":", "|", " - ", <br/>, or separate "List-I:" / "List-II:" blocks). This
+// parses the common shapes into { intro, headers, rows, outro } so we can show
+// them as a clean two-column table. Returns null when it can't confidently parse
+// (caller then falls back to the normal text renderer).
+type MatchData = { intro: string; headers: [string, string]; rows: { l: string; r: string }[]; outro: string };
+
+const parseMatchTable = (raw: string | undefined): MatchData | null => {
+  if (!raw || !/match|pair/i.test(raw)) return null;
+  const lines = raw.replace(/<br\s*\/?>/gi, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+  if (lines.length < 3) return null;
+
+  const PAIR = /^([A-Za-z])[.)]\s*(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(\d+)[.)]?\s*(.+)$/;
+  const headerRe = /list[\s.\-–]*i\b.*list[\s.\-–]*ii\b/i;
+  const parens = (s: string) => (s.match(/\(([^)]+)\)/g) || []).map(x => x.slice(1, -1).trim());
+
+  // Approach A: inline pair rows (one "left <delim> right" per line)
+  const pairIdxs: number[] = [];
+  lines.forEach((l, i) => { if (PAIR.test(l)) pairIdxs.push(i); });
+  if (pairIdxs.length >= 2) {
+    const rows = pairIdxs.map(i => {
+      const m = lines[i].match(PAIR)!;
+      return { l: `${m[1]}. ${m[2].trim()}`, r: `${m[3]}. ${m[4].trim()}` };
+    });
+    const first = pairIdxs[0], last = pairIdxs[pairIdxs.length - 1];
+    let headers: [string, string] = ['List-I', 'List-II'];
+    let introEnd = first;
+    for (let i = first - 1; i >= 0; i--) {
+      if (headerRe.test(lines[i])) {
+        const p = parens(lines[i]);
+        if (p.length >= 2) headers = [p[0], p[1]];
+        introEnd = i;
+        break;
+      }
+    }
+    return {
+      intro: lines.slice(0, introEnd).join('\n'),
+      headers,
+      rows,
+      outro: lines.slice(last + 1).filter(l => !PAIR.test(l)).join('\n'),
+    };
+  }
+
+  // Approach B: two separate "List-I …" / "List-II …" blocks
+  const isI = (l: string) => /^list[\s.\-–]*i\b/i.test(l) && !/ii\b/i.test(l);
+  const isII = (l: string) => /^list[\s.\-–]*ii\b/i.test(l);
+  const iIdx = lines.findIndex(isI);
+  const iiIdx = lines.findIndex(isII);
+  if (iIdx !== -1 && iiIdx > iIdx) {
+    const left: string[] = [];
+    for (let i = iIdx + 1; i < iiIdx; i++) if (/^[A-Za-z][.)]/.test(lines[i])) left.push(lines[i]);
+    const right: string[] = [];
+    let k = iiIdx + 1;
+    for (; k < lines.length; k++) { if (/^\d+[.)]/.test(lines[k])) right.push(lines[k]); else break; }
+    if (left.length >= 2 && right.length >= 2) {
+      const n = Math.max(left.length, right.length);
+      const rows: { l: string; r: string }[] = [];
+      for (let i = 0; i < n; i++) rows.push({ l: left[i] || '', r: right[i] || '' });
+      return {
+        intro: lines.slice(0, iIdx).join('\n'),
+        headers: [parens(lines[iIdx])[0] || 'List-I', parens(lines[iiIdx])[0] || 'List-II'],
+        rows,
+        outro: lines.slice(k).filter(l => !/^\d+[.)]/.test(l)).join('\n'),
+      };
+    }
+  }
+
+  // Approach D: numbered/roman pair rows ("1. Left : Right", "1 .. Left : Right",
+  // or "I. Left : Right"), as in "Consider the following pairs" questions.
+  const NPAIR = /^(\d+|(?:IX|IV|VI{0,3}|I{1,3}|X))\s*(?:\.{1,2}|\))\s*(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(.+)$/;
+  const nIdxs: number[] = [];
+  lines.forEach((l, i) => { if (NPAIR.test(l)) nIdxs.push(i); });
+  if (nIdxs.length >= 2) {
+    const rows = nIdxs.map(i => {
+      const m = lines[i].match(NPAIR)!;
+      return { l: `${m[1]}. ${m[2].trim()}`, r: m[3].trim() };
+    });
+    const first = nIdxs[0], last = nIdxs[nIdxs.length - 1];
+    let headers: [string, string] = ['List-I', 'List-II'];
+    let introEnd = first;
+    const h = first > 0 ? lines[first - 1] : '';
+    if (h && !NPAIR.test(h) && !/^\d/.test(h)) {
+      const hm = h.match(/^(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(.+)$/);
+      if (hm && !/[.?]$/.test(h)) { headers = [hm[1].replace(/[:：]\s*$/, '').trim(), hm[2].trim()]; introEnd = first - 1; }
+    }
+    return {
+      intro: lines.slice(0, introEnd).join('\n'),
+      headers,
+      rows,
+      outro: lines.slice(last + 1).filter(l => !NPAIR.test(l)).join('\n'),
+    };
+  }
+
+  // Approach F: letter-prefixed line pairs with a text right side ("A. X - Y"),
+  // e.g. "A. Vishakhapatnam - Deepest". Requires sequential labels A,B,C… to be safe.
+  const APAIR = /^([A-Za-z])\s*(?:\.{1,2}|\))\s*(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(.+)$/;
+  const aIdxs: number[] = [];
+  lines.forEach((l, i) => { if (APAIR.test(l)) aIdxs.push(i); });
+  if (aIdxs.length >= 2) {
+    const labels = aIdxs.map(i => lines[i].match(APAIR)![1].toUpperCase());
+    const sequential = labels.every((c, i) => c.charCodeAt(0) === labels[0].charCodeAt(0) + i);
+    if (sequential) {
+      const rows = aIdxs.map(i => {
+        const m = lines[i].match(APAIR)!;
+        return { l: `${m[1]}. ${m[2].trim()}`, r: m[3].trim() };
+      });
+      const first = aIdxs[0], last = aIdxs[aIdxs.length - 1];
+      let headers: [string, string] = ['List-I', 'List-II'];
+      let introEnd = first;
+      const h = first > 0 ? lines[first - 1] : '';
+      if (h && !APAIR.test(h)) {
+        const p = parens(h);
+        if (p.length >= 2) { headers = [p[0], p[1]]; introEnd = first - 1; }
+        else {
+          const hm = h.match(/^(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(.+)$/);
+          if (hm && !/[.?]$/.test(h)) { headers = [hm[1].replace(/[:：]\s*$/, '').trim(), hm[2].trim()]; introEnd = first - 1; }
+        }
+      }
+      return {
+        intro: lines.slice(0, introEnd).join('\n'),
+        headers,
+        rows,
+        outro: lines.slice(last + 1).filter(l => !APAIR.test(l)).join('\n'),
+      };
+    }
+  }
+
+  // Approach G: two single-line comma-separated lists — a letter list (A. a, B. b, …)
+  // and a number list (1. p, 2. q, …) — regardless of whether they carry a literal
+  // "List-I/List-II" label. Uses sequential-label validation to avoid prose misfires.
+  const commaItems = (line: string, re: RegExp) => {
+    const parts = line.split(',').map(s => s.trim()).filter(Boolean);
+    const out: string[] = [];
+    let started = false;
+    for (let p of parts) {
+      if (!started) {
+        const m = p.match(re);
+        if (!m) continue;
+        p = p.slice(p.indexOf(m[0])).trim();
+        out.push(p); started = true;
+      } else if (re.test(p)) out.push(p);
+      else if (out.length) out[out.length - 1] += ', ' + p; // comma inside an item's text
+    }
+    return out;
+  };
+  const isSeqLetters = (items: string[]) => items.length >= 2 && items.every((it, i) => it[0].toUpperCase().charCodeAt(0) === items[0][0].toUpperCase().charCodeAt(0) + i);
+  const isSeqNums = (items: string[]) => items.length >= 2 && items.every((it, i) => parseInt(it, 10) === i + 1);
+  let letterLineIdx = -1, letterItems: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const it = commaItems(lines[i], /[A-Za-z][.)]\s/);
+    if (isSeqLetters(it)) { letterLineIdx = i; letterItems = it; break; }
+  }
+  let numberLineIdx = -1, numberItems: string[] = [];
+  for (let i = letterLineIdx + 1; i < lines.length; i++) {
+    const it = commaItems(lines[i], /\d+[.)]\s/);
+    if (isSeqNums(it)) { numberLineIdx = i; numberItems = it; break; }
+  }
+  if (letterLineIdx !== -1 && numberLineIdx !== -1) {
+    const n = Math.max(letterItems.length, numberItems.length);
+    const rows: { l: string; r: string }[] = [];
+    for (let i = 0; i < n; i++) rows.push({ l: letterItems[i] || '', r: numberItems[i] || '' });
+    // Use a parenthetical as a header only when it appears before the first item
+    // marker on that line (a list label like "List-I (X):"), not inside an item.
+    const headerFromLine = (line: string, markerRe: RegExp, fallback: string) => {
+      const pm = line.match(/\(([^)]+)\)/);
+      const mm = line.match(markerRe);
+      if (pm && mm && line.indexOf(pm[0]) < line.indexOf(mm[0])) return pm[1].trim();
+      return fallback;
+    };
+    return {
+      intro: lines.slice(0, letterLineIdx).join('\n'),
+      headers: [
+        headerFromLine(lines[letterLineIdx], /[A-Za-z][.)]\s/, 'List-I'),
+        headerFromLine(lines[numberLineIdx], /\d+[.)]\s/, 'List-II'),
+      ],
+      rows,
+      outro: lines.slice(numberLineIdx + 1).join('\n'),
+    };
+  }
+  return null;
+};
+
+const MatchQuestion: React.FC<{ data: MatchData; query: string; badge: React.ReactNode }> = ({ data, query, badge }) => (
+  <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 px-1">
+    <div className="leading-[23px] mb-2 whitespace-pre-wrap">
+      {badge}
+      {data.intro && <span className="align-middle"><HighlightText text={data.intro} query={query} spaceLists /></span>}
+    </div>
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-600/70">
+      <table className="w-full text-[12.5px] border-collapse">
+        <thead>
+          <tr className="bg-slate-100 dark:bg-slate-700/60">
+            <th className="text-left font-bold text-slate-700 dark:text-slate-200 px-3 py-2 border-b border-slate-200 dark:border-slate-600/70 w-1/2">{data.headers[0]}</th>
+            <th className="text-left font-bold text-slate-700 dark:text-slate-200 px-3 py-2 border-b border-l border-slate-200 dark:border-slate-600/70 w-1/2">{data.headers[1]}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((row, i) => (
+            <tr key={i} className="odd:bg-white even:bg-slate-50/70 dark:odd:bg-transparent dark:even:bg-slate-700/20">
+              <td className="align-top px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.l} query={query} /></td>
+              <td className="align-top px-3 py-1.5 border-b border-l border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.r} query={query} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    {data.outro && <div className="mt-2 leading-[23px] whitespace-pre-wrap"><HighlightText text={data.outro} query={query} spaceLists /></div>}
+  </div>
+);
+
 const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLists?: boolean }> = ({ text, query, spaceLists }) => {
   if (!text) return null;
   // First convert markdown bold to HTML
@@ -555,10 +766,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       </div>
       
-      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[23px] whitespace-pre-wrap px-1">
-        <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>
-        <HighlightText text={question.question} query={searchQuery} spaceLists />
-      </h3>
+      {(() => {
+        const md = parseMatchTable(question.question);
+        const badge = <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>;
+        return md ? (
+          <MatchQuestion data={md} query={searchQuery} badge={badge} />
+        ) : (
+          <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[23px] whitespace-pre-wrap px-1">
+            {badge}
+            <HighlightText text={question.question} query={searchQuery} spaceLists />
+          </h3>
+        );
+      })()}
       
       <div className="space-y-2 mb-5 px-1">
         {(question.options || []).map(opt => {
