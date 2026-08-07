@@ -11,6 +11,8 @@ const databaseId = "pyqpowerhouse";
 const client = new CosmosClient({ endpoint, key });
 const database = client.database(databaseId);
 const questionsContainer = database.container("questions");
+// State PCS questions live in their own container but are displayed inside Prelims.
+const statePcsContainer = database.container("state_pcs");
 const mainsQuestionsContainer = database.container("mains-questions");
 const csatQuestionsContainer = database.container("csat-questions");
 const englishQuestionsContainer = database.container("english-questions");
@@ -172,9 +174,25 @@ async function getQuestions() {
   const { resources } = await questionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  questionsCache = resources;
+  // Merge in State PCS questions so they appear within the Prelims list
+  // (stored separately in the state_pcs container).
+  const merged = resources.concat(await getStatePcsQuestions());
+  questionsCache = merged;
   cacheTimestamp = now;
-  return resources;
+  return merged;
+}
+
+// Read all State PCS questions. The container may not exist yet, in which case
+// we treat it as empty so Prelims keeps working.
+async function getStatePcsQuestions() {
+  try {
+    const { resources } = await statePcsContainer.items
+      .readAll({ maxItemCount: -1 })
+      .fetchAll();
+    return resources.filter((r: any) => r.id !== "__cache_version__");
+  } catch (e: any) {
+    return [];
+  }
 }
 
 // Fetch only the top N questions directly from Cosmos in display order

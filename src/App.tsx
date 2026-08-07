@@ -1744,6 +1744,7 @@ export default function App() {
   };
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
+  const [showReleasesModal, setShowReleasesModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
 
   // ── Feedback (global + per-question) ──
@@ -2782,6 +2783,20 @@ export default function App() {
                       <span>Logout</span>
                     </button>
                   )}
+
+                  {/* New Releases */}
+                  <button
+                    onClick={() => { setShowReleasesModal(true); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shrink-0">
+                      <Sparkles className="w-4 h-4" />
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                    </span>
+                    <span className="flex items-center gap-2">New Releases
+                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[9px] font-bold uppercase tracking-wide">New</span>
+                    </span>
+                  </button>
 
                   {/* About the Founder */}
                   <button
@@ -4720,6 +4735,84 @@ export default function App() {
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-2">
                 PYQ plans include the same features — only the duration & per-month cost differ. Secure activation via Telegram.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Releases Modal */}
+      {showReleasesModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade" onClick={() => setShowReleasesModal(false)}>
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop" onClick={(e) => e.stopPropagation()}>
+            <div className="relative shrink-0 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 px-6 pt-7 pb-7 text-center overflow-hidden">
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <button
+                onClick={() => setShowReleasesModal(false)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="relative flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white shadow-lg ring-2 ring-white/30">
+                  <Sparkles className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-extrabold text-white mt-3">New Releases</h2>
+                <p className="text-emerald-100 text-xs font-medium mt-1">What's new · What's coming next</p>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
+              {/* Just rolled out */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wide">Just rolled out</span>
+              </div>
+              <ul className="space-y-3 mb-6">
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">State PCS questions added to Prelims</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">2,250+ BPSC &amp; UPPSC previous-year questions (2017–2025) now practice-ready inside the Prelims section.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Cleaner question layout</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Improved spacing and readability for statement-based questions, plus a faster, smoother browsing experience.</p>
+                  </div>
+                </li>
+              </ul>
+
+              {/* Coming soon */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold uppercase tracking-wide">Coming soon</span>
+              </div>
+              <ul className="space-y-3">
+                <li className="flex gap-3">
+                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">More State PCS exams</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Expanding coverage to additional State PCS examinations beyond BPSC &amp; UPPSC.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Essay practice section</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">A dedicated Mains essay section with curated topics and model approaches.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">AI-powered repeat-pattern insights</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Smart recommendations that surface repeatedly-asked concepts and high-yield question patterns to focus your prep.</p>
+                  </div>
+                </li>
+              </ul>
+
+              <p className="text-[12px] text-center text-slate-400 mt-6">More updates roll out regularly — stay tuned. 🚀</p>
             </div>
           </div>
         </div>
