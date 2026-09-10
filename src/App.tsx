@@ -355,7 +355,6 @@ const QuestionCountToggle: React.FC<{
       className="group flex h-7 items-center gap-1.5 rounded-lg bg-white/90 px-2 text-[10px] font-extrabold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-200 transition-all hover:text-blue-600 hover:ring-blue-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-800/90 dark:text-slate-200 dark:ring-slate-600 dark:hover:text-blue-300"
     >
       <span className="tabular-nums">{value}</span>
-      <span className="text-[8px] uppercase tracking-wide text-slate-400 group-hover:text-blue-400">Qs</span>
       <RotateCcw className="h-2.5 w-2.5 text-slate-400 transition-transform duration-300 group-hover:rotate-180 group-hover:text-blue-500" />
     </button>
   );
@@ -2677,12 +2676,12 @@ export default function App() {
         aria-label={sc.total > 0 ? `Score ${sc.correct} out of ${sc.total}. Click to reset.` : "No score yet"}
         title={sc.total > 0 ? "Click to reset score" : "Answer questions to start scoring"}
         className={cn(
-        "group h-[38px] pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+        "group relative h-[38px] overflow-hidden pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 after:pointer-events-none after:absolute after:inset-y-0 after:-left-1/2 after:w-1/3 after:-skew-x-12 after:bg-white/25 after:blur-sm after:transition-all after:duration-500",
         low
           ? "bg-red-50/80 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/25"
           : "bg-emerald-50/80 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/25",
         sc.total > 0
-          ? "cursor-pointer hover:-translate-y-0.5 hover:bg-gradient-to-br hover:from-blue-600 hover:to-indigo-600 hover:text-white hover:border-blue-500 hover:shadow-lg hover:shadow-blue-600/25 active:translate-y-0 active:scale-95"
+          ? "cursor-pointer hover:-translate-y-0.5 hover:bg-gradient-to-br hover:from-blue-600 hover:to-indigo-600 hover:text-white hover:border-blue-400 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] hover:after:left-[120%] active:translate-y-0 active:scale-95"
           : "cursor-default"
       )}>
         <div className="relative w-7 h-7 flex-shrink-0">
