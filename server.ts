@@ -682,14 +682,17 @@ serverApp.get("/api/user-status", async (req, res) => {
   }
 });
 
-// PATCH /api/update-question - Update answer/explanation for a prelims question.
+// PATCH /api/update-question - Update answer/explanation for a Prelims or English question.
 // Authorized by the caller's email role (admin or editor), NOT the admin key,
 // so designated editors can edit answers without the master key.
 serverApp.patch("/api/update-question", async (req, res) => {
   try {
-    const { id, answer, explanation, email } = req.body;
+    const { section = "prelims", id, answer, explanation, email } = req.body;
     if (!(await canEditQuestions(email))) {
       return res.status(403).json({ error: "Not authorized to edit questions" });
+    }
+    if (section !== "prelims" && section !== "english") {
+      return res.status(400).json({ error: "section must be prelims or english" });
     }
     if (!id) {
       return res.status(400).json({ error: "id is required" });
@@ -698,9 +701,9 @@ serverApp.patch("/api/update-question", async (req, res) => {
       return res.status(400).json({ error: "Provide at least answer or explanation to update" });
     }
 
-    // Partition key is /id for questions container
+    const targetContainer = section === "english" ? englishQuestionsContainer : questionsContainer;
     const itemId = String(id);
-    const { resource: existing } = await questionsContainer.item(itemId, itemId).read();
+    const { resource: existing } = await targetContainer.item(itemId, itemId).read();
     if (!existing) {
       return res.status(404).json({ error: `Question ${id} not found` });
     }
@@ -723,14 +726,19 @@ serverApp.patch("/api/update-question", async (req, res) => {
       existing.explanation = explanation;
     }
 
-    const { resource: updated } = await questionsContainer.item(itemId, itemId).replace(existing);
+    const { resource: updated } = await targetContainer.item(itemId, itemId).replace(existing);
 
-    // Invalidate the local cache so the next fetch returns fresh data
-    questionsCache = null;
-    cacheTimestamp = 0;
+    if (section === "english") {
+      englishCache = null;
+      englishCacheTimestamp = 0;
+    } else {
+      questionsCache = null;
+      cacheTimestamp = 0;
+    }
 
     res.json({
       message: "Question updated",
+      section,
       id: updated.id,
       answer: updated.answer,
       explanation: updated.explanation,
@@ -936,13 +944,39 @@ serverApp.post("/api/admin/prices", async (req, res) => {
   }
 });
 serverApp.post("/api/admin/update-status", async (req, res) => {
-  const { email, status } = req.body;
+  const { email, status, durationMonths } = req.body;
   if (!email || !status) {
     return res.status(400).json({ error: "Email and status are required" });
   }
 
   const userEmail = email.toLowerCase().trim();
   const now = new Date().toISOString();
+  const hasCustomDuration = durationMonths !== undefined;
+  let customExpiryDate: string | null = null;
+  if (hasCustomDuration) {
+    const durationNumber = Number(durationMonths);
+    if (!Number.isInteger(durationNumber) || durationNumber < 1) {
+      return res.status(400).json({
+        error: "Duration must be a positive whole number of months",
+      });
+    }
+
+    const expiry = new Date();
+    const originalDay = expiry.getUTCDate();
+    expiry.setUTCDate(1);
+    expiry.setUTCMonth(expiry.getUTCMonth() + durationNumber);
+    if (Number.isNaN(expiry.getTime())) {
+      return res.status(400).json({ error: "Duration produces an invalid expiry date" });
+    }
+    const lastDayOfTargetMonth = new Date(Date.UTC(
+      expiry.getUTCFullYear(),
+      expiry.getUTCMonth() + 1,
+      0
+    )).getUTCDate();
+    expiry.setUTCDate(Math.min(originalDay, lastDayOfTargetMonth));
+    customExpiryDate = expiry.toISOString();
+  }
+
   try {
     // Check if user already exists
     let existing: any = null;
@@ -951,9 +985,11 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
       existing = resource;
     } catch (e: any) {}
 
-    const expiryDate = status === "subscribed"
-      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-      : existing?.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    const expiryDate = customExpiryDate || (
+      status === "subscribed"
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+        : existing?.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+    );
 
     await usersContainer.items.upsert({
       id: userEmail,
@@ -964,7 +1000,7 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
       expiryDate,
       isActive: true,
     });
-    res.json({ message: "Success", user: { email: userEmail, status } });
+    res.json({ message: "Success", user: { email: userEmail, status, expiryDate } });
   } catch (error: any) {
     console.error("Error updating user status:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });

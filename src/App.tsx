@@ -10,7 +10,6 @@ import {
   Search, 
   RotateCcw, 
   LogOut,
-  Dice5, 
   ChevronDown, 
   ExternalLink,
   Send,
@@ -61,6 +60,30 @@ const subjectColors: SubjectColorMap = {
   "International Relations": "bg-gradient-to-r from-sky-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
   "Default": "bg-gradient-to-r from-indigo-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20"
 };
+
+function getExamCategory(exam: string): string {
+  const normalized = exam.trim();
+  const upper = normalized.toUpperCase();
+  if (upper.includes("CIVIL SERVICES") || upper.includes("CSE") || upper.includes("UPSC")) return "UPSC CSE";
+  if (upper.includes("NDA")) return "NDA";
+  if (upper.includes("CDS")) return "CDS";
+  if (upper.includes("CAPF")) return "CAPF";
+  if (upper.includes("STATE PCS") || /\bPCS\b/.test(upper)) return "State PCS";
+  return normalized
+    .replace(/\s*[-–]?\s*(?:19|20)\d{2}\s*$/u, "")
+    .replace(/\s+\([12]\)\s*$/u, "")
+    .trim();
+}
+
+function matchesQuestionId(id: string | number, query: string): boolean {
+  const normalizedQuery = query
+    .trim()
+    .toLowerCase()
+    .replace(/^question\s*#?\s*/, "")
+    .replace(/^q\s*#?\s*/, "")
+    .replace(/^#\s*/, "");
+  return normalizedQuery !== "" && String(id).toLowerCase().includes(normalizedQuery);
+}
 
 // ── Business / legal details (used across policy pages & PayU) ──
 const BUSINESS = {
@@ -312,6 +335,29 @@ const FancySelect: React.FC<{
         </div>
       )}
     </div>
+  );
+};
+
+const QuestionCountToggle: React.FC<{
+  value: number;
+  onChange: (value: number) => void;
+}> = ({ value, onChange }) => {
+  const options = [10, 20, 50, 100];
+  const currentIndex = options.indexOf(value);
+  const nextValue = options[(currentIndex + 1) % options.length];
+
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(nextValue)}
+      aria-label={`${value} random questions. Click to change to ${nextValue}.`}
+      title={`${value} questions - click for ${nextValue}`}
+      className="group flex h-7 items-center gap-1.5 rounded-lg bg-white/90 px-2 text-[10px] font-extrabold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-200 transition-all hover:text-blue-600 hover:ring-blue-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-800/90 dark:text-slate-200 dark:ring-slate-600 dark:hover:text-blue-300"
+    >
+      <span className="tabular-nums">{value}</span>
+      <span className="text-[8px] uppercase tracking-wide text-slate-400 group-hover:text-blue-400">Qs</span>
+      <RotateCcw className="h-2.5 w-2.5 text-slate-400 transition-transform duration-300 group-hover:rotate-180 group-hover:text-blue-500" />
+    </button>
   );
 };
 
@@ -1142,7 +1188,6 @@ export default function App() {
   const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
   const [mainsTopicFilter, setMainsTopicFilter] = useState("All");
   const [mainsSearchQuery, setMainsSearchQuery] = useState("");
-  const [excludeSciMath, setExcludeSciMath] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
   const [revealedMainsAnswers, setRevealedMainsAnswers] = useState<Record<string, boolean>>({});
@@ -1254,7 +1299,7 @@ export default function App() {
   const [isEditor, setIsEditor] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [userEmail, setUserEmail] = useState<string | null>(() => {
@@ -1617,6 +1662,7 @@ export default function App() {
         const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
         const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
         const matchesSearch = mainsSearchQuery === "" ||
+          matchesQuestionId(q.id, mainsSearchQuery) ||
           (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
           (q.model_answer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
           (q.modelAnswer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
@@ -1638,6 +1684,7 @@ export default function App() {
       const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
       const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
       const matchesSearch = mainsSearchQuery === "" ||
+        matchesQuestionId(q.id, mainsSearchQuery) ||
         (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
       return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
     }).length;
@@ -1671,6 +1718,7 @@ export default function App() {
         q.answers?.some(a => a.topperName === toppersTopperFilter);
       const matchesPaper = toppersPaperFilter === "All" || q.paper === toppersPaperFilter;
       const matchesSearch = toppersSearchQuery === "" ||
+        matchesQuestionId(q.id, toppersSearchQuery) ||
         (q.question || "").toLowerCase().includes(toppersSearchQuery.toLowerCase()) ||
         (q.subject || "").toLowerCase().includes(toppersSearchQuery.toLowerCase()) ||
         (q.year || "").toLowerCase().includes(toppersSearchQuery.toLowerCase());
@@ -1713,6 +1761,7 @@ export default function App() {
         const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
         const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
         const matchesSearch = csatSearchQuery === "" || 
+          matchesQuestionId(q.id, csatSearchQuery) ||
           (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase()) ||
           (q.options || []).some(opt => (opt || "").toLowerCase().includes(csatSearchQuery.toLowerCase()));
         return matchesYear && matchesSubject && matchesSearch;
@@ -1732,7 +1781,10 @@ export default function App() {
   }, [englishQuestions]);
 
   const englishSubjectsList = useMemo(() => {
-    const filtered = englishQuestions.filter(q => (englishYearFilter === "All" || q.year === englishYearFilter) && (englishExamFilter === "All" || q.exam === englishExamFilter));
+    const filtered = englishQuestions.filter(q =>
+      (englishYearFilter === "All" || q.year === englishYearFilter) &&
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter)
+    );
     const subjects = [...new Set(filtered.map(q => q.subject))].sort();
     const counts: Record<string, number> = {};
     filtered.forEach(q => {
@@ -1742,7 +1794,10 @@ export default function App() {
   }, [englishQuestions, englishYearFilter, englishExamFilter]);
 
   const englishTopicsList = useMemo(() => {
-    const filtered = englishQuestions.filter(q => (englishYearFilter === "All" || q.year === englishYearFilter) && (englishExamFilter === "All" || q.exam === englishExamFilter));
+    const filtered = englishQuestions.filter(q =>
+      (englishYearFilter === "All" || q.year === englishYearFilter) &&
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter)
+    );
     const topics = [...new Set(filtered.map(q => q.topic).filter(Boolean))].sort();
     const counts: Record<string, number> = {};
     filtered.forEach(q => {
@@ -1752,10 +1807,13 @@ export default function App() {
   }, [englishQuestions, englishYearFilter, englishExamFilter]);
 
   const englishExamsList = useMemo(() => {
-    const exams = [...new Set(englishQuestions.map(q => q.exam).filter(Boolean))].sort();
+    const exams = [...new Set(englishQuestions.map(q => getExamCategory(q.exam)).filter(Boolean))].sort();
     const counts: Record<string, number> = {};
     englishQuestions.forEach(q => {
-      if (q.exam) counts[q.exam] = (counts[q.exam] || 0) + 1;
+      if (q.exam) {
+        const category = getExamCategory(q.exam);
+        counts[category] = (counts[category] || 0) + 1;
+      }
     });
     return { options: ["All", ...exams], counts };
   }, [englishQuestions]);
@@ -1767,8 +1825,9 @@ export default function App() {
         const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
         const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
         const matchesTopic = englishTopicFilter === "All" || q.topic === englishTopicFilter;
-        const matchesExam = englishExamFilter === "All" || q.exam === englishExamFilter;
+        const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
         const matchesSearch = englishSearchQuery === "" || 
+          matchesQuestionId(q.id, englishSearchQuery) ||
           (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
           (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
         return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesSearch;
@@ -2071,6 +2130,7 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
   const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
   const [isAdminUserStatus, setIsAdminUserStatus] = useState<"subscribed" | "not_subscribed" | "admin" | "editor">("subscribed");
+  const [adminUserDuration, setAdminUserDuration] = useState("12");
   const [adminMessage, setAdminMessage] = useState({ text: "", type: "" });
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [expandedUserHistory, setExpandedUserHistory] = useState<string | null>(null);
@@ -2149,15 +2209,19 @@ export default function App() {
     }
   }, [isAdmin, userEmail]);
 
-  const handleUpdateUser = async (email: string, status: string) => {
-    if (!requireAdminKey()) return;
+  const handleUpdateUser = async (
+    email: string,
+    status: string,
+    accessDuration?: { durationMonths: number }
+  ): Promise<boolean> => {
+    if (!requireAdminKey()) return false;
     const userEmailToUpdate = email.toLowerCase().trim();
     try {
       console.log(`Updating user ${userEmailToUpdate} to ${status}...`);
       const response = await fetch('/api/admin/update-status', {
         method: 'POST',
         headers: adminHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ email: userEmailToUpdate, status })
+        body: JSON.stringify({ email: userEmailToUpdate, status, ...accessDuration })
       });
 
       if (response.ok) {
@@ -2165,7 +2229,7 @@ export default function App() {
         setTimeout(() => setAdminMessage({ text: "", type: "" }), 3000);
         fetchAllUsers();
         if (userEmailToUpdate === userEmail) checkUserStatus(userEmailToUpdate);
-        return;
+        return true;
       } else {
         const err = await response.json().catch(() => ({ error: "Unknown server error" }));
         throw new Error(err.details || err.error || "Server failed");
@@ -2173,6 +2237,7 @@ export default function App() {
     } catch (error: any) {
       console.error("Failed to update user:", error.message || error);
       setAdminMessage({ text: `Failed: ${error.message || "Server error"}`, type: "error" });
+      return false;
     }
   };
 
@@ -2200,8 +2265,18 @@ export default function App() {
   const handleAddUserFromAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdminUserEmail.trim()) return;
-    await handleUpdateUser(isAdminUserEmail.trim(), isAdminUserStatus);
-    setIsAdminUserEmail("");
+    const durationMonths = Number(adminUserDuration);
+    if (!Number.isInteger(durationMonths) || durationMonths < 1) {
+      setAdminMessage({
+        text: "Months must be a positive whole number.",
+        type: "error"
+      });
+      return;
+    }
+    const updated = await handleUpdateUser(isAdminUserEmail.trim(), isAdminUserStatus, {
+      durationMonths,
+    });
+    if (updated) setIsAdminUserEmail("");
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -2267,7 +2342,7 @@ export default function App() {
 
   const yearsList = useMemo(() => {
     const availableData = questions.filter(q => 
-      (examFilter === "All" || q.exam === examFilter) &&
+      (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
@@ -2287,28 +2362,24 @@ export default function App() {
   }, [questions, examFilter, subjectFilter, topicFilter]);
 
   const examsList = useMemo(() => {
-    const availableData = questions.filter(q => 
-      (yearFilter === "All" || q.year === yearFilter) &&
-      (subjectFilter === "All" || q.subject === subjectFilter) &&
-      (topicFilter === "All" || q.topic === topicFilter)
-    );
-    const uniqueExams = [...new Set(availableData.map(q => q.exam))].sort();
+    const uniqueExams = [...new Set(questions.map(q => getExamCategory(q.exam)))].sort();
     
     const examCounts: Record<string, number> = {};
-    availableData.forEach(q => {
-      examCounts[q.exam] = (examCounts[q.exam] || 0) + 1;
+    questions.forEach(q => {
+      const category = getExamCategory(q.exam);
+      examCounts[category] = (examCounts[category] || 0) + 1;
     });
 
     return { 
       options: ["All", ...uniqueExams],
       counts: examCounts
     };
-  }, [questions, yearFilter, subjectFilter, topicFilter]);
+  }, [questions]);
 
   const subjectsList = useMemo(() => {
     const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
-      (examFilter === "All" || q.exam === examFilter) &&
+      (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
     const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
@@ -2327,7 +2398,7 @@ export default function App() {
   const topicsList = useMemo(() => {
     const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
-      (examFilter === "All" || q.exam === examFilter) &&
+      (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter)
     );
     
@@ -2407,11 +2478,11 @@ export default function App() {
       if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
       
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
-      const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
-                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
+      const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
+        matchesQuestionId(q.id, searchQuery) ||
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
@@ -2432,11 +2503,11 @@ export default function App() {
     if (randomMode.active) return false;
     const totalFiltered = questions.filter(q => {
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
-      const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
-                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
+      const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
+        matchesQuestionId(q.id, searchQuery) ||
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
@@ -2507,11 +2578,16 @@ export default function App() {
     setRevealedMainsAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
   };
 
-  const handleUpdateQuestion = async (id: number, year: string, answer: string, explanation: string) => {
+  const updateQuestionAnswer = async (
+    section: "prelims" | "english",
+    id: number,
+    answer: string,
+    explanation: string
+  ) => {
     const res = await fetch("/api/update-question", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, answer, explanation, email: userEmail }),
+      body: JSON.stringify({ section, id, answer, explanation, email: userEmail }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -2519,18 +2595,27 @@ export default function App() {
       throw new Error(err.error);
     }
     const data = await res.json();
-    // Update local state so the card reflects changes immediately
-    setQuestions(prev => prev.map(q =>
+    const applyUpdate = (items: Question[]) => items.map(q =>
       q.id === id ? { ...q, answer: data.answer, explanation: data.explanation } : q
-    ));
+    );
+    if (section === "english") {
+      setEnglishQuestions(applyUpdate);
+    } else {
+      setQuestions(applyUpdate);
+    }
   };
+
+  const handleUpdateQuestion = (id: number, _year: string, answer: string, explanation: string) =>
+    updateQuestionAnswer("prelims", id, answer, explanation);
+
+  const handleUpdateEnglishQuestion = (id: number, _year: string, answer: string, explanation: string) =>
+    updateQuestionAnswer("english", id, answer, explanation);
 
   const resetFilters = () => {
     setYearFilter("All");
     setExamFilter("All");
     setSubjectFilter("All");
     setTopicFilter("All");
-    setExcludeSciMath(false);
     setSearchQuery("");
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
@@ -2551,6 +2636,7 @@ export default function App() {
       const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
       const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
       const matchesSearch = mainsSearchQuery === "" ||
+        matchesQuestionId(q.id, mainsSearchQuery) ||
         (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
       return matchesYear && matchesExam && matchesSubject && matchesSearch;
     });
@@ -2565,13 +2651,13 @@ export default function App() {
     setVisibleCount(30);
   }, [yearFilter, examFilter, subjectFilter, topicFilter, searchQuery]);
 
-  const resetQuiz = () => {
+  const resetQuiz = (scrollToTop = true) => {
     setUserAttempts({});
     setRevealedAnswers({});
     setScore({ correct: 0, total: 0 });
     setSectionScores({});
     setAttemptId(newAttemptId());
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // An attempt = one practice run until the user presses Reset or reloads the page.
@@ -2584,20 +2670,29 @@ export default function App() {
     const low = sc.total > 0 && pct < 0.5;
     const C = 2 * Math.PI * 13;
     return (
-      <div className={cn(
-        "h-[38px] pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm",
+      <button
+        type="button"
+        onClick={() => resetQuiz(false)}
+        disabled={sc.total === 0}
+        aria-label={sc.total > 0 ? `Score ${sc.correct} out of ${sc.total}. Click to reset.` : "No score yet"}
+        title={sc.total > 0 ? "Click to reset score" : "Answer questions to start scoring"}
+        className={cn(
+        "group h-[38px] pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         low
           ? "bg-red-50/80 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/25"
-          : "bg-emerald-50/80 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/25"
+          : "bg-emerald-50/80 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/25",
+        sc.total > 0
+          ? "cursor-pointer hover:-translate-y-0.5 hover:bg-gradient-to-br hover:from-blue-600 hover:to-indigo-600 hover:text-white hover:border-blue-500 hover:shadow-lg hover:shadow-blue-600/25 active:translate-y-0 active:scale-95"
+          : "cursor-default"
       )}>
         <div className="relative w-7 h-7 flex-shrink-0">
           <svg className="w-7 h-7 -rotate-90" viewBox="0 0 32 32">
-            <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200/70 dark:stroke-slate-700" />
+            <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200/70 transition-colors group-hover:stroke-white/30 dark:stroke-slate-700" />
             <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
-              className={low ? "stroke-red-500" : "stroke-emerald-500"}
+              className={cn(low ? "stroke-red-500" : "stroke-emerald-500", "transition-colors group-hover:stroke-white")}
               style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }} />
           </svg>
-          <span className={cn("absolute inset-0 flex items-center justify-center text-[8px] font-extrabold", low ? "text-red-500" : "text-emerald-500")}>
+          <span className={cn("absolute inset-0 flex items-center justify-center text-[8px] font-extrabold transition-colors group-hover:text-white", low ? "text-red-500" : "text-emerald-500")}>
             {sc.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-2.5 h-2.5" />}
           </span>
         </div>
@@ -2607,11 +2702,9 @@ export default function App() {
           <span className="text-[13px] tabular-nums opacity-70">{sc.total}</span>
         </div>
         {sc.total > 0 && (
-          <button onClick={resetQuiz} title="Reset Score" className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors">
-            <X className="w-3 h-3" strokeWidth={2.5} />
-          </button>
+          <RotateCcw className="ml-0.5 h-3 w-3 opacity-50 transition-all duration-300 group-hover:rotate-180 group-hover:opacity-100" />
         )}
-      </div>
+      </button>
     );
   };
 
@@ -2628,11 +2721,11 @@ export default function App() {
       if (!isSubscribed && !latestTwoYears.includes(q.year)) return false;
 
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
-      const matchesExam = examFilter === "All" || q.exam === examFilter;
-      const matchesSubject = (subjectFilter === "All" || q.subject === subjectFilter) && 
-                            (!excludeSciMath || (q.subject !== "Science & Technology" && q.subject !== "Mathematics" && q.subject !== "Science"));
+      const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
+        matchesQuestionId(q.id, searchQuery) ||
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
@@ -2650,7 +2743,9 @@ export default function App() {
     const baseList = csatQuestions.filter(q => {
       const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
       const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
-      const matchesSearch = csatSearchQuery === "" || (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase());
+      const matchesSearch = csatSearchQuery === "" ||
+        matchesQuestionId(q.id, csatSearchQuery) ||
+        (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase());
       return matchesYear && matchesSubject && matchesSearch;
     });
 
@@ -2663,8 +2758,11 @@ export default function App() {
     const baseList = englishQuestions.filter(q => {
       const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
       const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
-      const matchesSearch = englishSearchQuery === "" || (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
-      return matchesYear && matchesSubject && matchesSearch;
+      const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
+      const matchesSearch = englishSearchQuery === "" ||
+        matchesQuestionId(q.id, englishSearchQuery) ||
+        (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
+      return matchesYear && matchesSubject && matchesExam && matchesSearch;
     });
 
     const shuffled = [...baseList].sort(() => Math.random() - 0.5);
@@ -2735,20 +2833,12 @@ export default function App() {
                 {renderScoreChip(sectionScores.prelims || { correct: 0, total: 0 })}
 
                 <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-                  <FancySelect
-                    value={String(randomSelectLimit)}
-                    onChange={(v) => setRandomSelectLimit(Number(v))}
-                    size="sm"
-                    ariaLabel="Random question count"
-                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
-                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
-                  />
+                  <QuestionCountToggle value={randomSelectLimit} onChange={setRandomSelectLimit} />
                   <button
                     onClick={() => startRandomPractice(randomSelectLimit)}
                     title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
-                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
-                    <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
                     <span className="sm:hidden">Random</span>
                   </button>
@@ -2759,19 +2849,11 @@ export default function App() {
             {activeTab === 'mains' && (
               <div className="flex items-center gap-2 order-3 lg:order-none">
                 <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-                  <FancySelect
-                    value={String(mainsRandomSelectLimit)}
-                    onChange={(v) => setMainsRandomSelectLimit(Number(v))}
-                    size="sm"
-                    ariaLabel="Random question count"
-                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
-                    options={[5, 10, 20, 50].map(n => ({ value: String(n), label: String(n) }))}
-                  />
+                  <QuestionCountToggle value={mainsRandomSelectLimit} onChange={setMainsRandomSelectLimit} />
                   <button
                     onClick={() => startMainsRandomPractice(mainsRandomSelectLimit)}
-                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
-                    <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
                     <span className="sm:hidden">Random</span>
                   </button>
@@ -2792,19 +2874,11 @@ export default function App() {
               <div className="flex items-center gap-2 order-3 lg:order-none">
                 {renderScoreChip(sectionScores.csat || { correct: 0, total: 0 })}
                 <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-                  <FancySelect
-                    value={String(csatRandomSelectLimit)}
-                    onChange={(v) => setCSATRandomSelectLimit(Number(v))}
-                    size="sm"
-                    ariaLabel="Random question count"
-                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
-                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
-                  />
+                  <QuestionCountToggle value={csatRandomSelectLimit} onChange={setCSATRandomSelectLimit} />
                   <button
                     onClick={() => startCSATRandomPractice(csatRandomSelectLimit)}
-                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
-                    <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
                     <span className="sm:hidden">Random</span>
                   </button>
@@ -2825,19 +2899,11 @@ export default function App() {
               <div className="flex items-center gap-2 order-3 lg:order-none">
                 {renderScoreChip(sectionScores.english || { correct: 0, total: 0 })}
                 <div className="flex items-center gap-1 h-[38px] bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-                  <FancySelect
-                    value={String(englishRandomSelectLimit)}
-                    onChange={(v) => setEnglishRandomSelectLimit(Number(v))}
-                    size="sm"
-                    ariaLabel="Random question count"
-                    buttonClassName="!bg-transparent !border-none !shadow-none !ring-0 px-1.5"
-                    options={[10, 20, 50, 100].map(n => ({ value: String(n), label: String(n) }))}
-                  />
+                  <QuestionCountToggle value={englishRandomSelectLimit} onChange={setEnglishRandomSelectLimit} />
                   <button
                     onClick={() => startEnglishRandomPractice(englishRandomSelectLimit)}
-                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
+                    className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
-                    <Dice5 className="w-3 h-3" />
                     <span className="hidden sm:inline">Random PYQ</span>
                     <span className="sm:hidden">Random</span>
                   </button>
@@ -3186,6 +3252,21 @@ export default function App() {
                         { value: "admin", label: "Admin" },
                       ]}
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Access Duration (Months)</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      step={1}
+                      value={adminUserDuration}
+                      onChange={(e) => setAdminUserDuration(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="mt-1.5 text-[10px] text-slate-400">
+                      Enter any positive whole number of months.
+                    </p>
                   </div>
                   <button type="submit" className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]">
                     Add/Update User
@@ -3559,7 +3640,7 @@ export default function App() {
                   id="search-input"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Constitution, GDP..." 
+                  placeholder="Keyword or question ID..."
                   className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                 />
                 <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -3594,22 +3675,6 @@ export default function App() {
                 ariaLabel="Subject"
                 options={subjectsList.options.map(s => ({ value: s, label: s === "All" ? "All Subjects" : `${s} (${subjectsList.counts[s] || 0})` }))}
               />
-              
-              <button
-                onClick={() => setExcludeSciMath(!excludeSciMath)}
-                className={cn(
-                  "mt-2 w-full flex items-center justify-center gap-2 py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all border shadow-sm",
-                  excludeSciMath 
-                    ? "bg-rose-100 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400" 
-                    : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600"
-                )}
-              >
-                {excludeSciMath ? (
-                  <><XCircle className="w-3 h-3" /> Science & Math Removed</>
-                ) : (
-                  <><Filter className="w-3 h-3" /> Remove Science & Math</>
-                )}
-              </button>
             </div>
 
             <div className="mb-4">
@@ -3671,7 +3736,7 @@ export default function App() {
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         onExamClick={(exam) => {
-                          setExamFilter(exam);
+                          setExamFilter(getExamCategory(exam));
                           setRandomMode({ active: false, limit: 0 });
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
@@ -3811,7 +3876,7 @@ export default function App() {
                       id="mains-search-input"
                       value={mainsSearchQuery}
                       onChange={(e) => setMainsSearchQuery(e.target.value)}
-                      placeholder="Essay, governance..."
+                      placeholder="Keyword or question ID..."
                       className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -3961,7 +4026,7 @@ export default function App() {
                       id="csat-search"
                       value={csatSearchQuery}
                       onChange={(e) => setCSATSearchQuery(e.target.value)}
-                      placeholder="Reasoning, logic..."
+                      placeholder="Keyword or question ID..."
                       className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -4088,7 +4153,7 @@ export default function App() {
                       id="english-search"
                       value={englishSearchQuery}
                       onChange={(e) => setEnglishSearchQuery(e.target.value)}
-                      placeholder="Vocabulary, grammar..."
+                      placeholder="Keyword or question ID..."
                       className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                     />
                     <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -4155,10 +4220,18 @@ export default function App() {
                           isLocked={isLocked}
                           userEmail={userEmail}
                           searchQuery={englishSearchQuery}
+                          isAdmin={isAdmin}
+                          isEditor={isEditor}
+                          onUpdateQuestion={handleUpdateEnglishQuestion}
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'english')}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
+                            setEnglishRandomMode(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          onExamClick={(exam) => {
+                            setEnglishExamFilter(getExamCategory(exam));
                             setEnglishRandomMode(false);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
@@ -4225,7 +4298,7 @@ export default function App() {
                         type="text"
                         value={toppersSearchQuery}
                         onChange={(e) => setToppersSearchQuery(e.target.value)}
-                        placeholder="Search questions..."
+                        placeholder="Keyword or question ID..."
                         className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm text-xs p-2 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
                       />
                     </div>
@@ -4983,10 +5056,39 @@ export default function App() {
 
             <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
               {/* Just rolled out */}
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-between gap-2 mb-3">
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wide">Just rolled out</span>
+                <span className="text-[10px] font-medium text-slate-400">10 September 2026</span>
               </div>
               <ul className="space-y-3 mb-6">
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Smarter exam filters and question search</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Prelims and English now group exams into clear categories, and every question section supports full or partial question-ID search.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Compact random-practice controls</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Choose 10, 20, 50 or 100 random questions using a space-saving one-click toggle.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">English answer editing</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Admins and editors can now correct English answers and explanations directly from the question card.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Flexible subscription expiry</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Admins can assign any positive number of months when adding or updating a user.</p>
+                  </div>
+                </li>
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
