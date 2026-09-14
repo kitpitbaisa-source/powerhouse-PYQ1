@@ -1188,6 +1188,7 @@ export default function App() {
   const [csatQuestions, setCSATQuestions] = useState<Question[]>([]);
   const [englishQuestions, setEnglishQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
+  const [hasLoadedAllQuestions, setHasLoadedAllQuestions] = useState(false);
   const [isLoadingMains, setIsLoadingMains] = useState(false);
   const [isLoadingCSAT, setIsLoadingCSAT] = useState(false);
   const [isLoadingEnglish, setIsLoadingEnglish] = useState(false);
@@ -1364,6 +1365,7 @@ export default function App() {
       setQuestions(fallbackQuestions as Question[]);
     } finally {
       setIsLoadingQuestions(false);
+      setHasLoadedAllQuestions(true);
     }
   };
 
@@ -1568,7 +1570,11 @@ export default function App() {
       loadedDefaultFiltersForEmailRef.current = null;
       return;
     }
-    if (questions.length === 0 || loadedDefaultFiltersForEmailRef.current === userEmail) return;
+    if (
+      !hasLoadedAllQuestions ||
+      questions.length === 0 ||
+      loadedDefaultFiltersForEmailRef.current === userEmail
+    ) return;
 
     let cancelled = false;
     const loadDefaultFilters = async () => {
@@ -1601,7 +1607,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [userEmail, questions.length]);
+  }, [hasLoadedAllQuestions, questions.length, userEmail]);
 
   useEffect(() => {
     if (!isApplyingDefaultFilters || !savedPrelimsFilterDefaults) return;
