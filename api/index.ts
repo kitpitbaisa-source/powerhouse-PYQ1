@@ -24,6 +24,7 @@ const loginHistoryContainer = database.container("login-history");
 const settingsContainer = database.container("settings");
 const feedbackContainer = database.container("feedback");
 const userAttemptsContainer = database.container("user-attempts");
+const userWorkspaceContainer = database.container("user-workspace");
 
 const serverApp = express();
 // Capture raw body so we can verify Razorpay webhook signatures.
@@ -80,6 +81,17 @@ async function ensurePaymentsContainer() {
     partitionKey: { paths: ["/email"] },
   });
   paymentsContainerReady = true;
+}
+
+// User-owned preferences, bookmarks, notes, and future personalization data.
+let userWorkspaceContainerReady = false;
+async function ensureUserWorkspaceContainer() {
+  if (userWorkspaceContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "user-workspace",
+    partitionKey: { paths: ["/userId"] },
+  });
+  userWorkspaceContainerReady = true;
 }
 
 // Grant/extend a subscription for a user. If already subscribed and not expired,
@@ -622,6 +634,88 @@ serverApp.get("/api/user-status", async (req, res) => {
       return res.json({ email: userEmail, status: "not_subscribed" });
     }
     console.error("Error fetching user status:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+serverApp.get("/api/filter-preferences", async (req, res) => {
+  const email = String(req.query.email || "").toLowerCase().trim();
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    await ensureUserWorkspaceContainer();
+    const { resource } = await userWorkspaceContainer.item("filter-preferences", email).read();
+    res.json({ prelims: resource?.prelims || null });
+  } catch (error: any) {
+    if (error.code === 404) {
+      return res.json({ prelims: null });
+    }
+    console.error("Error fetching filter preferences:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+serverApp.put("/api/filter-preferences", async (req, res) => {
+  const email = String(req.body?.email || "").toLowerCase().trim();
+  const prelims = req.body?.prelims;
+  if (!email || !prelims || typeof prelims !== "object") {
+    return res.status(400).json({ error: "Email and prelims filter preferences are required" });
+  }
+
+  const fields = ["exam", "year", "paper", "subject", "topic"] as const;
+  const normalized = {} as Record<(typeof fields)[number], string>;
+  for (const field of fields) {
+    const value = prelims[field];
+    if (typeof value !== "string" || value.length > 200) {
+      return res.status(400).json({ error: `Invalid prelims filter: ${field}` });
+    }
+    normalized[field] = value;
+  }
+
+  try {
+    await ensureUserWorkspaceContainer();
+    let existing: any = null;
+    try {
+      const { resource } = await userWorkspaceContainer.item("filter-preferences", email).read();
+      existing = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+
+    const now = new Date().toISOString();
+    await userWorkspaceContainer.items.upsert({
+      id: "filter-preferences",
+      userId: email,
+      type: "filter-preferences",
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      prelims: normalized,
+    });
+
+    res.json({ prelims: normalized });
+  } catch (error: any) {
+    console.error("Error saving filter preferences:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+serverApp.delete("/api/filter-preferences", async (req, res) => {
+  const email = String(req.query.email || "").toLowerCase().trim();
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    await ensureUserWorkspaceContainer();
+    await userWorkspaceContainer.item("filter-preferences", email).delete();
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error.code === 404) {
+      return res.json({ success: true });
+    }
+    console.error("Error removing filter preferences:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });

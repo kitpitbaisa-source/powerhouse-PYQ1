@@ -41,7 +41,9 @@ import {
   Trash2,
   Pencil,
   MessageSquareText,
-  BarChart3
+  BarChart3,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -74,6 +76,14 @@ function getExamCategory(exam: string): string {
     .replace(/\s+\([12]\)\s*$/u, "")
     .trim();
 }
+
+type PrelimsFilterPreferences = {
+  exam: string;
+  year: string;
+  paper: string;
+  subject: string;
+  topic: string;
+};
 
 function matchesQuestionId(id: string | number, query: string): boolean {
   const normalizedQuery = query
@@ -266,7 +276,7 @@ function LegalPageContent({ page }: { page: 'about' | 'contact' | 'privacy' | 't
     </div>
   );
 }
-
+
 interface FancyOption { value: string; label: string }
 // Reusable modern dropdown: rounded control + rounded, themed options list box (replaces native <select>).
 const FancySelect: React.FC<{
@@ -1181,8 +1191,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("All");
   const [examFilter, setExamFilter] = useState("All");
+  const [paperFilter, setPaperFilter] = useState("All");
   const [subjectFilter, setSubjectFilter] = useState("All");
   const [topicFilter, setTopicFilter] = useState("All");
+  const [isSavingDefaultFilters, setIsSavingDefaultFilters] = useState(false);
+  const [defaultFilterMessage, setDefaultFilterMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [savedPrelimsFilterDefaults, setSavedPrelimsFilterDefaults] = useState<PrelimsFilterPreferences | null>(null);
   const [mainsYearFilter, setMainsYearFilter] = useState("All");
   const [mainsExamFilter, setMainsExamFilter] = useState("All");
   const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
@@ -1216,6 +1230,7 @@ export default function App() {
   const [englishSubjectFilter, setEnglishSubjectFilter] = useState("All");
   const [englishTopicFilter, setEnglishTopicFilter] = useState("All");
   const [englishExamFilter, setEnglishExamFilter] = useState("All");
+  const [englishPaperFilter, setEnglishPaperFilter] = useState("All");
   const [englishSearchQuery, setEnglishSearchQuery] = useState("");
   const [englishVisibleCount, setEnglishVisibleCount] = useState(30);
   const [englishRandomMode, setEnglishRandomMode] = useState(false);
@@ -1318,6 +1333,7 @@ export default function App() {
       return null;
     }
   });
+  const loadedDefaultFiltersForEmailRef = useRef<string | null>(null);
 
   const fetchQuestions = async (showLoading = true) => {
     if (showLoading) setIsLoadingQuestions(true);
@@ -1331,8 +1347,8 @@ export default function App() {
         console.log(`Loaded ${data.length} questions from API`);
        // Keep the 100 shown locally, then append remaining questions from API (avoid duplicates)
        setQuestions(prev => {
-         const existingIds = new Set(prev.map(q => q.id));
-         const newQuestions = data.filter(q => !existingIds.has(q.id));
+         const existingIds = new Set(prev.map(q => String(q.id)));
+         const newQuestions = data.filter(q => !existingIds.has(String(q.id)));
          return [...prev, ...newQuestions];
        });
       } else {
@@ -1503,10 +1519,24 @@ export default function App() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    let fetchTimer: ReturnType<typeof setTimeout> | undefined;
+
     // Keep the loader running until the first batch of prelims has loaded
     setIsLoadingQuestions(true);
-    // Load the first batch of prelims from the backend (falls back to local data)
-    fetchInitialQuestions().finally(() => setIsLoadingQuestions(false));
+    // Load the first batch before starting the full fetch so the smaller
+    // response can never overwrite the complete dataset.
+    fetchInitialQuestions().finally(() => {
+      if (cancelled) return;
+      setIsLoadingQuestions(false);
+      fetchTimer = setTimeout(() => {
+        fetchQuestions(false);
+        fetchMainsQuestions();
+        fetchToppersQuestions();
+        fetchCSATQuestions();
+        fetchEnglishQuestions();
+      }, 250);
+    });
 
     // Restore a sane initial batch. We cap it because a previously inflated
     // value would force a huge synchronous render and freeze the page on load;
@@ -1522,23 +1552,51 @@ export default function App() {
       }
     }, 500);
 
-    // Then fetch all prelims from API in background (already filtered on server, returns ~9.5k)
-    // Delay this more so 100 questions display first
-    const fetchTimer = setTimeout(() => {
-      // Fetch in background without showing loading spinner
-      fetchQuestions(false);
-      // Fetch other sections from API only
-      fetchMainsQuestions();
-      fetchToppersQuestions();
-      fetchCSATQuestions();
-      fetchEnglishQuestions();
-    }, 1000);
-    
     return () => {
+      cancelled = true;
       clearTimeout(scrollTimer);
-      clearTimeout(fetchTimer);
+      if (fetchTimer) clearTimeout(fetchTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!userEmail) {
+      loadedDefaultFiltersForEmailRef.current = null;
+      return;
+    }
+    if (questions.length === 0 || loadedDefaultFiltersForEmailRef.current === userEmail) return;
+
+    let cancelled = false;
+    const loadDefaultFilters = async () => {
+      try {
+        const response = await fetch(`/api/filter-preferences?email=${encodeURIComponent(userEmail)}`);
+        if (!response.ok) throw new Error("Could not load default filters");
+        const data = await response.json();
+        if (cancelled) return;
+
+        loadedDefaultFiltersForEmailRef.current = userEmail;
+        const defaults = data.prelims as PrelimsFilterPreferences | null;
+        setSavedPrelimsFilterDefaults(defaults);
+        if (!defaults) return;
+
+        setExamFilter(defaults.exam);
+        setYearFilter(defaults.year);
+        setPaperFilter(defaults.paper);
+        setSubjectFilter(defaults.subject);
+        setTopicFilter(defaults.topic);
+        setVisibleCount(30);
+        setRandomMode({ active: false, limit: 0 });
+        setDefaultFilterMessage({ text: "Default filters applied.", type: "success" });
+      } catch (error) {
+        console.warn("Failed to load default filters:", error);
+      }
+    };
+
+    loadDefaultFilters();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail, questions.length]);
 
   // Handle closing user menu when clicking outside
   useEffect(() => {
@@ -1772,18 +1830,26 @@ export default function App() {
 
   // English filter lists
   const englishYearsList = useMemo(() => {
-    const years = [...new Set(englishQuestions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
+    const filtered = englishQuestions.filter(q =>
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter) &&
+      (englishPaperFilter === "All" || q.exam === englishPaperFilter) &&
+      (englishSubjectFilter === "All" || q.subject === englishSubjectFilter) &&
+      (englishTopicFilter === "All" || q.topic === englishTopicFilter)
+    );
+    const years = [...new Set(filtered.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
     const counts: Record<string, number> = {};
-    englishQuestions.forEach(q => {
+    filtered.forEach(q => {
       counts[q.year] = (counts[q.year] || 0) + 1;
     });
     return { options: ["All", ...years], counts };
-  }, [englishQuestions]);
+  }, [englishQuestions, englishExamFilter, englishPaperFilter, englishSubjectFilter, englishTopicFilter]);
 
   const englishSubjectsList = useMemo(() => {
     const filtered = englishQuestions.filter(q =>
       (englishYearFilter === "All" || q.year === englishYearFilter) &&
-      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter)
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter) &&
+      (englishPaperFilter === "All" || q.exam === englishPaperFilter) &&
+      (englishTopicFilter === "All" || q.topic === englishTopicFilter)
     );
     const subjects = [...new Set(filtered.map(q => q.subject))].sort();
     const counts: Record<string, number> = {};
@@ -1791,12 +1857,14 @@ export default function App() {
       counts[q.subject] = (counts[q.subject] || 0) + 1;
     });
     return { options: ["All", ...subjects], counts };
-  }, [englishQuestions, englishYearFilter, englishExamFilter]);
+  }, [englishQuestions, englishYearFilter, englishExamFilter, englishPaperFilter, englishTopicFilter]);
 
   const englishTopicsList = useMemo(() => {
     const filtered = englishQuestions.filter(q =>
       (englishYearFilter === "All" || q.year === englishYearFilter) &&
-      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter)
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter) &&
+      (englishPaperFilter === "All" || q.exam === englishPaperFilter) &&
+      (englishSubjectFilter === "All" || q.subject === englishSubjectFilter)
     );
     const topics = [...new Set(filtered.map(q => q.topic).filter(Boolean))].sort();
     const counts: Record<string, number> = {};
@@ -1804,7 +1872,7 @@ export default function App() {
       if (q.topic) counts[q.topic] = (counts[q.topic] || 0) + 1;
     });
     return { options: ["All", ...topics], counts };
-  }, [englishQuestions, englishYearFilter, englishExamFilter]);
+  }, [englishQuestions, englishYearFilter, englishExamFilter, englishPaperFilter, englishSubjectFilter]);
 
   const englishExamsList = useMemo(() => {
     const exams = [...new Set(englishQuestions.map(q => getExamCategory(q.exam)).filter(Boolean))].sort();
@@ -1818,6 +1886,27 @@ export default function App() {
     return { options: ["All", ...exams], counts };
   }, [englishQuestions]);
 
+  const englishPapersList = useMemo(() => {
+    const filtered = englishQuestions.filter(q =>
+      (englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter) &&
+      (englishYearFilter === "All" || q.year === englishYearFilter) &&
+      (englishSubjectFilter === "All" || q.subject === englishSubjectFilter) &&
+      (englishTopicFilter === "All" || q.topic === englishTopicFilter)
+    );
+    const papers = [...new Set(filtered.map(q => q.exam).filter(Boolean))].sort();
+    const counts: Record<string, number> = {};
+    filtered.forEach(q => {
+      counts[q.exam] = (counts[q.exam] || 0) + 1;
+    });
+    return { options: ["All", ...papers], counts };
+  }, [englishQuestions, englishExamFilter, englishYearFilter, englishSubjectFilter, englishTopicFilter]);
+
+  useEffect(() => {
+    if (englishPaperFilter !== "All" && !englishPapersList.options.includes(englishPaperFilter)) {
+      setEnglishPaperFilter("All");
+    }
+  }, [englishPapersList.options, englishPaperFilter]);
+
   const filteredEnglishQuestions = useMemo(() => {
     if (englishRandomMode) return englishRandomizedQuestions;
     return englishQuestions
@@ -1826,15 +1915,16 @@ export default function App() {
         const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
         const matchesTopic = englishTopicFilter === "All" || q.topic === englishTopicFilter;
         const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
+        const matchesPaper = englishPaperFilter === "All" || q.exam === englishPaperFilter;
         const matchesSearch = englishSearchQuery === "" || 
           matchesQuestionId(q.id, englishSearchQuery) ||
           (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
           (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
-        return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesSearch;
+        return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesPaper && matchesSearch;
       })
       .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
       .slice(0, englishVisibleCount);
-  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
+  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishPaperFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
 
   // Check subscription and admin status
   // Admin API key (secret) — stored only in this browser, sent with admin requests.
@@ -2343,6 +2433,7 @@ export default function App() {
   const yearsList = useMemo(() => {
     const availableData = questions.filter(q => 
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
+      (paperFilter === "All" || q.exam === paperFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
@@ -2359,7 +2450,7 @@ export default function App() {
       counts: yearCounts,
       total: availableData.length
     };
-  }, [questions, examFilter, subjectFilter, topicFilter]);
+  }, [questions, examFilter, paperFilter, subjectFilter, topicFilter]);
 
   const examsList = useMemo(() => {
     const uniqueExams = [...new Set(questions.map(q => getExamCategory(q.exam)))].sort();
@@ -2376,10 +2467,31 @@ export default function App() {
     };
   }, [questions]);
 
+  const papersList = useMemo(() => {
+    const availableData = questions.filter(q =>
+      (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
+      (yearFilter === "All" || q.year === yearFilter) &&
+      (subjectFilter === "All" || q.subject === subjectFilter) &&
+      (topicFilter === "All" || q.topic === topicFilter)
+    );
+    const uniquePapers = [...new Set(availableData.map(q => q.exam))].sort();
+
+    const paperCounts: Record<string, number> = {};
+    availableData.forEach(q => {
+      paperCounts[q.exam] = (paperCounts[q.exam] || 0) + 1;
+    });
+
+    return {
+      options: ["All", ...uniquePapers],
+      counts: paperCounts
+    };
+  }, [questions, examFilter, yearFilter, subjectFilter, topicFilter]);
+
   const subjectsList = useMemo(() => {
     const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
+      (paperFilter === "All" || q.exam === paperFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
     const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
@@ -2393,12 +2505,13 @@ export default function App() {
       options: ["All", ...uniqueSubjects],
       counts: subjectCounts
     };
-  }, [questions, yearFilter, examFilter, topicFilter]);
+  }, [questions, yearFilter, examFilter, paperFilter, topicFilter]);
 
   const topicsList = useMemo(() => {
     const availableData = questions.filter(q => 
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
+      (paperFilter === "All" || q.exam === paperFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter)
     );
     
@@ -2417,7 +2530,7 @@ export default function App() {
       options: ["All", ...sortedTopics],
       counts: stats
     };
-  }, [questions, yearFilter, examFilter, subjectFilter]);
+  }, [questions, yearFilter, examFilter, paperFilter, subjectFilter]);
 
   // Auto-reset filters if selected option is no longer available
   useEffect(() => {
@@ -2431,6 +2544,12 @@ export default function App() {
       setExamFilter("All");
     }
   }, [examsList.options, examFilter]);
+
+  useEffect(() => {
+    if (paperFilter !== "All" && !papersList.options.includes(paperFilter)) {
+      setPaperFilter("All");
+    }
+  }, [papersList.options, paperFilter]);
 
   useEffect(() => {
     if (subjectFilter !== "All" && !subjectsList.options.includes(subjectFilter)) {
@@ -2479,6 +2598,7 @@ export default function App() {
       
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
@@ -2487,7 +2607,7 @@ export default function App() {
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
-      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+      return marchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
     }).sort((a, b) => {
       // Sort by year descending
       const yearComparison = String(b.year).localeCompare(String(a.year));
@@ -2497,13 +2617,14 @@ export default function App() {
     });
 
     return list.slice(0, visibleCount);
-  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode, randomizedQuestions]);
+  }, [questions, yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode, randomizedQuestions]);
 
   const isMoreToLoad = useMemo(() => {
     if (randomMode.active) return false;
     const totalFiltered = questions.filter(q => {
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
@@ -2512,10 +2633,10 @@ export default function App() {
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
       
-      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+      return marchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
     }).length;
     return totalFiltered > visibleCount;
-  }, [questions, yearFilter, examFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
+  }, [questions, yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
 
   const handleLoadMore = useCallback(() => {
     setVisibleCount(prev => prev + 150);
@@ -2614,11 +2735,87 @@ export default function App() {
   const resetFilters = () => {
     setYearFilter("All");
     setExamFilter("All");
+    setPaperFilter("All");
     setSubjectFilter("All");
     setTopicFilter("All");
     setSearchQuery("");
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
+  };
+
+  const isCurrentFilterDefault =
+    savedPrelimsFilterDefaults !== null &&
+    savedPrelimsFilterDefaults.exam === examFilter &&
+    savedPrelimsFilterDefaults.year === yearFilter &&
+    savedPrelimsFilterDefaults.paper === paperFilter &&
+    savedPrelimsFilterDefaults.subject === subjectFilter &&
+    savedPrelimsFilterDefaults.topic === topicFilter;
+
+  const savePrelimsFilterDefaults = async () => {
+    if (!userEmail) {
+      setDefaultFilterMessage({ text: "Sign in to save default filters.", type: "error" });
+      setShowLoginModal(true);
+      return;
+    }
+
+    setIsSavingDefaultFilters(true);
+    setDefaultFilterMessage(null);
+    const prelims: PrelimsFilterPreferences = {
+      exam: examFilter,
+      year: yearFilter,
+      paper: paperFilter,
+      subject: subjectFilter,
+      topic: topicFilter,
+    };
+
+    try {
+      const response = await fetch("/api/filter-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, prelims }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save default filters");
+
+      loadedDefaultFiltersForEmailRef.current = userEmail;
+      setSavedPrelimsFilterDefaults(prelims);
+      setDefaultFilterMessage({ text: "Current filters saved as your default.", type: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save default filters";
+      setDefaultFilterMessage({ text: message, type: "error" });
+    } finally {
+      setIsSavingDefaultFilters(false);
+    }
+  };
+
+  const removePrelimsFilterDefaults = async () => {
+    if (!userEmail) return;
+
+    setIsSavingDefaultFilters(true);
+    setDefaultFilterMessage(null);
+    try {
+      const response = await fetch(`/api/filter-preferences?email=${encodeURIComponent(userEmail)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not remove default filters");
+
+      setSavedPrelimsFilterDefaults(null);
+      setDefaultFilterMessage({ text: "Default filters unpinned.", type: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not remove default filters";
+      setDefaultFilterMessage({ text: message, type: "error" });
+    } finally {
+      setIsSavingDefaultFilters(false);
+    }
+  };
+
+  const togglePrelimsFilterDefault = () => {
+    if (isCurrentFilterDefault) {
+      removePrelimsFilterDefaults();
+    } else {
+      savePrelimsFilterDefaults();
+    }
   };
 
   const resetMainsFilters = () => {
@@ -2649,7 +2846,7 @@ export default function App() {
   // Reset pagination when filters change
   useEffect(() => {
     setVisibleCount(30);
-  }, [yearFilter, examFilter, subjectFilter, topicFilter, searchQuery]);
+  }, [yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery]);
 
   const resetQuiz = (scrollToTop = true) => {
     setUserAttempts({});
@@ -2722,6 +2919,7 @@ export default function App() {
 
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+      const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
       const matchesSearch = searchQuery === "" || 
@@ -2730,7 +2928,7 @@ export default function App() {
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
-      return marchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+      return marchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
     });
 
     const shuffled = [...baseList].sort(() => Math.random() - 0.5);
@@ -2759,10 +2957,11 @@ export default function App() {
       const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
       const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
       const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
+      const matchesPaper = englishPaperFilter === "All" || q.exam === englishPaperFilter;
       const matchesSearch = englishSearchQuery === "" ||
         matchesQuestionId(q.id, englishSearchQuery) ||
         (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase());
-      return matchesYear && matchesSubject && matchesExam && matchesSearch;
+      return matchesYear && matchesSubject && matchesExam && matchesPaper && matchesSearch;
     });
 
     const shuffled = [...baseList].sort(() => Math.random() - 0.5);
@@ -3624,12 +3823,33 @@ export default function App() {
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                 <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
               </h2>
-              <button 
-                onClick={resetFilters} 
-                className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
-              >
-                Reset
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={togglePrelimsFilterDefault}
+                  disabled={isSavingDefaultFilters}
+                  title={isCurrentFilterDefault ? "Unpin default filters" : "Pin current filters as default"}
+                  aria-label={isCurrentFilterDefault ? "Unpin default filters" : "Pin current filters as default"}
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
+                    isCurrentFilterDefault
+                      ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
+                      : "border-slate-200 bg-white/70 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                  )}
+                >
+                  {isSavingDefaultFilters
+                    ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    : isCurrentFilterDefault
+                    ? <Pin className="h-3.5 w-3.5 fill-current" />
+                    : <PinOff className="h-3.5 w-3.5" />}
+                </button>
+                <button 
+                  onClick={resetFilters} 
+                  className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
 
             <div className="mb-4">
@@ -3648,6 +3868,19 @@ export default function App() {
             </div>
             
             <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam</label>
+              <FancySelect
+                value={examFilter}
+                onChange={(v) => {
+                  setExamFilter(v);
+                  setPaperFilter("All");
+                }}
+                ariaLabel="Exam"
+                options={examsList.options.map(e => ({ value: e, label: e === "All" ? "All Exams" : `${e} (${examsList.counts[e] || 0})` }))}
+              />
+            </div>
+
+            <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam Year</label>
               <FancySelect
                 value={yearFilter}
@@ -3658,12 +3891,12 @@ export default function App() {
             </div>
 
             <div className="mb-4">
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
               <FancySelect
-                value={examFilter}
-                onChange={(v) => setExamFilter(v)}
-                ariaLabel="Examination"
-                options={examsList.options.map(e => ({ value: e, label: e === "All" ? "All Exams" : `${e} (${examsList.counts[e] || 0})` }))}
+                value={paperFilter}
+                onChange={(v) => setPaperFilter(v)}
+                ariaLabel="Paper"
+                options={papersList.options.map(p => ({ value: p, label: p === "All" ? "All Papers" : `${p} (${papersList.counts[p] || 0})` }))}
               />
             </div>
 
@@ -3686,6 +3919,17 @@ export default function App() {
                 options={topicsList.options.map(t => ({ value: t, label: t === "All" ? "All Topics" : `${t} (${topicsList.counts[t] || 0})` }))}
               />
             </div>
+
+            {defaultFilterMessage && (
+              <p className={cn(
+                "mb-3 text-center text-[10px] font-semibold",
+                defaultFilterMessage.type === "success"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-rose-600 dark:text-rose-400"
+              )}>
+                {defaultFilterMessage.text}
+              </p>
+            )}
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
               <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredQuestions.length}</span> questions</p>
@@ -3737,6 +3981,7 @@ export default function App() {
                         }}
                         onExamClick={(exam) => {
                           setExamFilter(getExamCategory(exam));
+                          setPaperFilter(exam);
                           setRandomMode({ active: false, limit: 0 });
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
@@ -4134,7 +4379,9 @@ export default function App() {
                     onClick={() => {
                       setEnglishYearFilter("All");
                       setEnglishSubjectFilter("All");
+                      setEnglishTopicFilter("All");
                       setEnglishExamFilter("All");
+                      setEnglishPaperFilter("All");
                       setEnglishSearchQuery("");
                       setEnglishVisibleCount(30);
                       setEnglishRandomMode(false);
@@ -4164,7 +4411,10 @@ export default function App() {
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam</label>
                   <FancySelect
                     value={englishExamFilter}
-                    onChange={(v) => setEnglishExamFilter(v)}
+                    onChange={(v) => {
+                      setEnglishExamFilter(v);
+                      setEnglishPaperFilter("All");
+                    }}
                     ariaLabel="Exam"
                     options={englishExamsList.options.map(ex => ({ value: ex, label: ex === "All" ? "All Exams" : `${ex} (${englishExamsList.counts[ex] || 0})` }))}
                   />
@@ -4177,6 +4427,16 @@ export default function App() {
                     onChange={(v) => setEnglishYearFilter(v)}
                     ariaLabel="Year"
                     options={englishYearsList.options.map(y => ({ value: y, label: y === "All" ? "All Years" : `${y} (${englishYearsList.counts[y] || 0})` }))}
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Paper</label>
+                  <FancySelect
+                    value={englishPaperFilter}
+                    onChange={(v) => setEnglishPaperFilter(v)}
+                    ariaLabel="Paper"
+                    options={englishPapersList.options.map(p => ({ value: p, label: p === "All" ? "All Papers" : `${p} (${englishPapersList.counts[p] || 0})` }))}
                   />
                 </div>
 
@@ -4232,6 +4492,7 @@ export default function App() {
                           }}
                           onExamClick={(exam) => {
                             setEnglishExamFilter(getExamCategory(exam));
+                            setEnglishPaperFilter(exam);
                             setEnglishRandomMode(false);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
