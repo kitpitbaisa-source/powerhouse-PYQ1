@@ -2735,13 +2735,18 @@ export default function App() {
   const handleUpdateEnglishQuestion = (id: number, _year: string, answer: string, explanation: string) =>
     updateQuestionAnswer("english", id, answer, explanation);
 
-  const isCurrentFilterDefault =
-    savedPrelimsFilterDefaults !== null &&
-    savedPrelimsFilterDefaults.exam === examFilter &&
-    savedPrelimsFilterDefaults.year === yearFilter &&
-    savedPrelimsFilterDefaults.paper === paperFilter &&
-    savedPrelimsFilterDefaults.subject === subjectFilter &&
-    savedPrelimsFilterDefaults.topic === topicFilter;
+  const resetFilters = () => {
+    setYearFilter("All");
+    setExamFilter("All");
+    setPaperFilter("All");
+    setSubjectFilter("All");
+    setTopicFilter("All");
+    setSearchQuery("");
+    setVisibleCount(30);
+    setRandomMode({ active: false, limit: 0 });
+  };
+
+  const hasSavedPrelimsDefault = savedPrelimsFilterDefaults !== null;
 
   const savePrelimsFilterDefaults = async () => {
     if (!userEmail) {
@@ -2803,7 +2808,7 @@ export default function App() {
   };
 
   const togglePrelimsFilterDefault = () => {
-    if (isCurrentFilterDefault) {
+    if (hasSavedPrelimsDefault) {
       removePrelimsFilterDefaults();
     } else {
       savePrelimsFilterDefaults();
@@ -3820,26 +3825,24 @@ export default function App() {
                   type="button"
                   onClick={togglePrelimsFilterDefault}
                   disabled={isSavingDefaultFilters}
-                  title={isCurrentFilterDefault ? "Unpin default filters" : "Pin current filters as default"}
-                  aria-label={isCurrentFilterDefault ? "Unpin default filters" : "Pin current filters as default"}
+                  title={hasSavedPrelimsDefault ? "Unpin default filters" : "Pin current filters as default"}
+                  aria-label={hasSavedPrelimsDefault ? "Unpin default filters" : "Pin current filters as default"}
                   className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
-                    isCurrentFilterDefault
+                    hasSavedPrelimsDefault
                       ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
                       : "border-slate-200 bg-white/70 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
                   )}
                 >
                   {isSavingDefaultFilters
                     ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    : isCurrentFilterDefault
+                    : hasSavedPrelimsDefault
                     ? <Pin className="h-3.5 w-3.5 fill-current" />
                     : <PinOff className="h-3.5 w-3.5" />}
                 </button>
                 <button 
-                  onClick={removePrelimsFilterDefaults}
-                  disabled={isSavingDefaultFilters || savedPrelimsFilterDefaults === null}
-                  title="Remove saved default without changing current filters"
-                  className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={resetFilters}
+                  className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                 >
                   Reset
                 </button>
@@ -5313,49 +5316,42 @@ export default function App() {
               {/* Just rolled out */}
               <div className="flex items-center justify-between gap-2 mb-3">
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wide">Just rolled out</span>
-                <span className="text-[10px] font-medium text-slate-400">10 September 2026</span>
+                <span className="text-[10px] font-medium text-slate-400">14 September 2026</span>
               </div>
               <ul className="space-y-3 mb-6">
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Smarter exam filters and question search</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Prelims and English now group exams into clear categories, and every question section supports full or partial question-ID search.</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">New Exam, Year and Paper filters</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Prelims and English now have separate Exam, Year and Paper filters, making it easier to find the exact paper you want.</p>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Compact random-practice controls</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Choose 10, 20, 50 or 100 random questions using a space-saving one-click toggle.</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Save your default filters</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Pin your preferred Prelims filter combination and it will load automatically when you sign in. Unpinning removes only the saved default.</p>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">English answer editing</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Admins and editors can now correct English answers and explanations directly from the question card.</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Simpler exam names</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">BPSC sessions are grouped under BPSC, all CISF papers under CISF, and EPFO EO/AO variants under EPFO EO/AO.</p>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Flexible subscription expiry</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Admins can assign any positive number of months when adding or updating a user.</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">638 new Prelims questions</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Added CDS (2) 2026, NDA (2) 2026, UKPSC Prelims 2021 and 2024, and UPSC APFC 2016 question papers.</p>
                   </div>
                 </li>
                 <li className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">State PCS questions added to Prelims</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">2,250+ BPSC &amp; UPPSC previous-year questions (2017–2025) now practice-ready inside the Prelims section.</p>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Cleaner question layout</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Improved spacing and readability for statement-based questions, plus a faster, smoother browsing experience.</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">More reliable question loading</p>
+                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Questions now load in a safer order so the complete list is not replaced by the smaller first-page result.</p>
                   </div>
                 </li>
               </ul>
