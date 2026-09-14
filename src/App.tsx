@@ -1200,6 +1200,7 @@ export default function App() {
   const [isSavingDefaultFilters, setIsSavingDefaultFilters] = useState(false);
   const [defaultFilterMessage, setDefaultFilterMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [savedPrelimsFilterDefaults, setSavedPrelimsFilterDefaults] = useState<PrelimsFilterPreferences | null>(null);
+  const [isApplyingDefaultFilters, setIsApplyingDefaultFilters] = useState(false);
   const [mainsYearFilter, setMainsYearFilter] = useState("All");
   const [mainsExamFilter, setMainsExamFilter] = useState("All");
   const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
@@ -1582,6 +1583,7 @@ export default function App() {
         setSavedPrelimsFilterDefaults(defaults);
         if (!defaults) return;
 
+        setIsApplyingDefaultFilters(true);
         setExamFilter(defaults.exam);
         setYearFilter(defaults.year);
         setPaperFilter(defaults.paper);
@@ -1600,6 +1602,29 @@ export default function App() {
       cancelled = true;
     };
   }, [userEmail, questions.length]);
+
+  useEffect(() => {
+    if (!isApplyingDefaultFilters || !savedPrelimsFilterDefaults) return;
+
+    const defaultsApplied =
+      examFilter === savedPrelimsFilterDefaults.exam &&
+      yearFilter === savedPrelimsFilterDefaults.year &&
+      paperFilter === savedPrelimsFilterDefaults.paper &&
+      subjectFilter === savedPrelimsFilterDefaults.subject &&
+      topicFilter === savedPrelimsFilterDefaults.topic;
+
+    if (defaultsApplied) {
+      setIsApplyingDefaultFilters(false);
+    }
+  }, [
+    examFilter,
+    isApplyingDefaultFilters,
+    paperFilter,
+    savedPrelimsFilterDefaults,
+    subjectFilter,
+    topicFilter,
+    yearFilter,
+  ]);
 
   // Handle closing user menu when clicking outside
   useEffect(() => {
@@ -2537,34 +2562,39 @@ export default function App() {
 
   // Auto-reset filters if selected option is no longer available
   useEffect(() => {
+    if (isApplyingDefaultFilters) return;
     if (yearFilter !== "All" && !yearsList.options.includes(yearFilter)) {
       setYearFilter("All");
     }
-  }, [yearsList.options, yearFilter]);
+  }, [isApplyingDefaultFilters, yearsList.options, yearFilter]);
 
   useEffect(() => {
+    if (isApplyingDefaultFilters) return;
     if (examFilter !== "All" && !examsList.options.includes(examFilter)) {
       setExamFilter("All");
     }
-  }, [examsList.options, examFilter]);
+  }, [examFilter, examsList.options, isApplyingDefaultFilters]);
 
   useEffect(() => {
+    if (isApplyingDefaultFilters) return;
     if (paperFilter !== "All" && !papersList.options.includes(paperFilter)) {
       setPaperFilter("All");
     }
-  }, [papersList.options, paperFilter]);
+  }, [isApplyingDefaultFilters, paperFilter, papersList.options]);
 
   useEffect(() => {
+    if (isApplyingDefaultFilters) return;
     if (subjectFilter !== "All" && !subjectsList.options.includes(subjectFilter)) {
       setSubjectFilter("All");
     }
-  }, [subjectsList.options, subjectFilter]);
+  }, [isApplyingDefaultFilters, subjectFilter, subjectsList.options]);
 
   useEffect(() => {
+    if (isApplyingDefaultFilters) return;
     if (topicFilter !== "All" && !topicsList.options.includes(topicFilter)) {
       setTopicFilter("All");
     }
-  }, [topicsList.options, topicFilter]);
+  }, [isApplyingDefaultFilters, topicFilter, topicsList.options]);
 
   useEffect(() => {
     if (mainsYearFilter !== "All" && !mainsYearsList.options.includes(mainsYearFilter)) {
@@ -2744,6 +2774,7 @@ export default function App() {
     setSearchQuery("");
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
+    resetQuiz(false);
   };
 
   const hasSavedPrelimsDefault = savedPrelimsFilterDefaults !== null;
@@ -4253,6 +4284,7 @@ export default function App() {
                       setCSATSearchQuery("");
                       setCSATVisibleCount(30);
                       setCSATRandomMode(false);
+                      resetQuiz(false);
                     }}
                     className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
@@ -4382,6 +4414,7 @@ export default function App() {
                       setEnglishSearchQuery("");
                       setEnglishVisibleCount(30);
                       setEnglishRandomMode(false);
+                      resetQuiz(false);
                     }}
                     className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                   >
