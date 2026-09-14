@@ -647,7 +647,7 @@ serverApp.get("/api/filter-preferences", async (req, res) => {
   try {
     await ensureUserWorkspaceContainer();
     const { resource } = await userWorkspaceContainer.item("filter-preferences", email).read();
-    res.json({ prelims: resource?.prelims || null });
+    res.json({ prelims: resource?.isActive === false ? null : resource?.prelims || null });
   } catch (error: any) {
     if (error.code === 404) {
       return res.json({ prelims: null });
@@ -691,6 +691,8 @@ serverApp.put("/api/filter-preferences", async (req, res) => {
       type: "filter-preferences",
       createdAt: existing?.createdAt || now,
       modifiedAt: now,
+      isActive: true,
+      deletedAt: null,
       prelims: normalized,
     });
 
@@ -709,12 +711,24 @@ serverApp.delete("/api/filter-preferences", async (req, res) => {
 
   try {
     await ensureUserWorkspaceContainer();
-    await userWorkspaceContainer.item("filter-preferences", email).delete();
+    let existing: any = null;
+    try {
+      const { resource } = await userWorkspaceContainer.item("filter-preferences", email).read();
+      existing = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+    if (existing) {
+      const now = new Date().toISOString();
+      await userWorkspaceContainer.items.upsert({
+        ...existing,
+        isActive: false,
+        deletedAt: now,
+        modifiedAt: now,
+      });
+    }
     res.json({ success: true });
   } catch (error: any) {
-    if (error.code === 404) {
-      return res.json({ success: true });
-    }
     console.error("Error removing filter preferences:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }

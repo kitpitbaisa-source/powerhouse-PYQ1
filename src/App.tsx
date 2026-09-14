@@ -70,6 +70,9 @@ function getExamCategory(exam: string): string {
   if (upper.includes("NDA")) return "NDA";
   if (upper.includes("CDS")) return "CDS";
   if (upper.includes("CAPF")) return "CAPF";
+  if (upper.includes("BPSC")) return "BPSC";
+  if (upper.includes("CISF")) return "CISF";
+  if (upper.includes("EPFO EO/AO")) return "EPFO EO/AO";
   if (upper.includes("STATE PCS") || /\bPCS\b/.test(upper)) return "State PCS";
   return normalized
     .replace(/\s*[-–]?\s*(?:19|20)\d{2}\s*$/u, "")
@@ -2732,17 +2735,6 @@ export default function App() {
   const handleUpdateEnglishQuestion = (id: number, _year: string, answer: string, explanation: string) =>
     updateQuestionAnswer("english", id, answer, explanation);
 
-  const resetFilters = () => {
-    setYearFilter("All");
-    setExamFilter("All");
-    setPaperFilter("All");
-    setSubjectFilter("All");
-    setTopicFilter("All");
-    setSearchQuery("");
-    setVisibleCount(30);
-    setRandomMode({ active: false, limit: 0 });
-  };
-
   const isCurrentFilterDefault =
     savedPrelimsFilterDefaults !== null &&
     savedPrelimsFilterDefaults.exam === examFilter &&
@@ -2801,7 +2793,7 @@ export default function App() {
       if (!response.ok) throw new Error(data.error || "Could not remove default filters");
 
       setSavedPrelimsFilterDefaults(null);
-      setDefaultFilterMessage({ text: "Default filters unpinned.", type: "success" });
+      setDefaultFilterMessage({ text: "Default choice removed. Current filters are unchanged.", type: "success" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not remove default filters";
       setDefaultFilterMessage({ text: message, type: "error" });
@@ -3844,8 +3836,10 @@ export default function App() {
                     : <PinOff className="h-3.5 w-3.5" />}
                 </button>
                 <button 
-                  onClick={resetFilters} 
-                  className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
+                  onClick={removePrelimsFilterDefaults}
+                  disabled={isSavingDefaultFilters || savedPrelimsFilterDefaults === null}
+                  title="Remove saved default without changing current filters"
+                  className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Reset
                 </button>
