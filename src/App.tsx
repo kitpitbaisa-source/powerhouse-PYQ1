@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, useReducer } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Landmark, 
   Trophy, 
@@ -43,7 +44,12 @@ import {
   MessageSquareText,
   BarChart3,
   Pin,
-  PinOff
+  PinOff,
+  Bookmark,
+  FilePlus,
+  StickyNote,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -63,8 +69,11 @@ const subjectColors: SubjectColorMap = {
   "Default": "bg-gradient-to-r from-indigo-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20"
 };
 
-function getExamCategory(exam: string): string {
-  const normalized = exam.trim();
+function getExamCategory(exam?: string | null): string {
+  // Defensive: a malformed or partially-entered question can reach the UI
+  // without an exam, and this runs inside render paths that must not throw.
+  const normalized = (exam ?? "").trim();
+  if (!normalized) return "Other";
   const upper = normalized.toUpperCase();
   if (upper.includes("CIVIL SERVICES") || upper.includes("CSE") || upper.includes("UPSC")) return "UPSC CSE";
   if (upper.includes("NDA")) return "NDA";
@@ -86,6 +95,13 @@ type PrelimsFilterPreferences = {
   paper: string;
   subject: string;
   topic: string;
+  sort?: string;
+};
+
+type CSATFilterPreferences = {
+  year: string;
+  subject: string;
+  sort?: string;
 };
 
 function matchesQuestionId(id: string | number, query: string): boolean {
@@ -351,11 +367,140 @@ const FancySelect: React.FC<{
   );
 };
 
+interface SortOption { value: string; label: string; dir: 'asc' | 'desc' }
+// Compact icon-only sort control: the arrow flips to match the active direction
+// and the button lights up whenever a non-default order is applied.
+const SortMenu: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: SortOption[];
+  defaultValue: string;
+}> = ({ value, onChange, options, defaultValue }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const selected = options.find(o => o.value === value) ?? options[0];
+  const isCustom = value !== defaultValue;
+  const Icon = selected.dir === 'asc' ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Sort: ${selected.label}`}
+        title={`Sort: ${selected.label}`}
+        className={cn(
+          "flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95",
+          isCustom || open
+            ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
+            : "border-slate-200 bg-white/70 text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+        )}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full mt-1.5 z-[80] w-40 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 dark:shadow-black/40 p-1 animate-modalPop"
+        >
+          {options.map(o => {
+            const active = o.value === value;
+            const OptIcon = o.dir === 'asc' ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn(
+                  'w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors',
+                  active
+                    ? 'bg-blue-500 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
+                )}
+              >
+                <OptIcon className={cn('h-3.5 w-3.5 flex-shrink-0', active ? 'text-white' : 'text-slate-400')} />
+                <span className="truncate">{o.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Bookmark / notes "only" toggles with live counts. Shared by the Prelims, CSAT
+// and English sidebars so all three behave and look identical.
+const SavedFilterToggles: React.FC<{
+  bookmarkedOnly: boolean;
+  onToggleBookmarked: () => void;
+  bookmarkedCount: number;
+  notedOnly: boolean;
+  onToggleNoted: () => void;
+  notedCount: number;
+}> = ({ bookmarkedOnly, onToggleBookmarked, bookmarkedCount, notedOnly, onToggleNoted, notedCount }) => {
+  const toggleClass = (active: boolean) => cn(
+    "relative flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95",
+    active
+      ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
+      : "border-slate-200 bg-white/70 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+  );
+  const badgeClass = (active: boolean) => cn(
+    "absolute -top-1.5 -right-1.5 min-w-[15px] rounded-full px-1 text-[9px] font-bold leading-[15px] tabular-nums ring-2",
+    active
+      ? "bg-white text-blue-700 ring-white/70 dark:ring-slate-800"
+      : "bg-blue-600 text-white ring-white dark:ring-slate-800"
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggleBookmarked}
+        aria-pressed={bookmarkedOnly}
+        title={bookmarkedOnly ? "Show all questions" : "Show bookmarked questions only"}
+        aria-label={bookmarkedOnly ? "Show all questions" : "Show bookmarked questions only"}
+        className={toggleClass(bookmarkedOnly)}
+      >
+        <Bookmark className={cn("h-3.5 w-3.5", bookmarkedOnly && "fill-current")} />
+        {bookmarkedCount > 0 && (
+          <span className={badgeClass(bookmarkedOnly)}>{bookmarkedCount > 99 ? "99+" : bookmarkedCount}</span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleNoted}
+        aria-pressed={notedOnly}
+        title={notedOnly ? "Show all questions" : "Show questions with notes only"}
+        aria-label={notedOnly ? "Show all questions" : "Show questions with notes only"}
+        className={toggleClass(notedOnly)}
+      >
+        <FilePlus className="h-3.5 w-3.5" />
+        {notedCount > 0 && (
+          <span className={badgeClass(notedOnly)}>{notedCount > 99 ? "99+" : notedCount}</span>
+        )}
+      </button>
+    </>
+  );
+};
+
 const QuestionCountToggle: React.FC<{
   value: number;
   onChange: (value: number) => void;
-}> = ({ value, onChange }) => {
-  const options = [10, 20, 50, 100];
+}> = ({ value, onChange }) => {  const options = [10, 20, 50, 100];
   const currentIndex = options.indexOf(value);
   const nextValue = options[(currentIndex + 1) % options.length];
 
@@ -374,8 +519,324 @@ const QuestionCountToggle: React.FC<{
   );
 };
 
+// ── Bookmarks & notes sync (Cosmos `user-questions`) ─────────────────────────
+// The signed-in user's email is the partition key, so everything a user has
+// saved loads in one request and is shared across their devices. There is no
+// local cache: a device-local copy would leak one account's notes to the next
+// user on a shared device.
+// The subset of a question needed to save workspace state. Accepting this
+// rather than a full `Question` lets the workspace remove a bookmark or note
+// for a question that is not in the currently loaded list.
+type QuestionMeta = {
+  id: number | string;
+  subject?: string | null;
+  topic?: string | null;
+  exam?: string | null;
+  year?: string | null;
+};
+
+type RemoteQuestionState = {
+  isBookmarked: boolean;
+  notes: string;
+  attemptCount: number;
+  correctCount: number;
+  wrongCount: number;
+  lastOption: string | null;
+  lastIsCorrect: boolean | null;
+  lastAttemptAt: string | null;
+  subject: string | null;
+  topic: string | null;
+  exam: string | null;
+  year: string | null;
+  updatedAt: string | null;
+};
+
+const emptyRemoteQuestionState = (): RemoteQuestionState => ({
+  isBookmarked: false,
+  notes: "",
+  attemptCount: 0,
+  correctCount: 0,
+  wrongCount: 0,
+  lastOption: null,
+  lastIsCorrect: null,
+  lastAttemptAt: null,
+  subject: null,
+  topic: null,
+  exam: null,
+  year: null,
+  updatedAt: null,
+});
+
+const remoteQuestionState = new Map<string, RemoteQuestionState>();
+const remoteStateListeners = new Set<() => void>();
+let remoteStateEmail: string | null = null;
+
+const remoteStateKey = (questionType: string, questionId: number | string) =>
+  `${questionType}:${questionId}`;
+
+// The question feed contains repeated ids (13,092 rows / 12,454 distinct at the
+// time of writing). Cards are keyed by `question.id`, and duplicate React keys
+// make the list mis-reconcile — rows visibly multiply each time a filter toggles.
+// Keep the first occurrence of every id.
+const dedupeQuestionsById = <T extends { id: number | string }>(list: T[]): T[] => {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of list) {
+    const id = String(item.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+};
+
+const notifyRemoteStateListeners = () => remoteStateListeners.forEach(listener => listener());
+
+type QuestionSortMode = 'latest' | 'oldest' | 'score-asc' | 'score-desc' | 'attempts-desc' | 'attempts-asc';
+
+const questionSortOptions: SortOption[] = [
+  { value: 'latest', label: 'Latest', dir: 'desc' },
+  { value: 'oldest', label: 'Oldest', dir: 'asc' },
+  { value: 'score-desc', label: 'Score high', dir: 'desc' },
+  { value: 'score-asc', label: 'Score low', dir: 'asc' },
+  { value: 'attempts-desc', label: 'Most attempted', dir: 'desc' },
+  { value: 'attempts-asc', label: 'Least attempted', dir: 'asc' },
+];
+
+// Bookmark / notes filtering, counting and sorting are identical for Prelims,
+// CSAT and English, so all three share these helpers — a section's badge count
+// can never drift from the rows it actually renders.
+const matchesSavedFilters = (
+  questionType: string,
+  question: { id: number | string },
+  bookmarkedOnly: boolean,
+  notedOnly: boolean
+) => {
+  if (!bookmarkedOnly && !notedOnly) return true;
+  const state = remoteQuestionState.get(remoteStateKey(questionType, question.id));
+  if (bookmarkedOnly && state?.isBookmarked !== true) return false;
+  if (notedOnly && (state?.notes || "").trim() === "") return false;
+  return true;
+};
+
+const countSavedQuestions = <T extends { id: number | string }>(questionType: string, list: T[]) => {
+  let bookmarks = 0;
+  let notes = 0;
+  for (const q of list) {
+    const state = remoteQuestionState.get(remoteStateKey(questionType, q.id));
+    if (!state) continue;
+    if (state.isBookmarked) bookmarks += 1;
+    if ((state.notes || "").trim() !== "") notes += 1;
+  }
+  return [bookmarks, notes] as const;
+};
+
+const sortQuestionsBy = <T extends { id: number | string; year?: string | number }>(
+  list: T[],
+  questionType: string,
+  mode: QuestionSortMode
+): T[] => {
+  // Newest-first is the natural reading order and stays the tiebreaker for every
+  // other mode, so questions never jump around unpredictably.
+  const byRecency = (a: T, b: T) => {
+    const yearComparison = String(b.year).localeCompare(String(a.year));
+    if (yearComparison !== 0) return yearComparison;
+    const aId = Number(a.id);
+    const bId = Number(b.id);
+    if (Number.isFinite(aId) && Number.isFinite(bId)) return bId - aId;
+    return String(b.id).localeCompare(String(a.id));
+  };
+  const attemptsOf = (q: T) => {
+    const s = remoteQuestionState.get(remoteStateKey(questionType, q.id));
+    return (s?.correctCount ?? 0) + (s?.wrongCount ?? 0);
+  };
+  // Never-attempted questions have no score at all, so they sink to the bottom
+  // in both directions instead of pretending to be 0%.
+  const accuracyOf = (q: T) => {
+    const total = attemptsOf(q);
+    if (total === 0) return null;
+    const s = remoteQuestionState.get(remoteStateKey(questionType, q.id))!;
+    return (s.correctCount / total) * 100;
+  };
+
+  return [...list].sort((a, b) => {
+    if (mode === 'latest') return byRecency(a, b);
+    if (mode === 'oldest') return -byRecency(a, b);
+
+    if (mode === 'attempts-desc' || mode === 'attempts-asc') {
+      const aTotal = attemptsOf(a);
+      const bTotal = attemptsOf(b);
+      if (aTotal !== bTotal) return mode === 'attempts-desc' ? bTotal - aTotal : aTotal - bTotal;
+      return byRecency(a, b);
+    }
+
+    const aScore = accuracyOf(a);
+    const bScore = accuracyOf(b);
+    if (aScore === null && bScore === null) return byRecency(a, b);
+    if (aScore === null) return 1;
+    if (bScore === null) return -1;
+    if (aScore !== bScore) return mode === 'score-asc' ? aScore - bScore : bScore - aScore;
+    return byRecency(a, b);
+  });
+};
+
+
+async function loadRemoteQuestionState(email: string | null) {
+  if (!email) {
+    remoteStateEmail = null;
+    remoteQuestionState.clear();
+    remoteAttemptHistory.clear();
+    notifyRemoteStateListeners();
+    return;
+  }
+  if (remoteStateEmail === email) return;
+  remoteStateEmail = email;
+  remoteQuestionState.clear();
+  remoteAttemptHistory.clear();
+  notifyRemoteStateListeners();
+  try {
+    const res = await fetch(`/api/question-state?email=${encodeURIComponent(email)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    // Ignore a response that lost the race to a newer login.
+    if (remoteStateEmail !== email) return;
+    for (const item of data.items || []) {
+      remoteQuestionState.set(remoteStateKey(item.questionType, item.questionId), {
+        isBookmarked: !!item.isBookmarked,
+        notes: item.notes || "",
+        attemptCount: item.attemptCount ?? 0,
+        correctCount: item.correctCount ?? 0,
+        wrongCount: item.wrongCount ?? 0,
+        lastOption: item.lastOption ?? null,
+        lastIsCorrect: item.lastIsCorrect ?? null,
+        lastAttemptAt: item.lastAttemptAt ?? null,
+        subject: item.subject ?? null,
+        topic: item.topic ?? null,
+        exam: item.exam ?? null,
+        year: item.year ?? null,
+        updatedAt: item.updatedAt ?? null,
+      });
+    }
+    notifyRemoteStateListeners();
+  } catch {
+    // Network error: allow a later login to retry the fetch.
+    remoteStateEmail = null;
+  }
+}
+
+function saveRemoteQuestionState(
+  email: string | null | undefined,
+  questionType: string,
+  question: QuestionMeta,
+  patch: { isBookmarked?: boolean; notes?: string }
+) {
+  if (!email) return;
+  const key = remoteStateKey(questionType, question.id);
+  const current = remoteQuestionState.get(key) || emptyRemoteQuestionState();
+  remoteQuestionState.set(key, {
+    ...current,
+    ...patch,
+    subject: question.subject ?? current.subject,
+    topic: question.topic ?? current.topic,
+    exam: question.exam ?? current.exam,
+    year: question.year ?? current.year,
+    updatedAt: new Date().toISOString(),
+  });
+  fetch('/api/question-state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      questionId: question.id,
+      questionType,
+      subject: question.subject,
+      topic: question.topic,
+      exam: question.exam,
+      year: question.year,
+      ...patch,
+    }),
+  }).catch(() => {});
+  notifyRemoteStateListeners();
+}
+
+// Bumps the local counters the moment an option is clicked so the attempt
+// badge updates without waiting for (or re-fetching) the server. The server is
+// the source of truth; `POST /api/attempts` performs the same increment there.
+function recordRemoteAttempt(
+  email: string | null | undefined,
+  questionType: string,
+  questionId: number | string,
+  option: string,
+  isCorrect: boolean,
+  attemptId: string | null = null
+) {
+  if (!email) return;
+  const key = remoteStateKey(questionType, questionId);
+  const current = remoteQuestionState.get(key) || emptyRemoteQuestionState();
+  const ts = new Date().toISOString();
+  remoteQuestionState.set(key, {
+    ...current,
+    attemptCount: current.attemptCount + 1,
+    correctCount: current.correctCount + (isCorrect ? 1 : 0),
+    wrongCount: current.wrongCount + (isCorrect ? 0 : 1),
+    lastOption: option,
+    lastIsCorrect: isCorrect,
+    lastAttemptAt: ts,
+  });
+  // Keep an already-loaded history in step so the panel does not need a refetch.
+  const history = remoteAttemptHistory.get(key);
+  if (history) {
+    remoteAttemptHistory.set(key, [{ attemptId, option, isCorrect, timeSpentMs: null, ts }, ...history]);
+  }
+  notifyRemoteStateListeners();
+}
+
+// Full per-attempt history is fetched lazily (one point read per question)
+// because the `attempts` array is excluded from the Cosmos index and would
+// bloat the bulk state response.
+type QuestionAttempt = {
+  attemptId: string | null;
+  option: string | null;
+  isCorrect: boolean;
+  timeSpentMs: number | null;
+  ts: string;
+};
+
+const remoteAttemptHistory = new Map<string, QuestionAttempt[]>();
+const attemptHistoryInFlight = new Set<string>();
+
+async function loadRemoteAttemptHistory(
+  email: string | null | undefined,
+  questionType: string,
+  questionId: number | string
+) {
+  if (!email) return;
+  const key = remoteStateKey(questionType, questionId);
+  if (remoteAttemptHistory.has(key) || attemptHistoryInFlight.has(key)) return;
+  attemptHistoryInFlight.add(key);
+  const requestedFor = email;
+  try {
+    const res = await fetch(
+      `/api/question-attempts?email=${encodeURIComponent(email)}&questionId=${encodeURIComponent(
+        String(questionId)
+      )}&questionType=${encodeURIComponent(questionType)}`
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    // Ignore a response that lost the race to a newer login.
+    if (remoteStateEmail !== requestedFor) return;
+    remoteAttemptHistory.set(key, data.attempts || []);
+    notifyRemoteStateListeners();
+  } catch {
+    // Leave it uncached so hovering again retries.
+  } finally {
+    attemptHistoryInFlight.delete(key);
+  }
+}
+
 interface QuestionCardProps {
   question: Question;
+  storageScope: 'prelims' | 'csat' | 'english';
   index: number;
   attemptedOption: string | undefined;
   isRevealed: boolean;
@@ -386,6 +847,8 @@ interface QuestionCardProps {
   onCheckStatus?: () => void;
   onOpenPremium?: () => void;
   onFeedback?: () => void;
+  feedbackSlot?: React.ReactNode;
+  showNoteInline?: boolean;
   onSubjectClick?: (subject: string) => void;
   onTopicClick?: (topic: string) => void;
   onExamClick?: (exam: string) => void;
@@ -395,6 +858,320 @@ interface QuestionCardProps {
   isEditor?: boolean;
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
 }
+
+const formatAttemptTime = (ts: string | null | undefined) => {
+  if (!ts) return "";
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+// Shows the signed-in user's real attempt tally for a question, read from the
+// `user-questions` container. The hover panel lists the five most recent
+// attempts (newest first); clicking opens a modal with the full history. The
+// per-attempt array is fetched lazily because it is excluded from the Cosmos
+// index and is not returned by the bulk state endpoint.
+const AttemptIndicator: React.FC<{
+  question: Question;
+  questionType: string;
+  userEmail?: string | null;
+}> = ({ question, questionType, userEmail }) => {
+  const [, bumpRemoteStateVersion] = useReducer((n: number) => n + 1, 0);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    remoteStateListeners.add(bumpRemoteStateVersion);
+    return () => {
+      remoteStateListeners.delete(bumpRemoteStateVersion);
+    };
+  }, []);
+
+  const remoteKey = remoteStateKey(questionType, question.id);
+  const state = remoteQuestionState.get(remoteKey);
+  const correctCount = state?.correctCount ?? 0;
+  const wrongCount = state?.wrongCount ?? 0;
+  const totalAttempts = correctCount + wrongCount;
+
+  const history = remoteAttemptHistory.get(remoteKey);
+  const isHistoryLoaded = !!history;
+
+  useEffect(() => {
+    if (!isHistoryOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsHistoryOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isHistoryOpen]);
+
+  if (totalAttempts === 0) return null;
+
+  const prefetchHistory = () => loadRemoteAttemptHistory(userEmail, questionType, question.id);
+  const accuracy = Math.round((correctCount / totalAttempts) * 100);
+  const recentAttempts = (history || []).slice(0, 5);
+
+  const renderAttemptRow = (attempt: QuestionAttempt, position: number, showConnector: boolean) => (
+    <div key={`${attempt.ts}-${position}`} className="relative flex gap-2 pb-2 last:pb-0">
+      {showConnector && <span className="absolute left-[5px] top-3 h-full w-px bg-blue-100 dark:bg-slate-700" />}
+      <span
+        className={cn(
+          "relative z-10 mt-0.5 flex h-3 w-3 shrink-0 items-center justify-center rounded-full ring-2 ring-white dark:ring-slate-900",
+          attempt.isCorrect ? "bg-emerald-500" : "bg-rose-600"
+        )}
+      >
+        {attempt.isCorrect ? <Check className="h-2 w-2 text-white" /> : <X className="h-2 w-2 text-white" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className={cn(
+              "text-[9px] font-bold",
+              attempt.isCorrect ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"
+            )}
+          >
+            {attempt.isCorrect ? "Correct" : "Wrong"} - Attempt {position}
+          </span>
+          <span className="shrink-0 text-[7px] font-medium text-slate-400">{formatAttemptTime(attempt.ts)}</span>
+        </div>
+        <p className="truncate text-[9px] text-slate-500 dark:text-slate-400" title={attempt.option || ""}>
+          Selected: {attempt.option || "—"}
+        </p>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${accuracy}% accuracy over ${totalAttempts} attempts by you: ${correctCount} correct and ${wrongCount} wrong. Open full history.`}
+        onMouseEnter={prefetchHistory}
+        onFocus={prefetchHistory}
+        onClick={() => {
+          prefetchHistory();
+          setIsHistoryOpen(true);
+        }}
+        onKeyDown={event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            prefetchHistory();
+            setIsHistoryOpen(true);
+          }
+        }}
+        className="group/attempts relative flex w-fit cursor-pointer items-center rounded-full focus:outline-none"
+      >
+        <div className="flex items-center gap-1">
+          <span
+            title={`${accuracy}% accuracy across ${totalAttempts} attempts`}
+            className={cn(
+              "text-[9px] font-extrabold leading-none tabular-nums transition-transform group-hover/attempts:-translate-y-0.5",
+              accuracy >= 50
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-rose-600 dark:text-rose-400"
+            )}
+          >
+            {accuracy}%
+          </span>
+          <span
+            title={`${correctCount} correct attempts`}
+            className="inline-flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 text-[7px] font-extrabold leading-none text-white transition-transform group-hover/attempts:-translate-y-0.5 dark:bg-emerald-500"
+          >
+            {correctCount}
+          </span>
+          <span
+            title={`${wrongCount} wrong attempts`}
+            className="inline-flex h-3 w-3 items-center justify-center rounded-full bg-rose-500 text-[7px] font-extrabold leading-none text-white transition-transform group-hover/attempts:-translate-y-0.5 dark:bg-rose-500"
+          >
+            {wrongCount}
+          </span>
+        </div>
+
+        <div className="pointer-events-none invisible absolute right-0 top-full z-30 mt-1.5 w-60 translate-y-1 rounded-xl border border-blue-100 bg-white/95 p-2.5 opacity-0 shadow-xl shadow-blue-900/10 backdrop-blur-xl transition-all duration-200 group-hover/attempts:visible group-hover/attempts:translate-y-0 group-hover/attempts:opacity-100 group-focus/attempts:visible group-focus/attempts:translate-y-0 group-focus/attempts:opacity-100 dark:border-slate-700 dark:bg-slate-900/95 dark:shadow-black/30">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-extrabold text-slate-800 dark:text-slate-100">Your attempts</p>
+              <p className="text-[8px] font-medium text-slate-400">{accuracy}% accuracy</p>
+            </div>
+            <span className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-2 py-0.5 text-[8px] font-bold text-white">
+              {totalAttempts} total
+            </span>
+          </div>
+
+          {!isHistoryLoaded ? (
+            <p className="py-1 text-[9px] font-medium text-slate-400">Loading history…</p>
+          ) : (
+            <>
+              <div>
+                {recentAttempts.map((attempt, attemptIndex) =>
+                  renderAttemptRow(attempt, totalAttempts - attemptIndex, attemptIndex < recentAttempts.length - 1)
+                )}
+              </div>
+              <p className="mt-1 border-t border-blue-100 pt-1.5 text-center text-[8px] font-semibold text-blue-600 dark:border-slate-700 dark:text-blue-400">
+                {totalAttempts > 5 ? `Click to see all ${totalAttempts} attempts` : "Click to see full history"}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {isHistoryOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          onClick={() => setIsHistoryOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Attempt history for question ${question.id}`}
+            className="flex max-h-[calc(100%-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-700">
+              <div className="min-w-0">
+                <p className="text-[13px] font-extrabold text-slate-900 dark:text-slate-100">Attempt history</p>
+                <p className="truncate text-[10px] font-medium text-slate-400">
+                  Q{question.id} · {totalAttempts} attempts · {accuracy}% accuracy
+                </p>
+              </div>
+              <button
+                onClick={() => setIsHistoryOpen(false)}
+                aria-label="Close attempt history"
+                className="shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
+              <div className="rounded-lg bg-slate-50 px-2 py-1 text-center dark:bg-slate-800">
+                <p className="text-[8px] font-semibold uppercase tracking-wide text-slate-400">Total</p>
+                <p className="text-[13px] font-extrabold text-slate-700 dark:text-slate-200">{totalAttempts}</p>
+              </div>
+              <div className="rounded-lg bg-emerald-50 px-2 py-1 text-center dark:bg-emerald-500/10">
+                <p className="text-[8px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">Correct</p>
+                <p className="text-[13px] font-extrabold text-emerald-700 dark:text-emerald-300">{correctCount}</p>
+              </div>
+              <div className="rounded-lg bg-rose-50 px-2 py-1 text-center dark:bg-rose-500/10">
+                <p className="text-[8px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">Wrong</p>
+                <p className="text-[13px] font-extrabold text-rose-700 dark:text-rose-300">{wrongCount}</p>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              {!isHistoryLoaded ? (
+                <p className="py-4 text-center text-[11px] font-medium text-slate-400">Loading history…</p>
+              ) : history!.length === 0 ? (
+                <p className="py-4 text-center text-[11px] font-medium text-slate-400">No attempt details saved yet.</p>
+              ) : (
+                history!.map((attempt, attemptIndex) =>
+                  renderAttemptRow(attempt, history!.length - attemptIndex, attemptIndex < history!.length - 1)
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// One saved question in My Workspace. Rendered for both the bookmarks and the
+// notes tab; the notes tab passes the note body in as `children`.
+type WorkspaceEntryShape = {
+  key: string;
+  questionId: number | string;
+  questionType: string;
+  question: Question | undefined;
+  state: RemoteQuestionState;
+};
+
+const workspaceTypeLabel: Record<string, string> = {
+  prelims: 'Prelims',
+  csat: 'CSAT',
+  english: 'English',
+};
+
+const WorkspaceEntryCard: React.FC<{
+  entry: WorkspaceEntryShape;
+  onRemove: () => void;
+  removeLabel: string;
+  children?: React.ReactNode;
+}> = ({ entry, onRemove, removeLabel, children }) => {
+  const { state, question } = entry;
+  const questionText = (question?.question || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const subject = question?.subject || state.subject;
+  const topic = question?.topic || state.topic;
+  const exam = question?.exam || state.exam;
+  const year = question?.year || state.year;
+  const totalAttempts = state.correctCount + state.wrongCount;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-3.5 py-3 transition-colors hover:border-indigo-300 dark:hover:border-indigo-500/50">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 ring-1 ring-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400">
+              Q{entry.questionId}
+            </span>
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+              {workspaceTypeLabel[entry.questionType] || entry.questionType}
+            </span>
+            {subject && (
+              <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
+                {subject}
+              </span>
+            )}
+            {topic && (
+              <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700/60 dark:text-slate-400">
+                {topic}
+              </span>
+            )}
+            {exam && year && (
+              <span className="text-[10px] font-medium text-slate-400">{exam} · {year}</span>
+            )}
+          </div>
+
+          <p className="text-[12.5px] leading-[19px] text-slate-700 dark:text-slate-200 line-clamp-3">
+            {questionText || <span className="italic text-slate-400">Question not available in the current list.</span>}
+          </p>
+
+          {totalAttempts > 0 && (
+            <div className="mt-1.5 flex items-center gap-2 text-[10px] font-semibold">
+              <span className="text-emerald-600 dark:text-emerald-400">{state.correctCount} correct</span>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span className="text-rose-600 dark:text-rose-400">{state.wrongCount} wrong</span>
+              {state.lastAttemptAt && (
+                <>
+                  <span className="text-slate-300 dark:text-slate-600">·</span>
+                  <span className="font-medium text-slate-400">last {formatAttemptTime(state.lastAttemptAt)}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {children}
+        </div>
+
+        <button
+          onClick={onRemove}
+          title={removeLabel}
+          aria-label={removeLabel}
+          className="shrink-0 rounded-full p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const parseMarkdownBold = (text: string | undefined) => {
   if (!text) return '';
@@ -680,8 +1457,42 @@ const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLi
   );
 };
 
+// The bookmark and notes glyphs share one treatment so they stay identical:
+// no pill or background, just an embossed icon that lifts on hover and presses
+// on click. Colour comes from an SVG gradient rather than a flat text colour.
+const cardIconButton =
+  "rounded-md p-1.5 transition-transform duration-150 focus:outline-none hover:-translate-y-px hover:scale-110 active:translate-y-px active:scale-100";
+
+// Three stacked shadows do the sculpting: a highlight off the top-left, a hard
+// contact shadow to the bottom-right, then a soft blur underneath for depth.
+// This has to be one arbitrary `filter` property because twMerge collapses
+// repeated `drop-shadow-*` utilities into a single declaration.
+// Only the filled (saved) state is sculpted — a white rim along the top-left
+// plus a blue glow beneath. Unset icons stay flat.
+const cardIcon3d =
+  "[filter:drop-shadow(-0.5px_-0.5px_0_rgba(255,255,255,0.85))_drop-shadow(0_1.5px_2px_rgba(37,99,235,0.45))] dark:[filter:drop-shadow(-0.5px_-0.5px_0_rgba(255,255,255,0.25))_drop-shadow(0_1.5px_3px_rgba(59,130,246,0.6))]";
+
+// Gradient definitions for the card action icons. An SVG `url(#id)` reference
+// resolves document-wide, so these only need to be mounted once.
+const CardIconGradients: React.FC = () => (
+  <svg width="0" height="0" aria-hidden="true" focusable="false" className="absolute -z-10">
+    <defs>
+      {/* Matches the Reset button: blue-600 → indigo-600, brighter when set. */}
+      <linearGradient id="pyqIconIdle" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#2563eb" />
+        <stop offset="100%" stopColor="#4f46e5" />
+      </linearGradient>
+      <linearGradient id="pyqIconActive" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#3b82f6" />
+        <stop offset="100%" stopColor="#6366f1" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
 const QuestionCard: React.FC<QuestionCardProps> = ({ 
   question, 
+  storageScope,
   index, 
   attemptedOption, 
   isRevealed, 
@@ -692,6 +1503,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onCheckStatus,
   onOpenPremium,
   onFeedback,
+  feedbackSlot,
+  showNoteInline,
   onSubjectClick,
   onTopicClick,
   onExamClick,
@@ -705,7 +1518,77 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [editAnswer, setEditAnswer] = useState("");
   const [editExplanation, setEditExplanation] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const remoteKey = remoteStateKey(storageScope, question.id);
+  const [isBookmarked, setIsBookmarked] = useState(() => remoteQuestionState.get(remoteKey)?.isBookmarked ?? false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [isNotePreviewVisible, setIsNotePreviewVisible] = useState(false);
+  const [questionNote, setQuestionNote] = useState(() => remoteQuestionState.get(remoteKey)?.notes ?? "");
+  const notesButtonRef = useRef<HTMLButtonElement>(null);
+  const [remoteStateVersion, bumpRemoteStateVersion] = useReducer((n: number) => n + 1, 0);
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
+
+  useEffect(() => {
+    remoteStateListeners.add(bumpRemoteStateVersion);
+    return () => {
+      remoteStateListeners.delete(bumpRemoteStateVersion);
+    };
+  }, []);
+
+  const toggleBookmark = () => {
+    const next = !isBookmarked;
+    setIsBookmarked(next);
+    saveRemoteQuestionState(userEmail, storageScope, question, { isBookmarked: next });
+  };
+
+  const updateQuestionNote = (value: string) => {
+    setQuestionNote(value);
+  };
+
+  // Notes are pushed once the editor closes rather than on every keystroke, so
+  // a long note costs a single write instead of one per character. Read through
+  // a ref because the Escape listener is bound once per open.
+  const questionNoteRef = useRef(questionNote);
+  questionNoteRef.current = questionNote;
+
+  const closeNotes = () => {
+    setIsNotesOpen(false);
+    saveRemoteQuestionState(userEmail, storageScope, question, { notes: questionNoteRef.current });
+  };
+
+  // Wipes the note immediately (rather than waiting for Done) so the workspace
+  // and the card's note icon reflect the reset even if the user then hits
+  // Escape. The editor stays open so they can start over without reopening it.
+  const clearNote = () => {
+    setQuestionNote("");
+    questionNoteRef.current = "";
+    saveRemoteQuestionState(userEmail, storageScope, question, { notes: "" });
+  };
+
+  // The signed-in user's saved state is the only source of truth, so re-sync
+  // whenever it loads or the account changes. Clearing on a missing entry is
+  // what stops one user's bookmarks leaking to the next on a shared device.
+  // Skipped while the note editor is open so a late response cannot overwrite
+  // what the user is typing.
+  useEffect(() => {
+    if (isNotesOpen) return;
+    const remote = remoteQuestionState.get(remoteKey);
+    setIsBookmarked(remote?.isBookmarked ?? false);
+    setQuestionNote(remote?.notes ?? "");
+  }, [remoteStateVersion, remoteKey]);
+
+  useEffect(() => {
+    if (!isNotesOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeNotes();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isNotesOpen]);
+
+  const notesButtonRect = isNotePreviewVisible
+    ? notesButtonRef.current?.getBoundingClientRect()
+    : null;
 
   if (isLocked) {
     return (
@@ -781,50 +1664,186 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, animationFillMode: 'both' }}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="flex justify-between items-start mb-3 gap-2">
-        <div className="flex gap-1.5 items-center flex-wrap">
+      <div className="mb-3 space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
           <span 
             onClick={() => onExamClick?.(question.exam)}
             className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
           </span>
-          <span 
-            onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-            {question.subject}
-          </span>
-          {question.topic && (
-            <span 
-              onClick={() => onTopicClick?.(question.topic!)}
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              {question.topic}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {onFeedback && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onFeedback && (
+              <button
+                type="button"
+                onClick={onFeedback}
+                title="Report an issue or give feedback on this question"
+                className={cardIconButton}
+              >
+                <MessageSquareText
+                  className="h-3.5 w-3.5"
+                  strokeWidth={2}
+                  stroke="url(#pyqIconIdle)"
+                  fill="none"
+                />
+              </button>
+            )}
             <button
               type="button"
-              onClick={onFeedback}
-              title="Report an issue or give feedback on this question"
-              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+              onClick={toggleBookmark}
+              aria-pressed={isBookmarked}
+              title={isBookmarked ? "Remove bookmark" : "Bookmark this question"}
+              className={cardIconButton}
             >
-              <MessageSquareText className="w-3.5 h-3.5" />
+              <Bookmark
+                className={cn("h-3.5 w-3.5", isBookmarked && cardIcon3d)}
+                strokeWidth={2}
+                stroke={isBookmarked ? "url(#pyqIconActive)" : "url(#pyqIconIdle)"}
+                fill={isBookmarked ? "url(#pyqIconActive)" : "none"}
+              />
             </button>
-          )}
-          <span 
-            onClick={() => onYearClick?.(question.year)}
-            className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          >
-            <Calendar className="w-3 h-3 mr-1" />{question.year}
-          </span>
+            <button
+              ref={notesButtonRef}
+              type="button"
+              onClick={() => {
+                setIsNotePreviewVisible(false);
+                setIsNotesOpen(true);
+              }}
+              onMouseEnter={() => setIsNotePreviewVisible(true)}
+              onMouseLeave={() => setIsNotePreviewVisible(false)}
+              onFocus={() => setIsNotePreviewVisible(true)}
+              onBlur={() => setIsNotePreviewVisible(false)}
+              aria-expanded={isNotesOpen}
+              title={questionNote ? "View or edit your note" : "Add a note"}
+              className={cardIconButton}
+            >
+              {questionNote
+                ? <FilePlus
+                    className={cn("h-3.5 w-3.5", cardIcon3d)}
+                    strokeWidth={2}
+                    stroke="url(#pyqIconActive)"
+                    fill="url(#pyqIconActive)"
+                    fillOpacity={0.25}
+                  />
+                : <FilePlus
+                    className="h-3.5 w-3.5"
+                    strokeWidth={2}
+                    stroke="url(#pyqIconIdle)"
+                    fill="none"
+                  />}
+            </button>
+            <span 
+              onClick={() => onYearClick?.(question.year)}
+              className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Calendar className="w-3 h-3 mr-1" />{question.year}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span 
+              onClick={() => onSubjectClick?.(question.subject)}
+              className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+              {question.subject}
+            </span>
+            {question.topic && (
+              <span 
+                onClick={() => onTopicClick?.(question.topic!)}
+                className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                {question.topic}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0 pr-1">
+            <AttemptIndicator question={question} questionType={storageScope} userEmail={userEmail} />
+          </div>
         </div>
       </div>
-      
+
+      {isNotePreviewVisible && notesButtonRect && createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] w-56 rounded-xl border border-blue-100 bg-white/95 p-3 shadow-xl shadow-blue-900/15 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:shadow-black/30"
+          style={{
+            top: Math.min(notesButtonRect.bottom + 7, window.innerHeight - 140),
+            right: Math.max(8, window.innerWidth - notesButtonRect.right),
+          }}
+        >
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+            <FilePlus className="h-3 w-3" /> My notes
+          </div>
+          <p className="max-h-24 overflow-hidden whitespace-pre-wrap text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+            {questionNote.trim() || "No note added yet. Click to add one."}
+          </p>
+        </div>,
+        document.body
+      )}
+
+      {isNotesOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          onMouseDown={() => closeNotes()}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`question-note-title-${storageScope}-${question.id}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            className="flex max-h-[calc(100%-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-blue-100 bg-white p-3.5 shadow-2xl shadow-slate-950/25 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3
+                id={`question-note-title-${storageScope}-${question.id}`}
+                className="flex min-w-0 items-center gap-1.5 text-[13px] font-bold text-slate-900 dark:text-white"
+              >
+                <FilePlus className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" />
+                <span className="truncate">Notes · Q{question.id}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => closeNotes()}
+                aria-label="Close notes"
+                className="shrink-0 p-1 text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              id={`question-note-${storageScope}-${question.id}`}
+              value={questionNote}
+              onChange={(event) => updateQuestionNote(event.target.value)}
+              placeholder="Write a note for this question..."
+              autoFocus
+              className="min-h-[10rem] w-full flex-1 resize-none rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2.5 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-500"
+            />
+            <div className="mt-2.5 flex shrink-0 justify-end gap-2">
+              <button
+                type="button"
+                onClick={clearNote}
+                disabled={questionNote.trim() === ""}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => closeNotes()}
+                className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition hover:from-blue-500 hover:to-indigo-500"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedbackSlot}
+
       {(() => {
         const md = parseMatchTable(question.question);
         const badge = <span className="inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-bold px-2 py-0.5 mr-2 ring-1 ring-blue-500/20 align-middle">Q{question.id}</span>;
@@ -843,25 +1862,29 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           const isCorrectAnswer = opt === question.answer;
           const isSelected = opt === attemptedOption;
           const hasAttempted = !!attemptedOption;
+          // Results only colour the options while the answer is on screen, so
+          // hiding the answer genuinely resets the question for a re-attempt.
+          const showResult = hasAttempted && isRevealed;
 
           return (
             <button
               key={opt}
-              disabled={hasAttempted}
+              disabled={showResult || isSelected}
               onClick={() => onOptionClick(opt)}
               className={cn(
                 "w-full text-left py-2.5 px-4 border rounded-xl text-[13px] font-medium transition-all flex justify-between items-center group/btn leading-[19px]",
-                !hasAttempted && "bg-slate-50/80 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600/70 text-slate-700 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-600/70 hover:border-blue-300 dark:hover:border-blue-500/60 hover:shadow-sm cursor-pointer active:scale-[0.98]",
-                hasAttempted && isCorrectAnswer && "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10",
-                hasAttempted && isSelected && !isCorrectAnswer && "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400 shadow-sm shadow-red-500/10",
-                hasAttempted && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
+                !showResult && "bg-slate-50/80 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600/70 text-slate-700 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-600/70 hover:border-blue-300 dark:hover:border-blue-500/60 hover:shadow-sm cursor-pointer active:scale-[0.98]",
+                !showResult && isSelected && "ring-1 ring-blue-400/60 cursor-default",
+                showResult && isCorrectAnswer && "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10",
+                showResult && isSelected && !isCorrectAnswer && "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-400 shadow-sm shadow-red-500/10",
+                showResult && !isCorrectAnswer && !isSelected && "bg-slate-50/50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 opacity-60"
               )}
             >
               <span className="text-left pr-3 leading-[19px]">
                 <HighlightText text={opt} query={searchQuery} />
               </span>
-              {hasAttempted && isCorrectAnswer && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />}
-              {hasAttempted && isSelected && !isCorrectAnswer && <XCircle className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0" />}
+              {showResult && isCorrectAnswer && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />}
+              {showResult && isSelected && !isCorrectAnswer && <XCircle className="w-4 h-4 text-red-600 dark:text-red-500 shrink-0" />}
             </button>
           );
         })}
@@ -972,6 +1995,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           )}
         </div>
       )}
+
+      {showNoteInline && questionNote.trim() !== "" && (
+        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800/60">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+            <FilePlus className="h-3 w-3" /> My note
+          </div>
+          <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+            {questionNote.trim()}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
@@ -1036,9 +2070,14 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
               type="button"
               onClick={onFeedback}
               title="Report an issue or give feedback on this question"
-              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+              className={cardIconButton}
             >
-              <MessageSquareText className="w-3.5 h-3.5" />
+              <MessageSquareText
+                className="h-3.5 w-3.5"
+                strokeWidth={2}
+                stroke="url(#pyqIconIdle)"
+                fill="none"
+              />
             </button>
           )}
           <span
@@ -1194,6 +2233,11 @@ export default function App() {
   const [isLoadingEnglish, setIsLoadingEnglish] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("All");
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
+  const [notedOnly, setNotedOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<
+    'latest' | 'oldest' | 'score-asc' | 'score-desc' | 'attempts-desc' | 'attempts-asc'
+  >('latest');
   const [examFilter, setExamFilter] = useState("All");
   const [paperFilter, setPaperFilter] = useState("All");
   const [subjectFilter, setSubjectFilter] = useState("All");
@@ -1201,6 +2245,9 @@ export default function App() {
   const [isSavingDefaultFilters, setIsSavingDefaultFilters] = useState(false);
   const [defaultFilterMessage, setDefaultFilterMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [savedPrelimsFilterDefaults, setSavedPrelimsFilterDefaults] = useState<PrelimsFilterPreferences | null>(null);
+  const [savedCSATFilterDefaults, setSavedCSATFilterDefaults] = useState<CSATFilterPreferences | null>(null);
+  const [savedEnglishFilterDefaults, setSavedEnglishFilterDefaults] = useState<PrelimsFilterPreferences | null>(null);
+  const [savingDefaultSection, setSavingDefaultSection] = useState<null | 'prelims' | 'csat' | 'english'>(null);
   const [isApplyingDefaultFilters, setIsApplyingDefaultFilters] = useState(false);
   const [mainsYearFilter, setMainsYearFilter] = useState("All");
   const [mainsExamFilter, setMainsExamFilter] = useState("All");
@@ -1230,6 +2277,9 @@ export default function App() {
   const [csatRandomMode, setCSATRandomMode] = useState(false);
   const [csatRandomizedQuestions, setCSATRandomizedQuestions] = useState<Question[]>([]);
   const [csatRandomSelectLimit, setCSATRandomSelectLimit] = useState(10);
+  const [csatBookmarkedOnly, setCSATBookmarkedOnly] = useState(false);
+  const [csatNotedOnly, setCSATNotedOnly] = useState(false);
+  const [csatSortMode, setCSATSortMode] = useState<QuestionSortMode>('latest');
   
   const [englishYearFilter, setEnglishYearFilter] = useState("All");
   const [englishSubjectFilter, setEnglishSubjectFilter] = useState("All");
@@ -1241,6 +2291,15 @@ export default function App() {
   const [englishRandomMode, setEnglishRandomMode] = useState(false);
   const [englishRandomizedQuestions, setEnglishRandomizedQuestions] = useState<Question[]>([]);
   const [englishRandomSelectLimit, setEnglishRandomSelectLimit] = useState(10);
+  const [englishBookmarkedOnly, setEnglishBookmarkedOnly] = useState(false);
+  const [englishNotedOnly, setEnglishNotedOnly] = useState(false);
+  const [englishSortMode, setEnglishSortMode] = useState<QuestionSortMode>('latest');
+
+  // Bookmarks, notes and attempt counts live in the shared remote-state map, so
+  // every list that reads them must re-render when it changes (a save, or a new
+  // account). Declared here because the Prelims, CSAT and English memos all
+  // depend on it.
+  const [workspaceVersion, bumpWorkspaceVersion] = useReducer((n: number) => n + 1, 0);
 
   // Infinite scroll using callback refs
   const csatObserverRef = useRef<IntersectionObserver | null>(null);
@@ -1340,6 +2399,12 @@ export default function App() {
   });
   const loadedDefaultFiltersForEmailRef = useRef<string | null>(null);
 
+  // Pull the user's saved bookmarks and notes once per login so they appear on
+  // every device. Clears the cache on logout.
+  useEffect(() => {
+    loadRemoteQuestionState(userEmail);
+  }, [userEmail]);
+
   const fetchQuestions = async (showLoading = true) => {
     if (showLoading) setIsLoadingQuestions(true);
     try {
@@ -1350,10 +2415,19 @@ export default function App() {
       
       if (Array.isArray(data) && data.length > 0) {
         console.log(`Loaded ${data.length} questions from API`);
-       // Keep the 100 shown locally, then append remaining questions from API (avoid duplicates)
+       // Keep the 100 shown locally, then append remaining questions from API.
+       // The feed itself contains repeated ids, so track ids as we go rather
+       // than only diffing against `prev` — otherwise two copies of the same id
+       // inside one batch both survive and collide on React's `key`.
        setQuestions(prev => {
-         const existingIds = new Set(prev.map(q => String(q.id)));
-         const newQuestions = data.filter(q => !existingIds.has(String(q.id)));
+         const seenIds = new Set(prev.map(q => String(q.id)));
+         const newQuestions: Question[] = [];
+         for (const q of data as Question[]) {
+           const id = String(q.id);
+           if (seenIds.has(id)) continue;
+           seenIds.add(id);
+           newQuestions.push(q);
+         }
          return [...prev, ...newQuestions];
        });
       } else {
@@ -1376,7 +2450,7 @@ export default function App() {
       const response = await fetch('/api/mains-questions');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
-      setMainsQuestions(Array.isArray(data) ? data : []);
+      setMainsQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
     } catch (error) {
       console.warn("Failed to fetch mains questions:", error);
       setMainsQuestions([]);
@@ -1406,7 +2480,7 @@ export default function App() {
       const response = await fetch('/api/csat-questions');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
-      setCSATQuestions(Array.isArray(data) ? data : []);
+      setCSATQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
     } catch (error) {
       console.warn("Failed to fetch CSAT questions:", error);
       setCSATQuestions([]);
@@ -1421,7 +2495,7 @@ export default function App() {
       const response = await fetch('/api/english-questions');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
-      setEnglishQuestions(Array.isArray(data) ? data : []);
+      setEnglishQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
     } catch (error) {
       console.warn("Failed to fetch English questions:", error);
       setEnglishQuestions([]);
@@ -1437,7 +2511,7 @@ export default function App() {
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
-        setQuestions(data as Question[]);
+        setQuestions(dedupeQuestionsById(data as Question[]));
         console.log(`Showing ${data.length} prelims from backend (top 100)`);
         return;
       }
@@ -1585,6 +2659,29 @@ export default function App() {
         if (cancelled) return;
 
         loadedDefaultFiltersForEmailRef.current = userEmail;
+        const csatDefaults = data.csat as CSATFilterPreferences | null;
+        if (csatDefaults) {
+          setSavedCSATFilterDefaults(csatDefaults);
+          setCSATYearFilter(csatDefaults.year);
+          setCSATSubjectFilter(csatDefaults.subject);
+          if (csatDefaults.sort) setCSATSortMode(csatDefaults.sort as QuestionSortMode);
+          setCSATVisibleCount(30);
+          setCSATRandomMode(false);
+        }
+
+        const englishDefaults = data.english as PrelimsFilterPreferences | null;
+        if (englishDefaults) {
+          setSavedEnglishFilterDefaults(englishDefaults);
+          setEnglishExamFilter(englishDefaults.exam);
+          setEnglishYearFilter(englishDefaults.year);
+          setEnglishPaperFilter(englishDefaults.paper);
+          setEnglishSubjectFilter(englishDefaults.subject);
+          setEnglishTopicFilter(englishDefaults.topic);
+          if (englishDefaults.sort) setEnglishSortMode(englishDefaults.sort as QuestionSortMode);
+          setEnglishVisibleCount(30);
+          setEnglishRandomMode(false);
+        }
+
         const defaults = data.prelims as PrelimsFilterPreferences | null;
         setSavedPrelimsFilterDefaults(defaults);
         if (!defaults) return;
@@ -1595,6 +2692,7 @@ export default function App() {
         setPaperFilter(defaults.paper);
         setSubjectFilter(defaults.subject);
         setTopicFilter(defaults.topic);
+        if (defaults.sort) setSortMode(defaults.sort as QuestionSortMode);
         setVisibleCount(30);
         setRandomMode({ active: false, limit: 0 });
         setDefaultFilterMessage({ text: "Default filters applied.", type: "success" });
@@ -1846,21 +2944,33 @@ export default function App() {
     return { options: ["All", ...subjects], counts };
   }, [csatQuestions, csatYearFilter]);
 
+  const matchesCSATBaseFilters = useCallback((q: Question) => {
+    const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
+    const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
+    const matchesSearch = csatSearchQuery === "" ||
+      matchesQuestionId(q.id, csatSearchQuery) ||
+      (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase()) ||
+      (q.options || []).some(opt => (opt || "").toLowerCase().includes(csatSearchQuery.toLowerCase()));
+    return matchesYear && matchesSubject && matchesSearch;
+  }, [csatYearFilter, csatSubjectFilter, csatSearchQuery]);
+
+  const [bookmarkedCSATCount, notedCSATCount] = useMemo(
+    () => countSavedQuestions("csat", csatQuestions.filter(matchesCSATBaseFilters)),
+    [csatQuestions, matchesCSATBaseFilters, workspaceVersion]
+  );
+
   const filteredCSATQuestions = useMemo(() => {
     if (csatRandomMode) return csatRandomizedQuestions;
-    return csatQuestions
-      .filter(q => {
-        const matchesYear = csatYearFilter === "All" || q.year === csatYearFilter;
-        const matchesSubject = csatSubjectFilter === "All" || q.subject === csatSubjectFilter;
-        const matchesSearch = csatSearchQuery === "" || 
-          matchesQuestionId(q.id, csatSearchQuery) ||
-          (q.question || "").toLowerCase().includes(csatSearchQuery.toLowerCase()) ||
-          (q.options || []).some(opt => (opt || "").toLowerCase().includes(csatSearchQuery.toLowerCase()));
-        return matchesYear && matchesSubject && matchesSearch;
-      })
-      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
-      .slice(0, csatVisibleCount);
-  }, [csatQuestions, csatYearFilter, csatSubjectFilter, csatSearchQuery, csatRandomMode, csatRandomizedQuestions, csatVisibleCount]);
+    const list = sortQuestionsBy(
+      csatQuestions.filter(
+        q => matchesCSATBaseFilters(q) && matchesSavedFilters("csat", q, csatBookmarkedOnly, csatNotedOnly)
+      ),
+      "csat",
+      csatSortMode
+    );
+    if (csatBookmarkedOnly || csatNotedOnly) return list;
+    return list.slice(0, csatVisibleCount);
+  }, [csatQuestions, matchesCSATBaseFilters, csatRandomMode, csatRandomizedQuestions, csatVisibleCount, csatBookmarkedOnly, csatNotedOnly, csatSortMode, workspaceVersion]);
 
   // English filter lists
   const englishYearsList = useMemo(() => {
@@ -1941,24 +3051,36 @@ export default function App() {
     }
   }, [englishPapersList.options, englishPaperFilter]);
 
+  const matchesEnglishBaseFilters = useCallback((q: Question) => {
+    const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
+    const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
+    const matchesTopic = englishTopicFilter === "All" || q.topic === englishTopicFilter;
+    const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
+    const matchesPaper = englishPaperFilter === "All" || q.exam === englishPaperFilter;
+    const matchesSearch = englishSearchQuery === "" ||
+      matchesQuestionId(q.id, englishSearchQuery) ||
+      (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
+      (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
+    return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesPaper && matchesSearch;
+  }, [englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishPaperFilter, englishSearchQuery]);
+
+  const [bookmarkedEnglishCount, notedEnglishCount] = useMemo(
+    () => countSavedQuestions("english", englishQuestions.filter(matchesEnglishBaseFilters)),
+    [englishQuestions, matchesEnglishBaseFilters, workspaceVersion]
+  );
+
   const filteredEnglishQuestions = useMemo(() => {
     if (englishRandomMode) return englishRandomizedQuestions;
-    return englishQuestions
-      .filter(q => {
-        const matchesYear = englishYearFilter === "All" || q.year === englishYearFilter;
-        const matchesSubject = englishSubjectFilter === "All" || q.subject === englishSubjectFilter;
-        const matchesTopic = englishTopicFilter === "All" || q.topic === englishTopicFilter;
-        const matchesExam = englishExamFilter === "All" || getExamCategory(q.exam) === englishExamFilter;
-        const matchesPaper = englishPaperFilter === "All" || q.exam === englishPaperFilter;
-        const matchesSearch = englishSearchQuery === "" || 
-          matchesQuestionId(q.id, englishSearchQuery) ||
-          (q.question || "").toLowerCase().includes(englishSearchQuery.toLowerCase()) ||
-          (q.options || []).some(opt => (opt || "").toLowerCase().includes(englishSearchQuery.toLowerCase()));
-        return matchesYear && matchesSubject && matchesTopic && matchesExam && matchesPaper && matchesSearch;
-      })
-      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
-      .slice(0, englishVisibleCount);
-  }, [englishQuestions, englishYearFilter, englishSubjectFilter, englishTopicFilter, englishExamFilter, englishPaperFilter, englishSearchQuery, englishRandomMode, englishRandomizedQuestions, englishVisibleCount]);
+    const list = sortQuestionsBy(
+      englishQuestions.filter(
+        q => matchesEnglishBaseFilters(q) && matchesSavedFilters("english", q, englishBookmarkedOnly, englishNotedOnly)
+      ),
+      "english",
+      englishSortMode
+    );
+    if (englishBookmarkedOnly || englishNotedOnly) return list;
+    return list.slice(0, englishVisibleCount);
+  }, [englishQuestions, matchesEnglishBaseFilters, englishRandomMode, englishRandomizedQuestions, englishVisibleCount, englishBookmarkedOnly, englishNotedOnly, englishSortMode, workspaceVersion]);
 
   // Check subscription and admin status
   // Admin API key (secret) — stored only in this browser, sent with admin requests.
@@ -2113,7 +3235,7 @@ export default function App() {
     }
   }, [showPremiumModal]);
 
-  // ── Performance report (opened from the header chart icon) ──
+  // ── My Workspace (bookmarks · notes · performance report) ──
   type ReportBucket = { correct: number; total: number };
   type ReportAttempt = { questionId?: number; questionType: string; subject: string | null; topic: string | null; isCorrect: boolean; attemptId?: string | null; ts?: string };
   type ReportData = {
@@ -2124,12 +3246,21 @@ export default function App() {
     topics: Record<string, ReportBucket & { subject: string | null }>;
     attemptCount: number;
   };
+  type WorkspaceTab = 'bookmarks' | 'notes' | 'report';
   const [showReport, setShowReport] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('bookmarks');
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const openReport = async () => {
-    setShowReport(true);
+
+  useEffect(() => {
+    remoteStateListeners.add(bumpWorkspaceVersion);
+    return () => {
+      remoteStateListeners.delete(bumpWorkspaceVersion);
+    };
+  }, []);
+
+  const loadReport = async () => {
     if (!userEmail) return;
     setReportLoading(true);
     setReportError(null);
@@ -2143,6 +3274,76 @@ export default function App() {
     } finally {
       setReportLoading(false);
     }
+  };
+  const openWorkspace = async (tab: WorkspaceTab = 'bookmarks') => {
+    setWorkspaceTab(tab);
+    setShowReport(true);
+    // The report is the only tab that needs its own request; bookmarks and
+    // notes are already in memory from the sign-in fetch.
+    if (tab === 'report') await loadReport();
+  };
+  // Fetch the report lazily the first time that tab is opened.
+  useEffect(() => {
+    if (!showReport || workspaceTab !== 'report') return;
+    if (reportData || reportLoading || reportError) return;
+    loadReport();
+  }, [showReport, workspaceTab]);
+
+  // Bookmarks and notes can point at any section, but the CSAT and English
+  // lists only load when their tab is visited. Pull them in when the workspace
+  // opens so every saved entry can show its actual question text.
+  useEffect(() => {
+    if (!showReport || !userEmail) return;
+    if (csatQuestions.length === 0 && !isLoadingCSAT) fetchCSATQuestions();
+    if (englishQuestions.length === 0 && !isLoadingEnglish) fetchEnglishQuestions();
+  }, [showReport, userEmail]);
+
+  type WorkspaceEntry = WorkspaceEntryShape;
+
+  // Everything saved by the signed-in user, joined back to the loaded question
+  // so the workspace can show the actual question text. Entries whose question
+  // is not loaded still render from the metadata stored on the document.
+  const workspaceEntries = useMemo<WorkspaceEntry[]>(() => {
+    // Index by string id: some questions use non-numeric ids (e.g. "mcq_3210"),
+    // which a numeric lookup would silently miss.
+    const index: Record<string, Map<string, Question>> = {
+      prelims: new Map(questions.map(q => [String(q.id), q])),
+      csat: new Map(csatQuestions.map(q => [String(q.id), q])),
+      english: new Map(englishQuestions.map(q => [String(q.id), q])),
+    };
+    const rows: WorkspaceEntry[] = [];
+    remoteQuestionState.forEach((state, key) => {
+      const separator = key.indexOf(':');
+      const questionType = key.slice(0, separator);
+      const rawId = key.slice(separator + 1);
+      const questionId = Number.isFinite(Number(rawId)) && rawId.trim() !== '' ? Number(rawId) : rawId;
+      rows.push({ key, questionId, questionType, question: index[questionType]?.get(rawId), state });
+    });
+    return rows.sort((a, b) => String(b.state.updatedAt || '').localeCompare(String(a.state.updatedAt || '')));
+  }, [workspaceVersion, questions, csatQuestions, englishQuestions]);
+
+  const bookmarkedEntries = useMemo(
+    () => workspaceEntries.filter(entry => entry.state.isBookmarked),
+    [workspaceEntries]
+  );
+  const notedEntries = useMemo(
+    () => workspaceEntries.filter(entry => entry.state.notes.trim().length > 0),
+    [workspaceEntries]
+  );
+
+  const removeWorkspaceEntry = (entry: WorkspaceEntry, patch: { isBookmarked?: boolean; notes?: string }) => {
+    saveRemoteQuestionState(
+      userEmail,
+      entry.questionType,
+      entry.question || {
+        id: entry.questionId,
+        subject: entry.state.subject,
+        topic: entry.state.topic,
+        exam: entry.state.exam,
+        year: entry.state.year,
+      },
+      patch
+    );
   };
   const [legalPage, setLegalPage] = useState<null | 'about' | 'contact' | 'privacy' | 'terms' | 'refund'>(null);
   const [showFounderModal, setShowFounderModal] = useState(false);
@@ -2166,6 +3367,92 @@ export default function App() {
     setFeedbackAlias(userEmail || "");
     setShowFeedbackModal(true);
   };
+
+  // Rendered inside the originating question card so per-question feedback opens
+  // in place, matching the attempt-history and notes popups.
+  const renderFeedbackModal = () => (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
+          <div className="relative flex max-h-[calc(100%-2rem)] w-full max-w-md flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
+            {/* Gradient header */}
+            <div className="relative shrink-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-4 py-2.5 overflow-hidden">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="absolute top-2 right-2 text-white/80 hover:text-white hover:bg-white/10 p-1 rounded-full transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2 pr-7">
+                <div className="w-7 h-7 shrink-0 rounded-lg bg-white/15 ring-1 ring-white/25 flex items-center justify-center">
+                  <MessageSquareText className="w-3.5 h-3.5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-[13px] font-bold text-white leading-tight truncate">
+                    {feedbackTarget.questionId != null ? 'Feedback on this question' : 'Send Feedback'}
+                  </h2>
+                  <p className="text-[10px] text-white/80 truncate">
+                    {feedbackTarget.questionId != null
+                      ? `${feedbackTarget.questionType.toUpperCase()} · Q#${feedbackTarget.questionId}`
+                      : 'Tell us what we can improve'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+              {feedbackDone ? (
+                <div className="text-center py-4">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Thank you!</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Your feedback has been received.</p>
+                  <button
+                    onClick={() => setShowFeedbackModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label className="block shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Your name / alias <span className="font-normal text-slate-400">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={feedbackAlias}
+                    onChange={(e) => setFeedbackAlias(e.target.value)}
+                    placeholder="Anonymous"
+                    className="w-full shrink-0 mb-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2 text-slate-900 dark:text-white placeholder-slate-400"
+                  />
+                  <label className="block shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Feedback</label>
+                  <textarea
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    placeholder={feedbackTarget.questionId != null ? "Is something wrong with this question? Let us know…" : "Share your suggestions, issues, or ideas…"}
+                    className="min-h-[6rem] w-full flex-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400 resize-none"
+                  />
+                  {feedbackError && <p className="shrink-0 text-xs text-rose-500 mt-2">{feedbackError}</p>}
+                  <div className="flex shrink-0 gap-2 mt-3">
+                    <button
+                      onClick={() => setShowFeedbackModal(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={submitFeedback}
+                      disabled={feedbackSubmitting || !feedbackComment.trim()}
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      {feedbackSubmitting ? 'Sending…' : (<><Send className="w-3.5 h-3.5" /> Send</>)}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+  );
 
   const submitFeedback = async () => {
     if (!feedbackComment.trim()) {
@@ -2626,56 +3913,65 @@ export default function App() {
     }
   }, [mainsTopicsList.options, mainsTopicFilter]);
 
+  // Every prelims filter except the bookmark/notes toggles themselves. Shared by
+  // the list, the "load more" check and the sidebar badges, so a badge count can
+  // never disagree with what is actually rendered.
+  const matchesPrelimsBaseFilters = useCallback((q: Question) => {
+    // Skip questions without valid question text
+    if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
+
+    const matchesYear = yearFilter === "All" || q.year === yearFilter;
+    const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
+    const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
+    const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
+    const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
+    const matchesSearch = searchQuery === "" ||
+      matchesQuestionId(q.id, searchQuery) ||
+      (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
+
+    return matchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
+  }, [yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery]);
+
+  const [bookmarkedPrelimsCount, notedPrelimsCount] = useMemo(
+    () => countSavedQuestions("prelims", questions.filter(matchesPrelimsBaseFilters)),
+    [questions, matchesPrelimsBaseFilters, workspaceVersion]
+  );
+
   const filteredQuestions = useMemo(() => {
     if (randomMode.active) {
       return randomizedQuestions;
     }
 
-    const list = questions.filter(q => {
-      // Skip questions without valid question text
-      if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
-      
-      const marchesYear = yearFilter === "All" || q.year === yearFilter;
-      const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
-      const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
-      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
-      const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
-      const matchesSearch = searchQuery === "" || 
-        matchesQuestionId(q.id, searchQuery) ||
-        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      return marchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
-    }).sort((a, b) => {
-      // Sort by year descending
-      const yearComparison = String(b.year).localeCompare(String(a.year));
-      if (yearComparison !== 0) return yearComparison;
-      // If same year, sort by id descending
-      return b.id - a.id;
-    });
+    const list = sortQuestionsBy(
+      questions.filter(
+        q => matchesPrelimsBaseFilters(q) && matchesSavedFilters("prelims", q, bookmarkedOnly, notedOnly)
+      ),
+      "prelims",
+      sortMode
+    );
 
+    // Bookmarked/noted sets are small and the user expects the badge count to
+    // match what's on screen, so skip pagination while either filter is on.
+    if (bookmarkedOnly || notedOnly) return list;
     return list.slice(0, visibleCount);
-  }, [questions, yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode, randomizedQuestions]);
+  }, [questions, matchesPrelimsBaseFilters, visibleCount, randomMode, randomizedQuestions, bookmarkedOnly, notedOnly, sortMode, workspaceVersion]);
 
   const isMoreToLoad = useMemo(() => {
     if (randomMode.active) return false;
+    if (bookmarkedOnly || notedOnly) return false;
     const totalFiltered = questions.filter(q => {
-      const marchesYear = yearFilter === "All" || q.year === yearFilter;
-      const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
-      const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
-      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
-      const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
-      const matchesSearch = searchQuery === "" || 
-        matchesQuestionId(q.id, searchQuery) ||
-        (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.options || []).some(opt => (opt || "").toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      return marchesYear && matchesExam && matchesPaper && matchesSubject && matchesTopic && matchesSearch;
+      if (!matchesPrelimsBaseFilters(q)) return false;
+
+      const state = remoteQuestionState.get(remoteStateKey("prelims", q.id));
+      const matchesBookmark = !bookmarkedOnly || state?.isBookmarked === true;
+      const matchesNote = !notedOnly || (state?.notes || "").trim() !== "";
+
+      return matchesBookmark && matchesNote;
     }).length;
     return totalFiltered > visibleCount;
-  }, [questions, yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery, visibleCount, randomMode]);
+  }, [questions, matchesPrelimsBaseFilters, visibleCount, randomMode, bookmarkedOnly, notedOnly, workspaceVersion]);
 
   const handleLoadMore = useCallback(() => {
     setVisibleCount(prev => prev + 150);
@@ -2709,7 +4005,9 @@ export default function App() {
   }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean, questionType: string = 'prelims', subject?: string, topic?: string) => {
-    if (userAttempts[qid]) return;
+    // Re-attempting is allowed, but picking the same option again would only
+    // inflate the counters without saying anything new about recall.
+    if (userAttempts[qid] === option) return;
     setUserAttempts(prev => ({ ...prev, [qid]: option }));
     setRevealedAnswers(prev => ({ ...prev, [qid]: true }));
     setScore(prev => ({
@@ -2722,6 +4020,7 @@ export default function App() {
     });
     // Persist the attempt (id + correct/wrong) for the logged-in user so the score survives reloads.
     if (userEmail) {
+      recordRemoteAttempt(userEmail, questionType, qid, option, isCorrect, attemptId);
       fetch('/api/attempts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2778,77 +4077,127 @@ export default function App() {
     setSubjectFilter("All");
     setTopicFilter("All");
     setSearchQuery("");
+    setBookmarkedOnly(false);
+    setNotedOnly(false);
+    setSortMode('latest');
     setVisibleCount(30);
     setRandomMode({ active: false, limit: 0 });
     resetQuiz(false);
   };
 
   const hasSavedPrelimsDefault = savedPrelimsFilterDefaults !== null;
+  const hasSavedCSATDefault = savedCSATFilterDefaults !== null;
+  const hasSavedEnglishDefault = savedEnglishFilterDefaults !== null;
 
-  const savePrelimsFilterDefaults = async () => {
+  // One saver for all three sections. The body carries the section name and its
+  // filters (plus the sort mode); the API stores each section independently.
+  const saveFilterDefaults = async (
+    section: 'prelims' | 'csat' | 'english',
+    filters: Record<string, string>
+  ) => {
     if (!userEmail) {
       setDefaultFilterMessage({ text: "Sign in to save default filters.", type: "error" });
       setShowLoginModal(true);
       return;
     }
 
-    setIsSavingDefaultFilters(true);
+    setSavingDefaultSection(section);
+    setIsSavingDefaultFilters(section === 'prelims');
     setDefaultFilterMessage(null);
-    const prelims: PrelimsFilterPreferences = {
-      exam: examFilter,
-      year: yearFilter,
-      paper: paperFilter,
-      subject: subjectFilter,
-      topic: topicFilter,
-    };
 
     try {
       const response = await fetch("/api/filter-preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail, prelims }),
+        body: JSON.stringify({ email: userEmail, section, filters }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save default filters");
 
-      loadedDefaultFiltersForEmailRef.current = userEmail;
-      setSavedPrelimsFilterDefaults(prelims);
+      if (section === 'prelims') {
+        loadedDefaultFiltersForEmailRef.current = userEmail;
+        setSavedPrelimsFilterDefaults(filters as PrelimsFilterPreferences);
+      } else if (section === 'csat') {
+        setSavedCSATFilterDefaults(filters as CSATFilterPreferences);
+      } else {
+        setSavedEnglishFilterDefaults(filters as PrelimsFilterPreferences);
+      }
       setDefaultFilterMessage({ text: "Current filters saved as your default.", type: "success" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not save default filters";
       setDefaultFilterMessage({ text: message, type: "error" });
     } finally {
+      setSavingDefaultSection(null);
       setIsSavingDefaultFilters(false);
     }
   };
 
-  const removePrelimsFilterDefaults = async () => {
+  const removeFilterDefaults = async (section: 'prelims' | 'csat' | 'english') => {
     if (!userEmail) return;
 
-    setIsSavingDefaultFilters(true);
+    setSavingDefaultSection(section);
+    setIsSavingDefaultFilters(section === 'prelims');
     setDefaultFilterMessage(null);
     try {
-      const response = await fetch(`/api/filter-preferences?email=${encodeURIComponent(userEmail)}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/api/filter-preferences?email=${encodeURIComponent(userEmail)}&section=${section}`,
+        { method: "DELETE" }
+      );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not remove default filters");
 
-      setSavedPrelimsFilterDefaults(null);
+      if (section === 'prelims') setSavedPrelimsFilterDefaults(null);
+      else if (section === 'csat') setSavedCSATFilterDefaults(null);
+      else setSavedEnglishFilterDefaults(null);
       setDefaultFilterMessage({ text: "Default choice removed. Current filters are unchanged.", type: "success" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not remove default filters";
       setDefaultFilterMessage({ text: message, type: "error" });
     } finally {
+      setSavingDefaultSection(null);
       setIsSavingDefaultFilters(false);
     }
   };
 
   const togglePrelimsFilterDefault = () => {
     if (hasSavedPrelimsDefault) {
-      removePrelimsFilterDefaults();
+      removeFilterDefaults('prelims');
     } else {
-      savePrelimsFilterDefaults();
+      saveFilterDefaults('prelims', {
+        exam: examFilter,
+        year: yearFilter,
+        paper: paperFilter,
+        subject: subjectFilter,
+        topic: topicFilter,
+        sort: sortMode,
+      });
+    }
+  };
+
+  const toggleCSATFilterDefault = () => {
+    if (hasSavedCSATDefault) {
+      removeFilterDefaults('csat');
+    } else {
+      saveFilterDefaults('csat', {
+        year: csatYearFilter,
+        subject: csatSubjectFilter,
+        sort: csatSortMode,
+      });
+    }
+  };
+
+  const toggleEnglishFilterDefault = () => {
+    if (hasSavedEnglishDefault) {
+      removeFilterDefaults('english');
+    } else {
+      saveFilterDefaults('english', {
+        exam: englishExamFilter,
+        year: englishYearFilter,
+        paper: englishPaperFilter,
+        subject: englishSubjectFilter,
+        topic: englishTopicFilter,
+        sort: englishSortMode,
+      });
     }
   };
 
@@ -2880,7 +4229,7 @@ export default function App() {
   // Reset pagination when filters change
   useEffect(() => {
     setVisibleCount(30);
-  }, [yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery]);
+  }, [yearFilter, examFilter, paperFilter, subjectFilter, topicFilter, searchQuery, bookmarkedOnly, notedOnly]);
 
   const resetQuiz = (scrollToTop = true) => {
     setUserAttempts({});
@@ -2897,7 +4246,10 @@ export default function App() {
 
   // Reusable score chip (used by Prelims, CSAT and English section headers).
   const renderScoreChip = (sc: { correct: number; total: number }) => {
-    const pct = sc.total > 0 ? sc.correct / sc.total : 0;
+    const wrong = sc.total - sc.correct;
+    const markedScore = sc.correct - wrong / 3;
+    const pct = sc.total > 0 ? markedScore / sc.total : 0;
+    const ringProgress = Math.max(0, Math.min(1, pct));
     const low = sc.total > 0 && pct < 0.5;
     const C = 2 * Math.PI * 13;
     return (
@@ -2905,8 +4257,8 @@ export default function App() {
         type="button"
         onClick={() => resetQuiz(false)}
         disabled={sc.total === 0}
-        aria-label={sc.total > 0 ? `Score ${sc.correct} out of ${sc.total}. Click to reset.` : "No score yet"}
-        title={sc.total > 0 ? "Click to reset score" : "Answer questions to start scoring"}
+        aria-label={sc.total > 0 ? `${sc.correct} correct out of ${sc.total} attempted. Percentage includes one-third negative marking. Click to reset.` : "No score yet"}
+        title={sc.total > 0 ? `${sc.correct}/${sc.total} correct. Percentage includes a 1/3 mark deduction for each wrong answer. Click to reset.` : "Answer questions to start scoring"}
         className={cn(
         "group h-[38px] pl-1.5 pr-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shadow-sm backdrop-blur-sm transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         low
@@ -2921,7 +4273,7 @@ export default function App() {
             <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-slate-200/70 transition-colors group-hover:stroke-white/30 dark:stroke-slate-700" />
             <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" strokeLinecap="round"
               className={cn(low ? "stroke-red-500" : "stroke-emerald-500", "transition-colors group-hover:stroke-white")}
-              style={{ strokeDasharray: C, strokeDashoffset: C * (1 - pct), transition: 'stroke-dashoffset 0.5s ease' }} />
+              style={{ strokeDasharray: C, strokeDashoffset: C * (1 - ringProgress), transition: 'stroke-dashoffset 0.5s ease' }} />
           </svg>
           <span className={cn("absolute inset-0 flex items-center justify-center text-[8px] font-extrabold transition-colors group-hover:text-white", low ? "text-red-500" : "text-emerald-500")}>
             {sc.total > 0 ? `${Math.round(pct * 100)}%` : <Trophy className="w-2.5 h-2.5" />}
@@ -3005,6 +4357,7 @@ export default function App() {
 
   return (
     <div className={cn("min-h-screen", isDarkMode ? "dark" : "")}>
+      <CardIconGradients />
       <div className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
         <header className={cn(
           "header-3d bg-gradient-to-b from-slate-50/90 via-white/85 to-indigo-50/60 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950 backdrop-blur-xl border-b border-slate-200/70 dark:border-indigo-900/50 sticky top-0 z-50 transition-all duration-300",
@@ -3213,16 +4566,16 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* My report */}
+                  {/* My workspace */}
                   {userEmail && (
                     <button
-                      onClick={() => { openReport(); setIsUserMenuOpen(false); }}
+                      onClick={() => { openWorkspace('bookmarks'); setIsUserMenuOpen(false); }}
                       className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     >
                       <span className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center shrink-0">
                         <BarChart3 className="w-4 h-4 text-indigo-500" />
                       </span>
-                      <span>My report</span>
+                      <span>My workspace</span>
                     </button>
                   )}
 
@@ -3855,9 +5208,22 @@ export default function App() {
           <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                <SortMenu
+                  value={sortMode}
+                  onChange={(v) => setSortMode(v as typeof sortMode)}
+                  defaultValue="latest"
+                  options={questionSortOptions}
+                />
               </h2>
               <div className="flex items-center gap-1.5">
+                <SavedFilterToggles
+                  bookmarkedOnly={bookmarkedOnly}
+                  onToggleBookmarked={() => setBookmarkedOnly(v => !v)}
+                  bookmarkedCount={bookmarkedPrelimsCount}
+                  notedOnly={notedOnly}
+                  onToggleNoted={() => setNotedOnly(v => !v)}
+                  notedCount={notedPrelimsCount}
+                />
                 <button
                   type="button"
                   onClick={togglePrelimsFilterDefault}
@@ -3900,7 +5266,7 @@ export default function App() {
                 <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
               </div>
             </div>
-            
+
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Exam</label>
               <FancySelect
@@ -3989,6 +5355,7 @@ export default function App() {
                       <QuestionCard 
                         key={q.id}
                         question={q}
+                        storageScope="prelims"
                         index={idx}
                         attemptedOption={userAttempts[q.id]}
                         isRevealed={revealedAnswers[q.id]}
@@ -3998,6 +5365,8 @@ export default function App() {
                         userEmail={userEmail}
                         onOpenPremium={() => setShowPremiumModal(true)}
                         onFeedback={() => openFeedback(q.id, 'prelims')}
+                        showNoteInline={notedOnly}
+                        feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'prelims' ? renderFeedbackModal() : null}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
                         isEditor={isEditor}
@@ -4137,7 +5506,7 @@ export default function App() {
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                    <Filter className="w-4 h-4 text-blue-500" />
                   </h2>
                   <button
                     onClick={resetMainsFilters}
@@ -4281,21 +5650,58 @@ export default function App() {
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                    <SortMenu
+                      value={csatSortMode}
+                      onChange={(v) => setCSATSortMode(v as QuestionSortMode)}
+                      defaultValue="latest"
+                      options={questionSortOptions}
+                    />
                   </h2>
-                  <button
-                    onClick={() => {
-                      setCSATYearFilter("All");
-                      setCSATSubjectFilter("All");
-                      setCSATSearchQuery("");
-                      setCSATVisibleCount(30);
-                      setCSATRandomMode(false);
-                      resetQuiz(false);
-                    }}
-                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <SavedFilterToggles
+                      bookmarkedOnly={csatBookmarkedOnly}
+                      onToggleBookmarked={() => { setCSATBookmarkedOnly(v => !v); setCSATVisibleCount(30); }}
+                      bookmarkedCount={bookmarkedCSATCount}
+                      notedOnly={csatNotedOnly}
+                      onToggleNoted={() => { setCSATNotedOnly(v => !v); setCSATVisibleCount(30); }}
+                      notedCount={notedCSATCount}
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleCSATFilterDefault}
+                      disabled={savingDefaultSection === 'csat'}
+                      title={hasSavedCSATDefault ? "Unpin default filters" : "Pin current filters as default"}
+                      aria-label={hasSavedCSATDefault ? "Unpin default filters" : "Pin current filters as default"}
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
+                        hasSavedCSATDefault
+                          ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
+                          : "border-slate-200 bg-white/70 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                      )}
+                    >
+                      {savingDefaultSection === 'csat'
+                        ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        : hasSavedCSATDefault
+                        ? <Pin className="h-3.5 w-3.5 fill-current" />
+                        : <PinOff className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCSATYearFilter("All");
+                        setCSATSubjectFilter("All");
+                        setCSATSearchQuery("");
+                        setCSATVisibleCount(30);
+                        setCSATRandomMode(false);
+                        setCSATBookmarkedOnly(false);
+                        setCSATNotedOnly(false);
+                        setCSATSortMode('latest');
+                        resetQuiz(false);
+                      }}
+                      className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -4355,6 +5761,7 @@ export default function App() {
                         <QuestionCard 
                           key={q.id}
                           question={q}
+                          storageScope="csat"
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
@@ -4365,6 +5772,8 @@ export default function App() {
                           searchQuery={csatSearchQuery}
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'csat')}
+                          showNoteInline={csatNotedOnly}
+                          feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'csat' ? renderFeedbackModal() : null}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -4408,24 +5817,61 @@ export default function App() {
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                    <Filter className="w-4 h-4 mr-2 text-blue-500" /> Filters
+                    <SortMenu
+                      value={englishSortMode}
+                      onChange={(v) => setEnglishSortMode(v as QuestionSortMode)}
+                      defaultValue="latest"
+                      options={questionSortOptions}
+                    />
                   </h2>
-                  <button
-                    onClick={() => {
-                      setEnglishYearFilter("All");
-                      setEnglishSubjectFilter("All");
-                      setEnglishTopicFilter("All");
-                      setEnglishExamFilter("All");
-                      setEnglishPaperFilter("All");
-                      setEnglishSearchQuery("");
-                      setEnglishVisibleCount(30);
-                      setEnglishRandomMode(false);
-                      resetQuiz(false);
-                    }}
-                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <SavedFilterToggles
+                      bookmarkedOnly={englishBookmarkedOnly}
+                      onToggleBookmarked={() => { setEnglishBookmarkedOnly(v => !v); setEnglishVisibleCount(30); }}
+                      bookmarkedCount={bookmarkedEnglishCount}
+                      notedOnly={englishNotedOnly}
+                      onToggleNoted={() => { setEnglishNotedOnly(v => !v); setEnglishVisibleCount(30); }}
+                      notedCount={notedEnglishCount}
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleEnglishFilterDefault}
+                      disabled={savingDefaultSection === 'english'}
+                      title={hasSavedEnglishDefault ? "Unpin default filters" : "Pin current filters as default"}
+                      aria-label={hasSavedEnglishDefault ? "Unpin default filters" : "Pin current filters as default"}
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-lg border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
+                        hasSavedEnglishDefault
+                          ? "border-transparent bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 hover:from-blue-500 hover:to-indigo-500"
+                          : "border-slate-200 bg-white/70 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                      )}
+                    >
+                      {savingDefaultSection === 'english'
+                        ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        : hasSavedEnglishDefault
+                        ? <Pin className="h-3.5 w-3.5 fill-current" />
+                        : <PinOff className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEnglishYearFilter("All");
+                        setEnglishSubjectFilter("All");
+                        setEnglishTopicFilter("All");
+                        setEnglishExamFilter("All");
+                        setEnglishPaperFilter("All");
+                        setEnglishSearchQuery("");
+                        setEnglishVisibleCount(30);
+                        setEnglishRandomMode(false);
+                        setEnglishBookmarkedOnly(false);
+                        setEnglishNotedOnly(false);
+                        setEnglishSortMode('latest');
+                        resetQuiz(false);
+                      }}
+                      className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -4508,6 +5954,7 @@ export default function App() {
                         <QuestionCard 
                           key={q.id}
                           question={q}
+                          storageScope="english"
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
@@ -4521,6 +5968,8 @@ export default function App() {
                           onUpdateQuestion={handleUpdateEnglishQuestion}
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'english')}
+                          showNoteInline={englishNotedOnly}
+                          feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'english' ? renderFeedbackModal() : null}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -4656,9 +6105,14 @@ export default function App() {
                               type="button"
                               onClick={() => openFeedback(q.id, 'toppers')}
                               title="Report an issue or give feedback on this question"
-                              className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 p-1.5 rounded-full transition-colors focus:outline-none"
+                              className={cardIconButton}
                             >
-                              <MessageSquareText className="w-3.5 h-3.5" />
+                              <MessageSquareText
+                                className="h-3.5 w-3.5"
+                                strokeWidth={2}
+                                stroke="url(#pyqIconIdle)"
+                                fill="none"
+                              />
                             </button>
                           </div>
                         </div>
@@ -4776,86 +6230,7 @@ export default function App() {
       </footer>
 
       {/* Login Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
-            {/* Gradient header */}
-            <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 py-5 text-center overflow-hidden">
-              <button
-                onClick={() => setShowFeedbackModal(false)}
-                className="absolute top-3 right-3 text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <div className="w-11 h-11 mx-auto mb-2 rounded-2xl bg-white/15 ring-1 ring-white/25 flex items-center justify-center">
-                <MessageSquareText className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                {feedbackTarget.questionId != null ? 'Feedback on this question' : 'Send Feedback'}
-              </h2>
-              <p className="text-[11px] text-white/80 mt-0.5">
-                {feedbackTarget.questionId != null
-                  ? `${feedbackTarget.questionType.toUpperCase()} · Q#${feedbackTarget.questionId}`
-                  : 'Tell us what we can improve'}
-              </p>
-            </div>
-
-            <div className="p-6">
-              {feedbackDone ? (
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Thank you!</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Your feedback has been received.</p>
-                  <button
-                    onClick={() => setShowFeedbackModal(false)}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25"
-                  >
-                    Done
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Your name / alias <span className="font-normal text-slate-400">(optional)</span></label>
-                  <input
-                    type="text"
-                    value={feedbackAlias}
-                    onChange={(e) => setFeedbackAlias(e.target.value)}
-                    placeholder="Anonymous"
-                    className="w-full mb-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400"
-                  />
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Feedback</label>
-                  <textarea
-                    value={feedbackComment}
-                    onChange={(e) => setFeedbackComment(e.target.value)}
-                    rows={4}
-                    placeholder={feedbackTarget.questionId != null ? "Is something wrong with this question? Let us know…" : "Share your suggestions, issues, or ideas…"}
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400 resize-none"
-                  />
-                  {feedbackError && <p className="text-xs text-rose-500 mt-2">{feedbackError}</p>}
-                  <div className="flex gap-2 mt-4">
-                    <button
-                      onClick={() => setShowFeedbackModal(false)}
-                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={submitFeedback}
-                      disabled={feedbackSubmitting || !feedbackComment.trim()}
-                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                    >
-                      {feedbackSubmitting ? 'Sending…' : (<><Send className="w-3.5 h-3.5" /> Send</>)}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {showFeedbackModal && feedbackTarget.questionId === null && renderFeedbackModal()}
 
       {showLoginModal && (
         <div
@@ -4938,19 +6313,114 @@ export default function App() {
             <div className="flex items-center justify-between px-5 py-2.5 border-b border-indigo-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900">
               <div className="flex items-center gap-2 min-w-0">
                 <BarChart3 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                <h2 className="text-sm font-bold text-indigo-900 dark:text-slate-100 leading-tight">My Performance Report</h2>
+                <h2 className="text-sm font-bold text-indigo-900 dark:text-slate-100 leading-tight">My Workspace</h2>
                 <span className="text-[11px] text-indigo-400/80 dark:text-slate-500 truncate hidden sm:inline">· {userEmail || 'Not signed in'}</span>
               </div>
               <button
                 onClick={() => setShowReport(false)}
                 className="p-1.5 rounded-full text-indigo-400 hover:bg-white/60 dark:hover:bg-slate-800 hover:text-indigo-600 transition-colors flex-shrink-0"
-                aria-label="Close report"
+                aria-label="Close workspace"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Body */}
+            {/* Tabs */}
+            <div className="flex items-center gap-1 px-3 sm:px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
+              {([
+                { id: 'bookmarks' as const, label: 'Bookmarks', icon: Bookmark, count: bookmarkedEntries.length },
+                { id: 'notes' as const, label: 'Notes', icon: StickyNote, count: notedEntries.length },
+                { id: 'report' as const, label: 'Report', icon: BarChart3, count: null },
+              ]).map(tab => {
+                const TabIcon = tab.icon;
+                const isActive = workspaceTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setWorkspaceTab(tab.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-semibold border-b-2 -mb-px transition-colors focus:outline-none",
+                      isActive
+                        ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                        : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    )}
+                  >
+                    <TabIcon className="w-3.5 h-3.5" />
+                    <span>{tab.label}</span>
+                    {tab.count !== null && tab.count > 0 && (
+                      <span className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none",
+                        isActive
+                          ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      )}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Bookmarks */}
+            {workspaceTab === 'bookmarks' && (
+              <div className="overflow-y-auto px-5 sm:px-7 py-5 flex-1">
+                {!userEmail ? (
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your bookmarks.</p>
+                ) : bookmarkedEntries.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Bookmark className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">No bookmarks yet.</p>
+                    <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Tap the bookmark icon on any question to save it here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {bookmarkedEntries.map(entry => (
+                      <WorkspaceEntryCard
+                        key={entry.key}
+                        entry={entry}
+                        onRemove={() => removeWorkspaceEntry(entry, { isBookmarked: false })}
+                        removeLabel="Remove bookmark"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Notes */}
+            {workspaceTab === 'notes' && (
+              <div className="overflow-y-auto px-5 sm:px-7 py-5 flex-1">
+                {!userEmail ? (
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your notes.</p>
+                ) : notedEntries.length === 0 ? (
+                  <div className="text-center py-12">
+                    <StickyNote className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">No notes yet.</p>
+                    <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Use the notes icon on any question to jot something down.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {notedEntries.map(entry => (
+                      <WorkspaceEntryCard
+                        key={entry.key}
+                        entry={entry}
+                        onRemove={() => removeWorkspaceEntry(entry, { notes: '' })}
+                        removeLabel="Delete note"
+                      >
+                        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-blue-50 dark:bg-blue-500/10 px-3 py-2 text-[12px] leading-relaxed text-slate-700 dark:text-blue-100/90 border border-blue-200/70 dark:border-blue-500/20">
+                          {entry.state.notes}
+                        </p>
+                      </WorkspaceEntryCard>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Report */}
+            {workspaceTab === 'report' && (
             <div className="overflow-y-auto px-5 sm:px-7 py-5 space-y-6 flex-1">
               {!userEmail ? (
                 <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your performance report.</p>
@@ -5152,6 +6622,7 @@ export default function App() {
                 );
               })()}
             </div>
+            )}
           </div>
         </div>
       )}

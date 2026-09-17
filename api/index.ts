@@ -23,7 +23,8 @@ const toppersContainer = database.container("toppers-copy");
 const loginHistoryContainer = database.container("login-history");
 const settingsContainer = database.container("settings");
 const feedbackContainer = database.container("feedback");
-const userAttemptsContainer = database.container("user-attempts");
+// Per-user question state: bookmarks, notes and the full attempt history.
+const userQuestionsContainer = database.container("user-questions");
 const userWorkspaceContainer = database.container("user-workspace");
 
 const serverApp = express();
@@ -172,16 +173,196 @@ async function ensureFeedbackContainer() {
   feedbackContainerReady = true;
 }
 
-// Ensure the per-user attempts container exists (partitioned by user email).
-let userAttemptsContainerReady = false;
-async function ensureUserAttemptsContainer() {
-  if (userAttemptsContainerReady) return;
+// Ensure the per-user question container exists (partitioned by user email).
+// Holds one document per user+question: bookmark, note and every attempt.
+// `notes`/`attempts` are excluded from the index because they are only ever
+// read back with the document, never filtered or sorted on.
+let userQuestionsContainerReady = false;
+async function ensureUserQuestionsContainer() {
+  if (userQuestionsContainerReady) return;
   await database.containers.createIfNotExists({
-    id: "user-attempts",
-    partitionKey: { paths: ["/email"] },
+    id: "user-questions",
+    partitionKey: { paths: ["/userId"] },
+    indexingPolicy: {
+      indexingMode: "consistent",
+      automatic: true,
+      includedPaths: [{ path: "/*" }],
+      excludedPaths: [
+        { path: "/notes/?" },
+        { path: "/attempts/*" },
+        { path: '/"_etag"/?' },
+      ],
+      compositeIndexes: [
+        [
+          { path: "/isActive", order: "ascending" },
+          { path: "/isBookmarked", order: "ascending" },
+          { path: "/updatedAt", order: "descending" },
+        ],
+        [
+          { path: "/isActive", order: "ascending" },
+          { path: "/hasNote", order: "ascending" },
+          { path: "/updatedAt", order: "descending" },
+        ],
+        [
+          { path: "/isActive", order: "ascending" },
+          { path: "/questionType", order: "ascending" },
+          { path: "/updatedAt", order: "descending" },
+        ],
+      ],
+    },
   });
-  userAttemptsContainerReady = true;
+  userQuestionsContainerReady = true;
 }
+
+// Append one attempt to a user's question document, creating it if needed.
+// Uses an ETag pre-condition so two devices answering at once cannot drop an
+// attempt or corrupt the running counters.
+async function appendAttempt(
+  userId: string,
+  questionType: string,
+  questionId: any,
+  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string },
+  meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
+) {
+  const id = `${questionType}:${questionId}`;
+
+  for (let tries = 0; tries < 5; tries++) {
+    let existing: any = null;
+    try {
+      const { resource } = await userQuestionsContainer.item(id, userId).read();
+      existing = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+
+    const attempts = [...(existing?.attempts || []), attempt];
+    const correctCount = (existing?.correctCount ?? 0) + (attempt.isCorrect ? 1 : 0);
+    const wrongCount = (existing?.wrongCount ?? 0) + (attempt.isCorrect ? 0 : 1);
+    const notes = existing?.notes ?? "";
+
+    const doc = {
+      ...(existing || {}),
+      id,
+      userId,
+      schemaVersion: 1,
+
+      questionId,
+      questionType,
+      exam: meta.exam ?? existing?.exam ?? null,
+      year: meta.year ?? existing?.year ?? null,
+      subject: meta.subject ?? existing?.subject ?? null,
+      topic: meta.topic ?? existing?.topic ?? null,
+
+      isBookmarked: existing?.isBookmarked ?? false,
+      isMarkedForRevision: existing?.isMarkedForRevision ?? false,
+      notes,
+      hasNote: !!String(notes).trim(),
+
+      attempts,
+      attemptCount: attempts.length,
+      correctCount,
+      wrongCount,
+      lastOption: attempt.option,
+      lastIsCorrect: attempt.isCorrect,
+      lastAttemptId: attempt.attemptId,
+      lastAttemptAt: attempt.ts,
+
+      isActive: existing?.isActive ?? true,
+      deletedAt: existing?.deletedAt ?? null,
+
+      createdAt: existing?.createdAt || attempt.ts,
+      updatedAt: attempt.ts,
+    };
+
+    try {
+      await userQuestionsContainer.items.upsert(
+        doc,
+        existing?._etag ? { accessCondition: { type: "IfMatch", condition: existing._etag } } : undefined
+      );
+      return;
+    } catch (error: any) {
+      // 412 = another write landed first; re-read and replay the append.
+      if (error.code !== 412) throw error;
+    }
+  }
+  throw new Error("Could not save attempt after repeated write conflicts");
+}
+
+// Create or update the bookmark / note / revision flags on a user's question
+// document without disturbing its attempt history. ETag-guarded like
+// appendAttempt so concurrent writes cannot clobber each other.
+async function updateQuestionState(
+  userId: string,
+  questionType: string,
+  questionId: any,
+  patch: { isBookmarked?: boolean; notes?: string; isMarkedForRevision?: boolean; isActive?: boolean },
+  meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
+) {
+  const id = `${questionType}:${questionId}`;
+
+  for (let tries = 0; tries < 5; tries++) {
+    let existing: any = null;
+    try {
+      const { resource } = await userQuestionsContainer.item(id, userId).read();
+      existing = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+
+    const now = new Date().toISOString();
+    const notes = patch.notes !== undefined ? patch.notes : existing?.notes ?? "";
+    const isActive = patch.isActive !== undefined ? patch.isActive : existing?.isActive ?? true;
+
+    const doc = {
+      ...(existing || {}),
+      id,
+      userId,
+      schemaVersion: 1,
+
+      questionId,
+      questionType,
+      exam: meta.exam ?? existing?.exam ?? null,
+      year: meta.year ?? existing?.year ?? null,
+      subject: meta.subject ?? existing?.subject ?? null,
+      topic: meta.topic ?? existing?.topic ?? null,
+
+      isBookmarked: patch.isBookmarked !== undefined ? patch.isBookmarked : existing?.isBookmarked ?? false,
+      isMarkedForRevision:
+        patch.isMarkedForRevision !== undefined ? patch.isMarkedForRevision : existing?.isMarkedForRevision ?? false,
+      notes,
+      hasNote: !!String(notes).trim(),
+
+      // Attempt history is owned by appendAttempt; carry it through untouched.
+      attempts: existing?.attempts ?? [],
+      attemptCount: existing?.attemptCount ?? 0,
+      correctCount: existing?.correctCount ?? 0,
+      wrongCount: existing?.wrongCount ?? 0,
+      lastOption: existing?.lastOption ?? null,
+      lastIsCorrect: existing?.lastIsCorrect ?? null,
+      lastAttemptId: existing?.lastAttemptId ?? null,
+      lastAttemptAt: existing?.lastAttemptAt ?? null,
+
+      isActive,
+      deletedAt: isActive ? null : existing?.deletedAt ?? now,
+
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    try {
+      await userQuestionsContainer.items.upsert(
+        doc,
+        existing?._etag ? { accessCondition: { type: "IfMatch", condition: existing._etag } } : undefined
+      );
+      return doc;
+    } catch (error: any) {
+      // 412 = another write landed first; re-read and replay the patch.
+      if (error.code !== 412) throw error;
+    }
+  }
+  throw new Error("Could not save question state after repeated write conflicts");
+}
+
 async function getEffectivePlans() {
   const merged: Record<string, { amount: number; days: number; label: string }> =
     JSON.parse(JSON.stringify(PLANS));
@@ -262,7 +443,9 @@ async function getStatePcsQuestions() {
     const { resources } = await statePcsContainer.items
       .readAll({ maxItemCount: -1 })
       .fetchAll();
-    return resources.filter((r: any) => r.id !== "__cache_version__");
+    // `isActive === false` marks a document retired by a migration (its id was
+    // moved to avoid colliding with the `questions` container) — never serve it.
+    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false);
   } catch (e: any) {
     return [];
   }
@@ -638,6 +821,32 @@ serverApp.get("/api/user-status", async (req, res) => {
   }
 });
 
+// Pinned default filters. One document per user holds a key per section
+// (`prelims`, `csat`, `english`), so each section can be pinned or unpinned on
+// its own. Each section carries its own `isActive` / `createdAt` / `modifiedAt`
+// / `deletedAt`, so unpinning one section soft-deletes just that section and
+// leaves the others — and the filters it held — intact.
+const FILTER_PREFERENCE_SECTIONS = {
+  prelims: ["exam", "year", "paper", "subject", "topic"],
+  csat: ["year", "subject"],
+  english: ["exam", "year", "paper", "subject", "topic"],
+} as const;
+type FilterPreferenceSection = keyof typeof FILTER_PREFERENCE_SECTIONS;
+const FILTER_SORT_MODES = ["latest", "oldest", "score-asc", "score-desc", "attempts-desc", "attempts-asc"];
+
+// A section counts as pinned only when both it and the document are active.
+// Sections saved before per-section flags existed have no `isActive`, so an
+// undefined flag is treated as active.
+const readFilterPreferences = (resource: any) => {
+  const out: Record<string, any> = { prelims: null, csat: null, english: null };
+  if (!resource || resource.isActive === false) return out;
+  for (const section of Object.keys(FILTER_PREFERENCE_SECTIONS)) {
+    const value = resource[section];
+    out[section] = value && value.isActive !== false ? value : null;
+  }
+  return out;
+};
+
 serverApp.get("/api/filter-preferences", async (req, res) => {
   const email = String(req.query.email || "").toLowerCase().trim();
   if (!email) {
@@ -647,10 +856,10 @@ serverApp.get("/api/filter-preferences", async (req, res) => {
   try {
     await ensureUserWorkspaceContainer();
     const { resource } = await userWorkspaceContainer.item("filter-preferences", email).read();
-    res.json({ prelims: resource?.isActive === false ? null : resource?.prelims || null });
+    res.json(readFilterPreferences(resource));
   } catch (error: any) {
     if (error.code === 404) {
-      return res.json({ prelims: null });
+      return res.json({ prelims: null, csat: null, english: null });
     }
     console.error("Error fetching filter preferences:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
@@ -659,19 +868,30 @@ serverApp.get("/api/filter-preferences", async (req, res) => {
 
 serverApp.put("/api/filter-preferences", async (req, res) => {
   const email = String(req.body?.email || "").toLowerCase().trim();
-  const prelims = req.body?.prelims;
-  if (!email || !prelims || typeof prelims !== "object") {
-    return res.status(400).json({ error: "Email and prelims filter preferences are required" });
+  // `{ email, prelims }` is the original body shape and is still accepted.
+  const section = (String(req.body?.section || "prelims").trim() || "prelims") as FilterPreferenceSection;
+  const filters = req.body?.filters ?? req.body?.[section];
+
+  if (!email || !filters || typeof filters !== "object") {
+    return res.status(400).json({ error: "Email and filter preferences are required" });
+  }
+  if (!(section in FILTER_PREFERENCE_SECTIONS)) {
+    return res.status(400).json({ error: `Unknown filter section: ${section}` });
   }
 
-  const fields = ["exam", "year", "paper", "subject", "topic"] as const;
-  const normalized = {} as Record<(typeof fields)[number], string>;
-  for (const field of fields) {
-    const value = prelims[field];
+  const normalized: Record<string, string> = {};
+  for (const field of FILTER_PREFERENCE_SECTIONS[section]) {
+    const value = filters[field];
     if (typeof value !== "string" || value.length > 200) {
-      return res.status(400).json({ error: `Invalid prelims filter: ${field}` });
+      return res.status(400).json({ error: `Invalid ${section} filter: ${field}` });
     }
     normalized[field] = value;
+  }
+  if (filters.sort !== undefined) {
+    if (typeof filters.sort !== "string" || !FILTER_SORT_MODES.includes(filters.sort)) {
+      return res.status(400).json({ error: `Invalid ${section} filter: sort` });
+    }
+    normalized.sort = filters.sort;
   }
 
   try {
@@ -685,18 +905,28 @@ serverApp.put("/api/filter-preferences", async (req, res) => {
     }
 
     const now = new Date().toISOString();
-    await userWorkspaceContainer.items.upsert({
+    const saved = {
+      ...(existing || {}),
       id: "filter-preferences",
       userId: email,
       type: "filter-preferences",
       createdAt: existing?.createdAt || now,
       modifiedAt: now,
+      // Pinning any section revives a document that was cleared wholesale; the
+      // other sections keep their own flags, so they stay unpinned.
       isActive: true,
       deletedAt: null,
-      prelims: normalized,
-    });
+      [section]: {
+        ...normalized,
+        isActive: true,
+        createdAt: existing?.[section]?.createdAt || now,
+        modifiedAt: now,
+        deletedAt: null,
+      },
+    };
+    await userWorkspaceContainer.items.upsert(saved);
 
-    res.json({ prelims: normalized });
+    res.json(readFilterPreferences(saved));
   } catch (error: any) {
     console.error("Error saving filter preferences:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
@@ -705,8 +935,12 @@ serverApp.put("/api/filter-preferences", async (req, res) => {
 
 serverApp.delete("/api/filter-preferences", async (req, res) => {
   const email = String(req.query.email || "").toLowerCase().trim();
+  const sectionParam = String(req.query.section || "").trim();
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
+  }
+  if (sectionParam && !(sectionParam in FILTER_PREFERENCE_SECTIONS)) {
+    return res.status(400).json({ error: `Unknown filter section: ${sectionParam}` });
   }
 
   try {
@@ -720,12 +954,31 @@ serverApp.delete("/api/filter-preferences", async (req, res) => {
     }
     if (existing) {
       const now = new Date().toISOString();
-      await userWorkspaceContainer.items.upsert({
-        ...existing,
-        isActive: false,
-        deletedAt: now,
-        modifiedAt: now,
-      });
+      if (sectionParam) {
+        // Unpin one section: soft delete it in place and keep its filters, so
+        // the other sections and the document itself are untouched.
+        const current = existing[sectionParam];
+        await userWorkspaceContainer.items.upsert({
+          ...existing,
+          modifiedAt: now,
+          [sectionParam]: current
+            ? { ...current, isActive: false, deletedAt: now, modifiedAt: now }
+            : null,
+        });
+      } else {
+        // No section given: clear everything (the original behaviour).
+        const cleared: Record<string, any> = {};
+        for (const key of Object.keys(FILTER_PREFERENCE_SECTIONS)) {
+          if (existing[key]) cleared[key] = { ...existing[key], isActive: false, deletedAt: now, modifiedAt: now };
+        }
+        await userWorkspaceContainer.items.upsert({
+          ...existing,
+          ...cleared,
+          isActive: false,
+          deletedAt: now,
+          modifiedAt: now,
+        });
+      }
     }
     res.json({ success: true });
   } catch (error: any) {
@@ -1368,29 +1621,34 @@ serverApp.post("/api/payment/webhook", async (req, res) => {
   }
 });
 
-// ── Per-user attempts: save one answered question (id + correct/wrong), grouped by attemptId ──
+// ── Per-user attempts: append one answered question, grouped by attemptId ──
 serverApp.post("/api/attempts", async (req, res) => {
   try {
-    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic } = req.body || {};
+    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs } = req.body || {};
     const userEmail = String(email || "").toLowerCase().trim();
     if (!userEmail || questionId === undefined || questionId === null) {
       return res.status(400).json({ error: "email and questionId are required" });
     }
     const type = (questionType && String(questionType).trim()) || "prelims";
-    await ensureUserAttemptsContainer();
-    const item = {
-      id: `${userEmail}:${type}:${questionId}`,
-      email: userEmail,
+    await ensureUserQuestionsContainer();
+    await appendAttempt(
+      userEmail,
+      type,
       questionId,
-      questionType: type,
-      option: option ?? null,
-      isCorrect: !!isCorrect,
-      attemptId: (attemptId && String(attemptId)) || "legacy",
-      subject: (subject && String(subject).trim()) || null,
-      topic: (topic && String(topic).trim()) || null,
-      ts: new Date().toISOString(),
-    };
-    await userAttemptsContainer.items.upsert(item);
+      {
+        attemptId: (attemptId && String(attemptId)) || "legacy",
+        option: option ?? null,
+        isCorrect: !!isCorrect,
+        timeSpentMs: Number.isFinite(timeSpentMs) ? Number(timeSpentMs) : null,
+        ts: new Date().toISOString(),
+      },
+      {
+        subject: (subject && String(subject).trim()) || null,
+        topic: (topic && String(topic).trim()) || null,
+        exam: (exam && String(exam).trim()) || null,
+        year: (year && String(year).trim()) || null,
+      }
+    );
     res.json({ success: true });
   } catch (error: any) {
     console.error("Error saving attempt:", error);
@@ -1403,12 +1661,17 @@ serverApp.get("/api/attempts", async (req, res) => {
   try {
     const userEmail = String(req.query.email || "").toLowerCase().trim();
     if (!userEmail) return res.status(400).json({ error: "email is required" });
-    await ensureUserAttemptsContainer();
-    const { resources } = await userAttemptsContainer.items
-      .query({
-        query: "SELECT c.questionId, c.questionType, c.option, c.isCorrect, c.attemptId, c.subject, c.topic, c.ts FROM c WHERE c.email = @e",
-        parameters: [{ name: "@e", value: userEmail }],
-      })
+    await ensureUserQuestionsContainer();
+    // Projection only: the (unindexed) attempts array is never pulled back, so
+    // the report stays cheap no matter how long a user's history grows.
+    const { resources } = await userQuestionsContainer.items
+      .query(
+        {
+          query:
+            "SELECT c.questionId, c.questionType, c.lastOption, c.lastIsCorrect, c.lastAttemptId, c.lastAttemptAt, c.subject, c.topic, c.attemptCount, c.correctCount, c.wrongCount FROM c WHERE c.isActive = true AND c.attemptCount > 0",
+        },
+        { partitionKey: userEmail }
+      )
       .fetchAll();
     const sections: Record<string, { correct: number; total: number }> = {};
     const subjects: Record<string, { correct: number; total: number }> = {};
@@ -1417,7 +1680,22 @@ serverApp.get("/api/attempts", async (req, res) => {
     let latestAttemptId: string | null = null;
     let latestTs = "";
     const attemptSet = new Set<string>();
-    for (const a of resources) {
+    // Scores reflect the latest attempt per question, matching how the app
+    // displays a question's state; correctCount/wrongCount carry lifetime totals.
+    const attempts = resources.map((a: any) => ({
+      questionId: a.questionId,
+      questionType: a.questionType,
+      option: a.lastOption ?? null,
+      isCorrect: !!a.lastIsCorrect,
+      attemptId: a.lastAttemptId ?? null,
+      subject: a.subject ?? null,
+      topic: a.topic ?? null,
+      ts: a.lastAttemptAt ?? null,
+      attemptCount: a.attemptCount ?? 0,
+      correctCount: a.correctCount ?? 0,
+      wrongCount: a.wrongCount ?? 0,
+    }));
+    for (const a of attempts) {
       const t = a.questionType || "prelims";
       if (!sections[t]) sections[t] = { correct: 0, total: 0 };
       sections[t].total += 1;
@@ -1436,8 +1714,8 @@ serverApp.get("/api/attempts", async (req, res) => {
       if (a.ts && a.ts > latestTs) { latestTs = a.ts; latestAttemptId = a.attemptId || null; }
     }
     res.json({
-      attempts: resources,
-      score: { correct, total: resources.length },
+      attempts,
+      score: { correct, total: attempts.length },
       sections,
       subjects,
       topics,
@@ -1446,6 +1724,133 @@ serverApp.get("/api/attempts", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Error fetching attempts:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user question state: list bookmarks / notes / revision marks ──
+serverApp.get("/api/question-state", async (req, res) => {
+  try {
+    const userEmail = String(req.query.email || "").toLowerCase().trim();
+    if (!userEmail) return res.status(400).json({ error: "email is required" });
+    await ensureUserQuestionsContainer();
+    const { resources } = await userQuestionsContainer.items
+      .query(
+        {
+          query:
+            "SELECT c.questionId, c.questionType, c.isBookmarked, c.isMarkedForRevision, c.notes, c.hasNote, c.subject, c.topic, c.exam, c.year, c.attemptCount, c.correctCount, c.wrongCount, c.lastOption, c.lastIsCorrect, c.lastAttemptAt, c.updatedAt FROM c WHERE c.isActive = true AND (c.isBookmarked = true OR c.hasNote = true OR c.isMarkedForRevision = true OR c.attemptCount > 0) ORDER BY c.updatedAt DESC",
+        },
+        { partitionKey: userEmail }
+      )
+      .fetchAll();
+    res.json({ items: resources });
+  } catch (error: any) {
+    console.error("Error fetching question state:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user question state: full attempt history for a single question ──
+// A point read (~1 RU) keeps the unindexed `attempts` array out of the list
+// endpoint, so it is only paid for when a user actually asks to see it.
+serverApp.get("/api/question-attempts", async (req, res) => {
+  try {
+    const userEmail = String(req.query.email || "").toLowerCase().trim();
+    const questionId = req.query.questionId;
+    if (!userEmail || questionId === undefined) {
+      return res.status(400).json({ error: "email and questionId are required" });
+    }
+    const type = String(req.query.questionType || "prelims").trim() || "prelims";
+    await ensureUserQuestionsContainer();
+
+    let doc: any = null;
+    try {
+      const { resource } = await userQuestionsContainer.item(`${type}:${questionId}`, userEmail).read();
+      doc = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+
+    if (!doc || doc.isActive === false) {
+      return res.json({ attempts: [], attemptCount: 0, correctCount: 0, wrongCount: 0 });
+    }
+
+    // Newest first: the stored array is append-ordered.
+    const attempts = [...(doc.attempts || [])].reverse();
+    res.json({
+      attempts,
+      attemptCount: doc.attemptCount ?? attempts.length,
+      correctCount: doc.correctCount ?? 0,
+      wrongCount: doc.wrongCount ?? 0,
+    });
+  } catch (error: any) {
+    console.error("Error fetching question attempts:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user question state: save a bookmark, note or revision mark ──
+serverApp.post("/api/question-state", async (req, res) => {
+  try {
+    const { email, questionId, questionType, isBookmarked, notes, isMarkedForRevision, subject, topic, exam, year } =
+      req.body || {};
+    const userEmail = String(email || "").toLowerCase().trim();
+    if (!userEmail || questionId === undefined || questionId === null) {
+      return res.status(400).json({ error: "email and questionId are required" });
+    }
+    if (notes !== undefined && (typeof notes !== "string" || notes.length > 5000)) {
+      return res.status(400).json({ error: "notes must be a string of at most 5000 characters" });
+    }
+    const type = (questionType && String(questionType).trim()) || "prelims";
+    await ensureUserQuestionsContainer();
+    const doc = await updateQuestionState(
+      userEmail,
+      type,
+      questionId,
+      {
+        isBookmarked: isBookmarked === undefined ? undefined : !!isBookmarked,
+        notes,
+        isMarkedForRevision: isMarkedForRevision === undefined ? undefined : !!isMarkedForRevision,
+      },
+      {
+        subject: (subject && String(subject).trim()) || null,
+        topic: (topic && String(topic).trim()) || null,
+        exam: (exam && String(exam).trim()) || null,
+        year: (year && String(year).trim()) || null,
+      }
+    );
+    res.json({
+      success: true,
+      isBookmarked: doc.isBookmarked,
+      hasNote: doc.hasNote,
+      isMarkedForRevision: doc.isMarkedForRevision,
+    });
+  } catch (error: any) {
+    console.error("Error saving question state:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Per-user question state: soft delete (never removes the document) ──
+serverApp.delete("/api/question-state", async (req, res) => {
+  try {
+    const userEmail = String(req.query.email || "").toLowerCase().trim();
+    const questionId = req.query.questionId;
+    if (!userEmail || questionId === undefined) {
+      return res.status(400).json({ error: "email and questionId are required" });
+    }
+    const type = String(req.query.questionType || "prelims").trim() || "prelims";
+    await ensureUserQuestionsContainer();
+    await updateQuestionState(
+      userEmail,
+      type,
+      questionId,
+      { isActive: false },
+      { subject: null, topic: null, exam: null, year: null }
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error deleting question state:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
