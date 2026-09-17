@@ -49,7 +49,9 @@ import {
   FilePlus,
   StickyNote,
   ArrowDownWideNarrow,
-  ArrowUpNarrowWide
+  ArrowUpNarrowWide,
+  LayoutDashboard,
+  Tag
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -724,13 +726,15 @@ async function loadRemoteQuestionState(email: string | null) {
   }
 }
 
+// Signed out, the same update is applied to the in-memory map and nothing is
+// sent to the server: a guest gets the full bookmark/note experience for the
+// session, and a refresh starts them clean rather than persisting anything.
 function saveRemoteQuestionState(
   email: string | null | undefined,
   questionType: string,
   question: QuestionMeta,
   patch: { isBookmarked?: boolean; notes?: string }
 ) {
-  if (!email) return;
   const key = remoteStateKey(questionType, question.id);
   const current = remoteQuestionState.get(key) || emptyRemoteQuestionState();
   remoteQuestionState.set(key, {
@@ -742,26 +746,30 @@ function saveRemoteQuestionState(
     year: question.year ?? current.year,
     updatedAt: new Date().toISOString(),
   });
-  fetch('/api/question-state', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      questionId: question.id,
-      questionType,
-      subject: question.subject,
-      topic: question.topic,
-      exam: question.exam,
-      year: question.year,
-      ...patch,
-    }),
-  }).catch(() => {});
+  if (email) {
+    fetch('/api/question-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        questionId: question.id,
+        questionType,
+        subject: question.subject,
+        topic: question.topic,
+        exam: question.exam,
+        year: question.year,
+        ...patch,
+      }),
+    }).catch(() => {});
+  }
   notifyRemoteStateListeners();
 }
 
 // Bumps the local counters the moment an option is clicked so the attempt
 // badge updates without waiting for (or re-fetching) the server. The server is
 // the source of truth; `POST /api/attempts` performs the same increment there.
+// Signed out there is no server copy, so the map is the only record and the
+// tally lives until the page is refreshed.
 function recordRemoteAttempt(
   email: string | null | undefined,
   questionType: string,
@@ -770,7 +778,6 @@ function recordRemoteAttempt(
   isCorrect: boolean,
   attemptId: string | null = null
 ) {
-  if (!email) return;
   const key = remoteStateKey(questionType, questionId);
   const current = remoteQuestionState.get(key) || emptyRemoteQuestionState();
   const ts = new Date().toISOString();
@@ -784,7 +791,8 @@ function recordRemoteAttempt(
     lastAttemptAt: ts,
   });
   // Keep an already-loaded history in step so the panel does not need a refetch.
-  const history = remoteAttemptHistory.get(key);
+  // For a guest there is nothing to fetch, so the list is started here instead.
+  const history = remoteAttemptHistory.get(key) ?? (email ? null : []);
   if (history) {
     remoteAttemptHistory.set(key, [{ attemptId, option, isCorrect, timeSpentMs: null, ts }, ...history]);
   }
@@ -810,6 +818,8 @@ async function loadRemoteAttemptHistory(
   questionType: string,
   questionId: number | string
 ) {
+  // A guest's history is built up by `recordRemoteAttempt`, so there is nothing
+  // to fetch and the map already holds this session's attempts.
   if (!email) return;
   const key = remoteStateKey(questionType, questionId);
   if (remoteAttemptHistory.has(key) || attemptHistoryInFlight.has(key)) return;
@@ -1098,6 +1108,24 @@ const workspaceTypeLabel: Record<string, string> = {
   csat: 'CSAT',
   english: 'English',
 };
+
+// Shown in the workspace while signed out. A guest's bookmarks, notes and
+// attempts live only in this tab's memory, so the banner sets the expectation
+// before they lose anything on a refresh.
+const GuestSessionNotice: React.FC<{ onSignIn: () => void }> = ({ onSignIn }) => (
+  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 dark:border-amber-500/25 dark:bg-amber-500/10">
+    <p className="text-[11.5px] font-medium leading-relaxed text-amber-800 dark:text-amber-200">
+      You're browsing as a guest — these are saved on this page only and disappear when you refresh.
+    </p>
+    <button
+      type="button"
+      onClick={onSignIn}
+      className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-500"
+    >
+      Sign in to keep them
+    </button>
+  </div>
+);
 
 const WorkspaceEntryCard: React.FC<{
   entry: WorkspaceEntryShape;
@@ -1767,16 +1795,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
       {isNotePreviewVisible && notesButtonRect && createPortal(
         <div
-          className="pointer-events-none fixed z-[100] w-56 rounded-xl border border-blue-100 bg-white/95 p-3 shadow-xl shadow-blue-900/15 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:shadow-black/30"
+          className="pointer-events-none fixed z-[100] w-56 overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/95 shadow-xl shadow-emerald-900/15 backdrop-blur-xl dark:border-emerald-500/25 dark:bg-slate-900/95 dark:shadow-black/30"
           style={{
             top: Math.min(notesButtonRect.bottom + 7, window.innerHeight - 140),
             right: Math.max(8, window.innerWidth - notesButtonRect.right),
           }}
         >
-          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+          <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-emerald-100/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
             <FilePlus className="h-3 w-3" /> My notes
           </div>
-          <p className="max-h-24 overflow-hidden whitespace-pre-wrap text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+          <p className="max-h-24 overflow-hidden whitespace-pre-wrap border-l-2 border-emerald-400/60 px-3 py-2 text-[11px] leading-[19px] text-emerald-950/80 dark:border-emerald-400/40 dark:text-emerald-50/85">
             {questionNote.trim() || "No note added yet. Click to add one."}
           </p>
         </div>,
@@ -1794,49 +1822,69 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             aria-modal="true"
             aria-labelledby={`question-note-title-${storageScope}-${question.id}`}
             onMouseDown={(event) => event.stopPropagation()}
-            className="flex max-h-[calc(100%-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-blue-100 bg-white p-3.5 shadow-2xl shadow-slate-950/25 dark:border-slate-700 dark:bg-slate-900"
+            className="flex max-h-[calc(100%-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-2xl shadow-emerald-950/25 dark:border-emerald-500/20 dark:bg-slate-900"
           >
-            <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-3.5 py-2.5 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/5">
               <h3
                 id={`question-note-title-${storageScope}-${question.id}`}
-                className="flex min-w-0 items-center gap-1.5 text-[13px] font-bold text-slate-900 dark:text-white"
+                className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-slate-900 dark:text-white"
               >
-                <FilePlus className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" />
-                <span className="truncate">Notes · Q{question.id}</span>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-300">
+                  <FilePlus className="h-4 w-4" />
+                </span>
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="truncate">My Notes</span>
+                  <span className="truncate text-[10px] font-semibold text-emerald-700/70 dark:text-emerald-300/70">
+                    Q{question.id}
+                  </span>
+                </span>
               </h3>
               <button
                 type="button"
                 onClick={() => closeNotes()}
                 aria-label="Close notes"
-                className="shrink-0 p-1 text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-slate-200"
+                className="shrink-0 rounded-lg p-1 text-slate-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <textarea
-              id={`question-note-${storageScope}-${question.id}`}
-              value={questionNote}
-              onChange={(event) => updateQuestionNote(event.target.value)}
-              placeholder="Write a note for this question..."
-              autoFocus
-              className="min-h-[10rem] w-full flex-1 resize-none rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2.5 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-500"
-            />
-            <div className="mt-2.5 flex shrink-0 justify-end gap-2">
-              <button
-                type="button"
-                onClick={clearNote}
-                disabled={questionNote.trim() === ""}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={() => closeNotes()}
-                className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition hover:from-blue-500 hover:to-indigo-500"
-              >
-                Done
-              </button>
+            <div className="flex min-h-0 flex-1 flex-col px-3.5 pt-3">
+              <textarea
+                id={`question-note-${storageScope}-${question.id}`}
+                value={questionNote}
+                onChange={(event) => updateQuestionNote(event.target.value)}
+                placeholder="Write a note for this question..."
+                autoFocus
+                style={{
+                  lineHeight: "28px",
+                  backgroundImage:
+                    "repeating-linear-gradient(to bottom, transparent 0px, transparent 27px, rgba(16,185,129,0.18) 27px, rgba(16,185,129,0.18) 28px)",
+                  backgroundAttachment: "local",
+                }}
+                className="min-h-[11rem] w-full flex-1 resize-none rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-3 py-1 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/15 dark:border-emerald-500/25 dark:bg-slate-800/70 dark:text-slate-100 dark:focus:border-emerald-500"
+              />
+            </div>
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3.5 py-2.5">
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                {questionNote.trim().length} characters · saved automatically
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={clearNote}
+                  disabled={questionNote.trim() === ""}
+                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => closeNotes()}
+                  className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition hover:from-emerald-500 hover:to-teal-500"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1997,13 +2045,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
 
       {showNoteInline && questionNote.trim() !== "" && (
-        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2 dark:border-slate-600 dark:bg-slate-800/60">
-          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+        <div className="mt-3 overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/70 shadow-sm shadow-emerald-900/5 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+          <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-emerald-100/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
             <FilePlus className="h-3 w-3" /> My note
           </div>
-          <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-            {questionNote.trim()}
-          </p>
+          <div className="border-l-2 border-emerald-400/60 px-3 py-2 dark:border-emerald-400/40">
+            <p className="whitespace-pre-wrap text-[11.5px] leading-[21px] text-emerald-950/80 dark:text-emerald-50/85">
+              {questionNote.trim()}
+            </p>
+          </div>
         </div>
       )}
     </div>
@@ -2545,10 +2595,11 @@ export default function App() {
         alert("Couldn't load the payment gateway. Check your connection and try again.");
         return;
       }
+      const couponForPlan = appliedCoupon && appliedCoupon.plans.includes(plan) ? appliedCoupon.code : null;
       const orderRes = await fetch("/api/payment/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail, plan }),
+        body: JSON.stringify({ email: userEmail, plan, couponCode: couponForPlan }),
       });
       const order = await orderRes.json();
       if (!orderRes.ok || !order.orderId) {
@@ -3137,6 +3188,113 @@ export default function App() {
     return true;
   };
 
+  // ── Admin: coupon management ──
+  type AdminCoupon = {
+    code: string;
+    discountPercent: number;
+    expiryDate: string;
+    plans: string[];
+    maxRedemptions: number;
+    description?: string | null;
+    redemptionCount?: number;
+    lastRedeemedAt?: string | null;
+    isActive?: boolean;
+    deletedAt?: string | null;
+  };
+  const blankCouponForm = { code: '', discountPercent: '10', expiryDate: '', plans: ['1yr', '2yr', 'ebooks'] as string[], maxRedemptions: '0', description: '' };
+  const [adminCoupons, setAdminCoupons] = useState<AdminCoupon[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [showWithdrawnCoupons, setShowWithdrawnCoupons] = useState(false);
+  const [couponForm, setCouponForm] = useState(blankCouponForm);
+  const [couponEditing, setCouponEditing] = useState<string | null>(null);
+  const [savingCoupon, setSavingCoupon] = useState(false);
+
+  const fetchAdminCoupons = useCallback(async (includeDeleted = false) => {
+    setLoadingCoupons(true);
+    try {
+      const res = await fetch(`/api/admin/coupons${includeDeleted ? '?includeDeleted=1' : ''}`, { headers: adminHeaders() });
+      if (res.ok) setAdminCoupons(await res.json());
+    } catch {
+      /* non-fatal: the table just stays empty */
+    } finally {
+      setLoadingCoupons(false);
+    }
+    // adminHeaders reads the current key from state; refetching is cheap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey]);
+
+  const saveCoupon = async () => {
+    if (!requireAdminKey()) return;
+    setSavingCoupon(true);
+    try {
+      const res = await fetch('/api/admin/coupons', {
+        method: 'POST',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          code: couponForm.code,
+          discountPercent: Number(couponForm.discountPercent),
+          expiryDate: couponForm.expiryDate,
+          plans: couponForm.plans,
+          maxRedemptions: Number(couponForm.maxRedemptions || 0),
+          description: couponForm.description,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save coupon');
+      setAdminMessage({ text: `✓ Coupon ${data.coupon.code} saved.`, type: 'success' });
+      setCouponForm(blankCouponForm);
+      setCouponEditing(null);
+      await fetchAdminCoupons(showWithdrawnCoupons);
+    } catch (e: any) {
+      setAdminMessage({ text: e.message, type: 'error' });
+    } finally {
+      setSavingCoupon(false);
+      setTimeout(() => setAdminMessage({ text: '', type: '' }), 5000);
+    }
+  };
+
+  // Pause/resume flips isActive without touching counters; withdraw soft-deletes.
+  const setCouponActive = async (c: AdminCoupon, active: boolean) => {
+    if (!requireAdminKey()) return;
+    try {
+      const res = await fetch('/api/admin/coupons', {
+        method: 'POST',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          code: c.code,
+          discountPercent: c.discountPercent,
+          expiryDate: c.expiryDate,
+          plans: c.plans,
+          maxRedemptions: c.maxRedemptions || 0,
+          description: c.description || '',
+          isActive: active,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+      setAdminMessage({ text: `✓ ${c.code} ${active ? 'activated' : 'paused'}.`, type: 'success' });
+      await fetchAdminCoupons(showWithdrawnCoupons);
+    } catch (e: any) {
+      setAdminMessage({ text: e.message, type: 'error' });
+    } finally {
+      setTimeout(() => setAdminMessage({ text: '', type: '' }), 5000);
+    }
+  };
+
+  const withdrawCoupon = async (code: string) => {
+    if (!requireAdminKey()) return;
+    if (!window.confirm(`Withdraw ${code}? It stops working immediately but past redemptions are kept.`)) return;
+    try {
+      const res = await fetch(`/api/admin/coupons/${encodeURIComponent(code)}`, { method: 'DELETE', headers: adminHeaders() });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+      setAdminMessage({ text: `✓ ${code} withdrawn.`, type: 'success' });
+      await fetchAdminCoupons(showWithdrawnCoupons);
+    } catch (e: any) {
+      setAdminMessage({ text: e.message, type: 'error' });
+    } finally {
+      setTimeout(() => setAdminMessage({ text: '', type: '' }), 5000);
+    }
+  };
+
   const [planPrices, setPlanPrices] = useState<Record<string, number>>({});
   const [priceForm, setPriceForm] = useState<{ '1yr': string; '2yr': string; 'ebooks': string }>({ '1yr': '', '2yr': '', 'ebooks': '' });
   const [savingPrices, setSavingPrices] = useState(false);
@@ -3237,7 +3395,7 @@ export default function App() {
 
   // ── My Workspace (bookmarks · notes · performance report) ──
   type ReportBucket = { correct: number; total: number };
-  type ReportAttempt = { questionId?: number; questionType: string; subject: string | null; topic: string | null; isCorrect: boolean; attemptId?: string | null; ts?: string };
+  type ReportAttempt = { questionId?: number; questionType: string; subject: string | null; topic: string | null; isCorrect: boolean; attemptId?: string | null; ts?: string; attemptCount?: number; correctCount?: number; wrongCount?: number };
   type ReportData = {
     attempts: ReportAttempt[];
     score: ReportBucket;
@@ -3248,7 +3406,7 @@ export default function App() {
   };
   type WorkspaceTab = 'bookmarks' | 'notes' | 'report';
   const [showReport, setShowReport] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('bookmarks');
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('report');
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -3275,7 +3433,7 @@ export default function App() {
       setReportLoading(false);
     }
   };
-  const openWorkspace = async (tab: WorkspaceTab = 'bookmarks') => {
+  const openWorkspace = async (tab: WorkspaceTab = 'report') => {
     setWorkspaceTab(tab);
     setShowReport(true);
     // The report is the only tab that needs its own request; bookmarks and
@@ -3349,6 +3507,65 @@ export default function App() {
   const [showFounderModal, setShowFounderModal] = useState(false);
   const [showReleasesModal, setShowReleasesModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
+
+  // ── Checkout coupons ──
+  // The applied coupon is a preview only: `create-order` re-validates the code
+  // server-side and recomputes the amount, so nothing here can change a price.
+  type AppliedCoupon = {
+    code: string;
+    discountPercent: number;
+    plans: string[];
+    amounts: Record<string, { listAmount: number; discountAmount: number; finalAmount: number }>;
+    description?: string | null;
+  };
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponError(null);
+    try {
+      const res = await fetch('/api/coupon/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, email: userEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        setAppliedCoupon(null);
+        setCouponError(data.error || 'This coupon code is not valid.');
+        return;
+      }
+      setAppliedCoupon({
+        code: data.code,
+        discountPercent: data.discountPercent,
+        plans: data.plans || [],
+        amounts: data.amounts || {},
+        description: data.description,
+      });
+      setCouponInput(data.code);
+    } catch {
+      setCouponError('Could not check that coupon. Please try again.');
+    } finally {
+      setCouponChecking(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError(null);
+  };
+
+  // A coupon is tied to the signed-in user (one redemption each), so drop it
+  // when the account changes.
+  useEffect(() => {
+    clearCoupon();
+  }, [userEmail]);
 
   // ── Feedback (global + per-question) ──
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -3516,8 +3733,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (adminUnlocked && isAdminView) { fetchAdminFeedback(); fetchAdminPayments(); }
-  }, [isAdmin, isAdminView, fetchAdminFeedback, fetchAdminPayments]);
+    if (adminUnlocked && isAdminView) { fetchAdminFeedback(); fetchAdminPayments(); fetchAdminCoupons(showWithdrawnCoupons); }
+    // showWithdrawnCoupons has its own toggle handler, so it stays out of the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, isAdminView, adminUnlocked, fetchAdminFeedback, fetchAdminPayments, fetchAdminCoupons]);
 
   useEffect(() => {
     fetch('/api/plans')
@@ -4018,9 +4237,10 @@ export default function App() {
       const cur = prev[questionType] || { correct: 0, total: 0 };
       return { ...prev, [questionType]: { correct: cur.correct + (isCorrect ? 1 : 0), total: cur.total + 1 } };
     });
-    // Persist the attempt (id + correct/wrong) for the logged-in user so the score survives reloads.
+    // Keep the tally in memory for everyone so the attempt badge and history
+    // work signed out; only a logged-in attempt is persisted server-side.
+    recordRemoteAttempt(userEmail, questionType, qid, option, isCorrect, attemptId);
     if (userEmail) {
-      recordRemoteAttempt(userEmail, questionType, qid, option, isCorrect, attemptId);
       fetch('/api/attempts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4566,18 +4786,18 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* My workspace */}
-                  {userEmail && (
-                    <button
-                      onClick={() => { openWorkspace('bookmarks'); setIsUserMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <span className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center shrink-0">
-                        <BarChart3 className="w-4 h-4 text-indigo-500" />
-                      </span>
-                      <span>My workspace</span>
-                    </button>
-                  )}
+                  {/* My workspace — open to guests too; their bookmarks and
+                      notes live in memory until the page is refreshed. Guests
+                      land on Bookmarks since the report needs an account. */}
+                  <button
+                    onClick={() => { openWorkspace(userEmail ? 'report' : 'bookmarks'); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/30 ring-1 ring-inset ring-white/20">
+                      <LayoutDashboard className="w-4 h-4 text-white" />
+                    </span>
+                    <span>My workspace</span>
+                  </button>
 
                   {/* Appearance */}
                   <button
@@ -5065,6 +5285,232 @@ export default function App() {
                 </div>
               </div>
 
+            {/* Coupons — create, edit, pause and withdraw discount codes */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Coupons</h3>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">{adminCoupons.length}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showWithdrawnCoupons}
+                      onChange={(e) => { setShowWithdrawnCoupons(e.target.checked); fetchAdminCoupons(e.target.checked); }}
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Show withdrawn
+                  </label>
+                  <button
+                    onClick={() => fetchAdminCoupons(showWithdrawnCoupons)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  >
+                    <RefreshCw className={cn("w-3.5 h-3.5", loadingCoupons && "animate-spin")} /> Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Create / edit form */}
+              <div className={cn(
+                "rounded-xl border p-4 mb-4",
+                couponEditing
+                  ? "border-emerald-300 bg-emerald-50/60 dark:border-emerald-700/60 dark:bg-emerald-900/15"
+                  : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40"
+              )}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {couponEditing ? `Editing ${couponEditing}` : 'New coupon'}
+                  </p>
+                  {couponEditing && (
+                    <button
+                      onClick={() => { setCouponEditing(null); setCouponForm(blankCouponForm); }}
+                      className="text-[11px] font-bold text-slate-500 hover:text-rose-600"
+                    >
+                      Cancel edit
+                    </button>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Code</label>
+                    <input
+                      value={couponForm.code}
+                      disabled={!!couponEditing}
+                      onChange={(e) => setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/\s+/g, '') }))}
+                      placeholder="POWER25"
+                      maxLength={32}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold uppercase tracking-wide outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Discount %</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={couponForm.discountPercent}
+                      onChange={(e) => setCouponForm(f => ({ ...f, discountPercent: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Expires on</label>
+                    <input
+                      type="date"
+                      value={couponForm.expiryDate}
+                      onChange={(e) => setCouponForm(f => ({ ...f, expiryDate: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Max uses (0 = unlimited)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={couponForm.maxRedemptions}
+                      onChange={(e) => setCouponForm(f => ({ ...f, maxRedemptions: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Applies to</label>
+                    <div className="flex flex-wrap gap-2">
+                      {([['1yr', '1 Year'], ['2yr', '2 Years'], ['ebooks', 'Ebooks']] as const).map(([key, label]) => {
+                        const on = couponForm.plans.includes(key);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setCouponForm(f => ({
+                              ...f,
+                              plans: on ? f.plans.filter(p => p !== key) : [...f.plans, key],
+                            }))}
+                            className={cn(
+                              "px-3 py-2 rounded-lg text-xs font-bold border transition",
+                              on
+                                ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
+                                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500"
+                            )}
+                          >
+                            {on ? '✓ ' : ''}{label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Note (shown to users)</label>
+                    <input
+                      value={couponForm.description}
+                      onChange={(e) => setCouponForm(f => ({ ...f, description: e.target.value }))}
+                      placeholder="Launch offer"
+                      maxLength={200}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={saveCoupon}
+                  disabled={savingCoupon || !couponForm.code || !couponForm.expiryDate || couponForm.plans.length === 0}
+                  className="mt-3 px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingCoupon ? 'Saving…' : couponEditing ? 'Update coupon' : 'Create coupon'}
+                </button>
+              </div>
+
+              {/* Coupon list */}
+              {adminCoupons.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">No coupons yet.</p>
+              ) : (
+                <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-xl border border-slate-100 dark:border-slate-700/60">
+                  <table className="w-full text-sm min-w-[620px]">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 sticky top-0 z-10">
+                        <th className="py-2 pr-3 font-bold">Code</th>
+                        <th className="py-2 pr-3 font-bold">Off</th>
+                        <th className="py-2 pr-3 font-bold">Plans</th>
+                        <th className="py-2 pr-3 font-bold">Expires</th>
+                        <th className="py-2 pr-3 font-bold">Used</th>
+                        <th className="py-2 pr-3 font-bold">Status</th>
+                        <th className="py-2 font-bold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminCoupons.map(c => {
+                        const expired = c.expiryDate ? new Date(`${c.expiryDate}T23:59:59.999+05:30`).getTime() < Date.now() : false;
+                        const withdrawn = c.isActive === false;
+                        const capped = (c.maxRedemptions || 0) > 0 && (c.redemptionCount || 0) >= c.maxRedemptions;
+                        const status = withdrawn ? 'Withdrawn' : expired ? 'Expired' : capped ? 'Fully claimed' : 'Live';
+                        return (
+                          <tr key={c.code} className="border-b border-slate-100 dark:border-slate-700/60 last:border-0">
+                            <td className="py-2.5 pr-3 font-extrabold tracking-wide text-slate-800 dark:text-slate-100">
+                              {c.code}
+                              {c.description && <span className="block text-[10px] font-medium text-slate-400 normal-case tracking-normal">{c.description}</span>}
+                            </td>
+                            <td className="py-2.5 pr-3 font-bold text-emerald-600 dark:text-emerald-400">{c.discountPercent}%</td>
+                            <td className="py-2.5 pr-3 text-[11px] text-slate-500 dark:text-slate-400">
+                              {(c.plans || []).map(p => p === '1yr' ? '1 Yr' : p === '2yr' ? '2 Yr' : 'Ebooks').join(', ') || '—'}
+                            </td>
+                            <td className={cn("py-2.5 pr-3 text-[11px]", expired ? "text-rose-500 font-bold" : "text-slate-500 dark:text-slate-400")}>
+                              {c.expiryDate || '—'}
+                            </td>
+                            <td className="py-2.5 pr-3 text-[11px] text-slate-500 dark:text-slate-400">
+                              {c.redemptionCount || 0}{(c.maxRedemptions || 0) > 0 ? ` / ${c.maxRedemptions}` : ' / ∞'}
+                            </td>
+                            <td className="py-2.5 pr-3">
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                status === 'Live' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                                  : status === 'Withdrawn' ? "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                                  : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+                              )}>
+                                {status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-right whitespace-nowrap">
+                              <button
+                                onClick={() => {
+                                  setCouponEditing(c.code);
+                                  setCouponForm({
+                                    code: c.code,
+                                    discountPercent: String(c.discountPercent),
+                                    expiryDate: c.expiryDate || '',
+                                    plans: c.plans || [],
+                                    maxRedemptions: String(c.maxRedemptions || 0),
+                                    description: c.description || '',
+                                  });
+                                }}
+                                className="text-[11px] font-bold text-blue-600 hover:text-blue-500 px-2"
+                              >
+                                Edit
+                              </button>
+                              {withdrawn ? (
+                                <button
+                                  onClick={() => setCouponActive(c, true)}
+                                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-500 px-2"
+                                >
+                                  Reactivate
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => withdrawCoupon(c.code)}
+                                  className="text-[11px] font-bold text-rose-600 hover:text-rose-500 px-2"
+                                >
+                                  Deactivate
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* Payments — fills the gap under the users list in the right column */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 flex-1 min-h-0 flex flex-col">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -5093,7 +5539,7 @@ export default function App() {
                   <p className="text-sm text-slate-400 dark:text-slate-500">No payments recorded yet.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto flex-1 min-h-0 overflow-y-auto">
+                <div className="overflow-x-auto flex-1 min-h-0 overflow-y-auto max-h-[420px] rounded-xl border border-slate-100 dark:border-slate-700/60">
                   <table className="w-full text-left text-sm min-w-[640px]">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 uppercase tracking-wider text-[10px] font-bold sticky top-0 z-10">
@@ -5112,6 +5558,11 @@ export default function App() {
                           <td className="px-4 py-3 text-slate-600 dark:text-slate-400" title={p.planLabel || p.plan}>{p.plan || '—'}</td>
                           <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-800 dark:text-slate-200">
                             {typeof p.amount === 'number' ? `₹${(p.amount / 100).toLocaleString('en-IN')}` : '—'}
+                            {p.couponCode && (
+                              <span className="block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                {p.couponCode} −{p.couponDiscountPercent}%
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -6312,7 +6763,9 @@ export default function App() {
             {/* Header (slim) */}
             <div className="flex items-center justify-between px-5 py-2.5 border-b border-indigo-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900">
               <div className="flex items-center gap-2 min-w-0">
-                <BarChart3 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-violet-500 shadow-sm shadow-indigo-500/30">
+                  <LayoutDashboard className="w-3.5 h-3.5 text-white" />
+                </span>
                 <h2 className="text-sm font-bold text-indigo-900 dark:text-slate-100 leading-tight">My Workspace</h2>
                 <span className="text-[11px] text-indigo-400/80 dark:text-slate-500 truncate hidden sm:inline">· {userEmail || 'Not signed in'}</span>
               </div>
@@ -6328,9 +6781,9 @@ export default function App() {
             {/* Tabs */}
             <div className="flex items-center gap-1 px-3 sm:px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
               {([
+                { id: 'report' as const, label: 'Report', icon: BarChart3, count: null },
                 { id: 'bookmarks' as const, label: 'Bookmarks', icon: Bookmark, count: bookmarkedEntries.length },
                 { id: 'notes' as const, label: 'Notes', icon: StickyNote, count: notedEntries.length },
-                { id: 'report' as const, label: 'Report', icon: BarChart3, count: null },
               ]).map(tab => {
                 const TabIcon = tab.icon;
                 const isActive = workspaceTab === tab.id;
@@ -6366,9 +6819,8 @@ export default function App() {
             {/* Bookmarks */}
             {workspaceTab === 'bookmarks' && (
               <div className="overflow-y-auto px-5 sm:px-7 py-5 flex-1">
-                {!userEmail ? (
-                  <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your bookmarks.</p>
-                ) : bookmarkedEntries.length === 0 ? (
+                {!userEmail && <GuestSessionNotice onSignIn={() => { setShowReport(false); setShowLoginModal(true); }} />}
+                {bookmarkedEntries.length === 0 ? (
                   <div className="text-center py-12">
                     <Bookmark className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">No bookmarks yet.</p>
@@ -6392,9 +6844,8 @@ export default function App() {
             {/* Notes */}
             {workspaceTab === 'notes' && (
               <div className="overflow-y-auto px-5 sm:px-7 py-5 flex-1">
-                {!userEmail ? (
-                  <p className="text-center text-slate-500 dark:text-slate-400 py-10">Please sign in to see your notes.</p>
-                ) : notedEntries.length === 0 ? (
+                {!userEmail && <GuestSessionNotice onSignIn={() => { setShowReport(false); setShowLoginModal(true); }} />}
+                {notedEntries.length === 0 ? (
                   <div className="text-center py-12">
                     <StickyNote className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">No notes yet.</p>
@@ -6409,7 +6860,7 @@ export default function App() {
                         onRemove={() => removeWorkspaceEntry(entry, { notes: '' })}
                         removeLabel="Delete note"
                       >
-                        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-blue-50 dark:bg-blue-500/10 px-3 py-2 text-[12px] leading-relaxed text-slate-700 dark:text-blue-100/90 border border-blue-200/70 dark:border-blue-500/20">
+                        <p className="mt-2 whitespace-pre-wrap rounded-lg border-l-2 border-emerald-400/70 bg-emerald-50/70 px-3 py-2 text-[12px] leading-[21px] text-emerald-950/80 ring-1 ring-emerald-200/70 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-50/85 dark:ring-emerald-500/20">
                           {entry.state.notes}
                         </p>
                       </WorkspaceEntryCard>
@@ -6432,7 +6883,21 @@ export default function App() {
                 <p className="text-center text-slate-500 dark:text-slate-400 py-10">No attempts yet. Answer some questions and your report will appear here.</p>
               ) : (() => {
                 const pct = (b: { correct: number; total: number }) => b.total > 0 ? Math.round((b.correct / b.total) * 100) : 0;
-                const barColor = (p: number) => p >= 70 ? 'bg-emerald-500' : p >= 40 ? 'bg-amber-500' : 'bg-rose-500';
+                // One modern traffic-light scale reused by every chart, so a
+                // colour always means the same thing wherever it appears.
+                // Bars are gradients rather than flat fills.
+                const barColor = (p: number) => p >= 70
+                  ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                  : p >= 40 ? 'bg-gradient-to-r from-amber-300 to-orange-400' : 'bg-gradient-to-r from-rose-400 to-pink-500';
+                const barColorUp = (p: number) => p >= 70
+                  ? 'bg-gradient-to-t from-teal-500 to-emerald-400'
+                  : p >= 40 ? 'bg-gradient-to-t from-orange-400 to-amber-300' : 'bg-gradient-to-t from-pink-500 to-rose-400';
+                const toneText = (p: number) => p >= 70
+                  ? 'text-teal-600 dark:text-emerald-400'
+                  : p >= 40 ? 'text-orange-500 dark:text-amber-400' : 'text-rose-500 dark:text-rose-400';
+                const ringStops = (p: number) => p >= 70
+                  ? ['#34d399', '#0d9488']
+                  : p >= 40 ? ['#fcd34d', '#fb923c'] : ['#fb7185', '#ec4899'];
                 const attempts = reportData.attempts || [];
                 // Backfill subject/topic for older attempts (saved before we stored them) using loaded question metadata.
                 const qMeta: Record<string, Map<number, { subject?: string; topic?: string }>> = {
@@ -6446,67 +6911,75 @@ export default function App() {
                   const meta = a.questionId != null ? qMeta[a.questionType]?.get(a.questionId) : undefined;
                   return (meta?.[key] || '').toString().trim();
                 };
-                // Group a section's attempts by subject or topic → sorted [name, {correct,total}] entries.
+                // Group a section's attempts by subject or topic. `total` counts
+                // each question once (scored on its latest attempt, like the
+                // cards); `attempts` is the lifetime attempt volume, used both to
+                // order the bars and to decide whether an area has been practised
+                // enough to be called a strength or a weakness.
                 const groupBy = (type: string, key: 'subject' | 'topic') => {
-                  const map: Record<string, { correct: number; total: number }> = {};
+                  const map: Record<string, { correct: number; total: number; attempts: number }> = {};
                   for (const a of attempts) {
                     if (a.questionType !== type) continue;
                     const name = resolveKey(a, key);
                     if (!name) continue;
-                    if (!map[name]) map[name] = { correct: 0, total: 0 };
+                    if (!map[name]) map[name] = { correct: 0, total: 0, attempts: 0 };
                     map[name].total += 1;
+                    map[name].attempts += Math.max(a.attemptCount ?? 1, 1);
                     if (a.isCorrect) map[name].correct += 1;
                   }
-                  return Object.entries(map).sort((x, y) => y[1].total - x[1].total);
+                  // Most-practised first: the areas you have the most data on.
+                  return Object.entries(map).sort((x, y) => y[1].attempts - x[1].attempts || y[1].total - x[1].total);
                 };
 
-                // A titled section card: own score summary + a vertical bar graph.
+                // A titled section card: its own score plus a horizontal bar per
+                // subject/topic. Horizontal bars fit long names, which the old
+                // vertical columns truncated to two cramped lines.
                 const SectionReport: React.FC<{
                   title: string;
-                  accent: string;
+                  dot: string;
                   score: { correct: number; total: number };
-                  accentText: string;
                   groupLabel: string;
-                  entries: [string, { correct: number; total: number }][];
-                }> = ({ title, accent, accentText, score, groupLabel, entries }) => {
+                  entries: [string, { correct: number; total: number; attempts: number }][];
+                }> = ({ title, dot, score, groupLabel, entries }) => {
+                  if (score.total === 0) return null;
                   const sp = pct(score);
                   return (
-                    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 overflow-hidden">
-                      <div className={cn('flex items-center justify-between px-4 py-2.5 border-b border-slate-200/70 dark:border-slate-700/70', accent)}>
-                        <h3 className={cn('text-sm font-bold', accentText)}>{title}</h3>
-                        <div className={cn('text-right', accentText)}>
-                          <span className="text-base font-extrabold">{sp}%</span>
-                          <span className="text-[11px] font-semibold opacity-70 ml-1.5">{score.correct}/{score.total}</span>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/40">
+                      <div className="mb-3.5 flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', dot)} />
+                          <h3 className="truncate text-[13px] font-bold text-slate-800 dark:text-slate-100">{title}</h3>
+                          <span className="hidden shrink-0 text-[11px] font-medium text-slate-400 sm:inline">· {groupLabel}, most practised first</span>
+                        </div>
+                        <div className="flex shrink-0 items-baseline gap-1.5">
+                          <span className={cn('text-sm font-extrabold', toneText(sp))}>{sp}%</span>
+                          <span className="text-[11px] font-semibold text-slate-400">{score.correct}/{score.total}</span>
                         </div>
                       </div>
-                      <div className="p-4">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-3">{groupLabel}</p>
-                        {entries.length === 0 ? (
-                          <p className="text-[11px] text-slate-400 dark:text-slate-500 py-4 text-center">No data yet.</p>
-                        ) : (
-                          <div className="flex items-end gap-2 sm:gap-3 h-44 overflow-x-auto">
-                            {entries.map(([k, b]) => {
-                              const p = pct(b);
-                              return (
-                                <div key={k} className="flex-1 min-w-[44px] h-full flex flex-col items-center">
-                                  <div className="flex-1 w-full flex items-end justify-center">
-                                    <div className="w-7 sm:w-9 flex flex-col items-center justify-end h-full">
-                                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1">{p}%</span>
-                                      <div
-                                        className={cn('w-full rounded-t-md transition-all duration-500', barColor(p))}
-                                        style={{ height: `${Math.max(p, 3)}%` }}
-                                        title={`${k}: ${b.correct}/${b.total} (${p}%)`}
-                                      />
-                                    </div>
-                                  </div>
-                                  <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 mt-1.5 text-center leading-tight line-clamp-2 w-full break-words">{k}</span>
-                                  <span className="text-[8px] text-slate-400 dark:text-slate-500">{b.correct}/{b.total}</span>
+                      {entries.length === 0 ? (
+                        <p className="py-3 text-center text-[11px] text-slate-400 dark:text-slate-500">No {groupLabel.toLowerCase()} data yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {entries.map(([k, b]) => {
+                            const p = pct(b);
+                            return (
+                              <div key={k} className="flex items-center gap-2.5" title={`${k}: ${b.correct}/${b.total} questions correct (${p}%) · ${b.attempts} attempts`}>
+                                <span className="w-24 shrink-0 truncate text-[11px] font-semibold text-slate-600 dark:text-slate-300 sm:w-40">{k}</span>
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/60">
+                                  <div
+                                    className={cn('h-full rounded-full transition-all duration-500', barColor(p))}
+                                    style={{ width: `${Math.max(p, 2)}%` }}
+                                  />
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                                <span className={cn('w-8 shrink-0 text-right text-[11px] font-bold', toneText(p))}>{p}%</span>
+                                <span className="w-16 shrink-0 text-right text-[10px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+                                  {b.correct}/{b.total} · {b.attempts}x
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 };
@@ -6526,95 +6999,208 @@ export default function App() {
                   if (a.ts && (!sessionMap[id].ts || a.ts < sessionMap[id].ts)) sessionMap[id].ts = a.ts;
                 }
                 const sessions = Object.values(sessionMap).sort((x, y) => (x.ts || '').localeCompare(y.ts || ''));
+                const totalQ = reportData.score.total;
+                const rightQ = reportData.score.correct;
+                const wrongQ = totalQ - rightQ;
+                // Plain-language read of the headline number, so the report says
+                // what to do next instead of only what happened.
+                const verdict = overallPct >= 80
+                  ? "Excellent — you're exam ready on what you've practised."
+                  : overallPct >= 60
+                    ? 'Solid work. Tighten the weaker areas below and you’re there.'
+                    : overallPct >= 40
+                      ? 'Getting there — revise the red areas below before moving on.'
+                      : 'Early days. Focus on fundamentals in the red areas below.';
+                // Strongest and weakest areas across all three sections. An area
+                // has to be properly practised before it is judged: at least 8
+                // distinct questions and 12 attempts. Ranking then uses the
+                // Wilson lower bound rather than raw accuracy, so a small 5/5
+                // cannot outrank a well-evidenced 17/20.
+                const MIN_QUESTIONS = 8;
+                const MIN_ATTEMPTS = 12;
+                const wilson = (correct: number, total: number) => {
+                  if (total === 0) return 0;
+                  const z = 1.96;
+                  const p = correct / total;
+                  return (p + (z * z) / (2 * total) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * total)) / total)) / (1 + (z * z) / total);
+                };
+                const ranked = [
+                  ...groupBy('prelims', 'subject'),
+                  ...groupBy('csat', 'topic'),
+                  ...groupBy('english', 'topic'),
+                ]
+                  .filter(([, b]) => b.total >= MIN_QUESTIONS && b.attempts >= MIN_ATTEMPTS)
+                  .sort((x, y) => wilson(y[1].correct, y[1].total) - wilson(x[1].correct, x[1].total));
+                // Split the ranked list in half so a weak area is never labelled
+                // "strong" just because it happens to be the only one measured.
+                const bandSize = Math.min(3, Math.floor(ranked.length / 2));
+                const strengths = ranked.slice(0, bandSize);
+                const focusAreas = ranked.slice(ranked.length - bandSize).reverse();
                 return (
                   <>
-                    {/* Overall summary */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
-                        <div className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400">{reportData.score.total}</div>
-                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Attempted</div>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
-                        <div className={cn('text-xl font-extrabold', overallPct >= 70 ? 'text-emerald-600 dark:text-emerald-400' : overallPct >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>{overallPct}%</div>
-                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Correct</div>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-center">
-                        <div className="text-xl font-extrabold text-violet-600 dark:text-violet-400">{reportData.attemptCount}</div>
-                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Sessions</div>
-                      </div>
-                    </div>
-
-                    {/* Section-wise scores */}
-                    <div className="grid grid-cols-3 gap-3">
-                      {([
-                        { label: 'Prelims', s: prelimsScore, c: 'text-blue-600 dark:text-blue-400' },
-                        { label: 'CSAT / Maths', s: csatScore, c: 'text-violet-600 dark:text-violet-400' },
-                        { label: 'English', s: englishScore, c: 'text-emerald-600 dark:text-emerald-400' },
-                      ]).map(({ label, s, c }) => (
-                        <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 p-2.5 text-center">
-                          <div className={cn('text-lg font-extrabold', c)}>{pct(s)}%</div>
-                          <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 leading-tight">{label}</div>
-                          <div className="text-[9px] text-slate-400 dark:text-slate-500">{s.correct}/{s.total}</div>
+                    {/* Headline: one number, in plain words */}
+                    <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-4 dark:border-slate-700 dark:from-slate-800/70 dark:via-slate-800/40 dark:to-slate-800/70">
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                        <div className="relative h-24 w-24 shrink-0">
+                          <svg viewBox="0 0 36 36" className="h-24 w-24 -rotate-90">
+                            <defs>
+                              <linearGradient id="reportRingGradient" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor={ringStops(overallPct)[0]} />
+                                <stop offset="100%" stopColor={ringStops(overallPct)[1]} />
+                              </linearGradient>
+                            </defs>
+                            <circle cx="18" cy="18" r="15.5" fill="none" strokeWidth="3.5" className="stroke-slate-200/80 dark:stroke-slate-700/80" />
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.5"
+                              fill="none"
+                              strokeWidth="3.5"
+                              strokeLinecap="round"
+                              stroke="url(#reportRingGradient)"
+                              className="transition-all duration-700"
+                              strokeDasharray={`${(overallPct / 100) * 97.4} 97.4`}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className={cn('text-xl font-extrabold leading-none', toneText(overallPct))}>{overallPct}%</span>
+                            <span className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">accuracy</span>
+                          </div>
                         </div>
-                      ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-bold leading-snug text-slate-800 dark:text-slate-100">{verdict}</p>
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {([
+                              { label: 'Attempted', value: totalQ, tone: 'text-slate-800 dark:text-slate-100' },
+                              { label: 'Correct', value: rightQ, tone: 'text-teal-600 dark:text-emerald-400' },
+                              { label: 'Wrong', value: wrongQ, tone: 'text-rose-500 dark:text-rose-400' },
+                              { label: 'Sessions', value: reportData.attemptCount, tone: 'text-violet-500 dark:text-violet-400' },
+                            ]).map(stat => (
+                              <div key={stat.label} className="rounded-xl bg-white/80 px-3 py-2 ring-1 ring-slate-200/80 dark:bg-slate-900/40 dark:ring-slate-700/70">
+                                <div className={cn('text-base font-extrabold leading-none', stat.tone)}>{stat.value}</div>
+                                <div className="mt-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500">{stat.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Three per-section bar graphs */}
+                    {/* Section-wise scores, with a bar so they compare at a glance */}
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {([
+                        { label: 'Prelims', s: prelimsScore },
+                        { label: 'CSAT / Maths', s: csatScore },
+                        { label: 'English', s: englishScore },
+                      ]).map(({ label, s }) => {
+                        const p = pct(s);
+                        return (
+                          <div key={label} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/40">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">{label}</span>
+                              <span className={cn('text-sm font-extrabold', s.total > 0 ? toneText(p) : 'text-slate-300 dark:text-slate-600')}>
+                                {s.total > 0 ? `${p}%` : '—'}
+                              </span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/60">
+                              <div className={cn('h-full rounded-full transition-all duration-500', barColor(p))} style={{ width: `${s.total > 0 ? Math.max(p, 2) : 0}%` }} />
+                            </div>
+                            <div className="mt-1.5 text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                              {s.total > 0 ? `${s.correct} of ${s.total} correct` : 'Not attempted yet'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* What's working vs what needs work */}
+                    {ranked.length >= 4 ? (
+                      <div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                        {([
+                          { title: 'Strong areas', rows: strengths, tint: 'border-teal-200 bg-teal-50/60 dark:border-teal-500/25 dark:bg-teal-500/10', head: 'text-teal-700 dark:text-teal-300' },
+                          { title: 'Needs work', rows: focusAreas, tint: 'border-rose-200 bg-rose-50/60 dark:border-rose-500/25 dark:bg-rose-500/10', head: 'text-rose-600 dark:text-rose-300' },
+                        ]).filter(card => card.rows.length > 0).map(card => (
+                          <div key={card.title} className={cn('rounded-2xl border p-3.5', card.tint)}>
+                            <h3 className={cn('mb-2 text-[11px] font-bold uppercase tracking-wide', card.head)}>{card.title}</h3>
+                            <div className="space-y-1.5">
+                              {card.rows.map(([k, b]) => (
+                                <div key={k} className="flex items-center justify-between gap-3" title={`${b.correct}/${b.total} questions correct · ${b.attempts} attempts`}>
+                                  <span className="truncate text-[12px] font-semibold text-slate-700 dark:text-slate-200">{k}</span>
+                                  <span className="shrink-0 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                    <span className={toneText(pct(b))}>{pct(b)}%</span>
+                                    <span className="ml-1.5 font-medium tabular-nums text-slate-400 dark:text-slate-500">{b.correct}/{b.total}</span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        </div>
+                        <p className="mt-2 text-center text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                          Ranked by confidence, not raw score — only areas with {MIN_QUESTIONS}+ questions and {MIN_ATTEMPTS}+ attempts are judged.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-center text-[11px] font-medium text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                        Strong and weak areas appear once you've attempted {MIN_QUESTIONS}+ questions ({MIN_ATTEMPTS}+ attempts) in at least four subjects or topics.
+                      </p>
+                    )}
+
+                    {/* Per-section breakdowns */}
                     <SectionReport
                       title="Prelims"
-                      accent="bg-blue-50 dark:bg-blue-500/10"
-                      accentText="text-blue-700 dark:text-blue-300"
+                      dot="bg-gradient-to-br from-sky-400 to-blue-500"
                       score={prelimsScore}
                       groupLabel="Subject-wise"
                       entries={groupBy('prelims', 'subject')}
                     />
                     <SectionReport
                       title="CSAT / Maths"
-                      accent="bg-violet-50 dark:bg-violet-500/10"
-                      accentText="text-violet-700 dark:text-violet-300"
+                      dot="bg-gradient-to-br from-violet-400 to-fuchsia-500"
                       score={csatScore}
                       groupLabel="Topic-wise"
                       entries={groupBy('csat', 'topic')}
                     />
                     <SectionReport
                       title="English"
-                      accent="bg-emerald-50 dark:bg-emerald-500/10"
-                      accentText="text-emerald-700 dark:text-emerald-300"
+                      dot="bg-gradient-to-br from-emerald-400 to-teal-500"
                       score={englishScore}
                       groupLabel="Topic-wise"
                       entries={groupBy('english', 'topic')}
                     />
 
-                    {/* Session-wise graph (each run until reset/reload) — shown last */}
-                    {sessions.length > 0 && (
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 overflow-hidden">
-                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-amber-50 dark:bg-amber-500/10">
-                          <h3 className="text-sm font-bold text-amber-700 dark:text-amber-300">Session-wise</h3>
-                          <span className="text-[11px] font-semibold text-amber-700/70 dark:text-amber-300/70">{sessions.length} sessions</span>
-                        </div>
-                        <div className="p-4">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-3">% correct per session</p>
-                          <div className="flex items-end gap-2 sm:gap-3 h-44 overflow-x-auto">
-                            {sessions.map((s, i) => {
-                              const p = pct(s);
-                              return (
-                                <div key={i} className="flex-1 min-w-[40px] h-full flex flex-col items-center">
-                                  <div className="flex-1 w-full flex items-end justify-center">
-                                    <div className="w-7 sm:w-9 flex flex-col items-center justify-end h-full">
-                                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1">{p}%</span>
-                                      <div
-                                        className={cn('w-full rounded-t-md transition-all duration-500', barColor(p))}
-                                        style={{ height: `${Math.max(p, 3)}%` }}
-                                        title={`Session ${i + 1}: ${s.correct}/${s.total} (${p}%)`}
-                                      />
-                                    </div>
-                                  </div>
-                                  <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 mt-1.5">S{i + 1}</span>
-                                  <span className="text-[8px] text-slate-400 dark:text-slate-500">{s.correct}/{s.total}</span>
-                                </div>
-                              );
-                            })}
+                    {/* Session trend (each run until reset/reload) — shown last */}
+                    {sessions.length > 1 && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/40">
+                        <div className="mb-3.5 flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-gradient-to-br from-amber-300 to-orange-400" />
+                            <h3 className="truncate text-[13px] font-bold text-slate-800 dark:text-slate-100">Progress</h3>
+                            <span className="hidden shrink-0 text-[11px] font-medium text-slate-400 sm:inline">· accuracy per session</span>
                           </div>
+                          <span className="shrink-0 text-[11px] font-semibold text-slate-400">last {Math.min(sessions.length, 12)} of {sessions.length}</span>
+                        </div>
+                        <div className="flex h-32 items-end gap-1.5 sm:gap-2.5">
+                          {sessions.slice(-12).map((s, i) => {
+                            const p = pct(s);
+                            return (
+                              <div
+                                key={i}
+                                className="flex h-full flex-1 flex-col items-center justify-end"
+                                title={`${s.correct}/${s.total} correct (${p}%)`}
+                              >
+                                <span className={cn('mb-1 text-[10px] font-bold', toneText(p))}>{p}</span>
+                                <div
+                                  className={cn('w-full max-w-[28px] rounded-t-lg shadow-sm transition-all duration-500', barColorUp(p))}
+                                  style={{ height: `${Math.max(p, 3)}%` }}
+                                />
+                                <span className="mt-1.5 text-[9px] font-semibold text-slate-400 dark:text-slate-500">
+                                  {sessions.length - Math.min(sessions.length, 12) + i + 1}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -6662,6 +7248,64 @@ export default function App() {
             </div>
 
             <div className="px-4 sm:px-6 pb-4 pt-3 overflow-y-auto flex-1 min-h-0">
+              {/* Coupon */}
+              <div className={cn(
+                "mb-3 rounded-2xl border px-3 py-2.5 transition-colors",
+                appliedCoupon
+                  ? "animate-couponGlow border-emerald-300 bg-emerald-50 dark:border-emerald-700/60 dark:bg-emerald-900/20"
+                  : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"
+              )}>
+                {appliedCoupon ? (
+                  <div key={appliedCoupon.code} className="animate-couponSlide flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="animate-couponPop flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                        <Tag className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-bold text-slate-800 dark:text-slate-100">
+                          {appliedCoupon.code} applied · <span className="text-emerald-600 dark:text-emerald-400">{appliedCoupon.discountPercent}% off</span>
+                        </p>
+                        <p className="truncate text-[10.5px] text-slate-500 dark:text-slate-400">
+                          {appliedCoupon.description
+                            || `Applies to ${appliedCoupon.plans.map(p => p === '1yr' ? '1 Year' : p === '2yr' ? '2 Years' : 'Ebooks').join(', ')}`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearCoupon}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-500 transition hover:border-rose-300 hover:text-rose-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Tag className="h-4 w-4 shrink-0 text-slate-400" />
+                    <span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300">Have a coupon?</span>
+                    <input
+                      value={couponInput}
+                      onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') applyCoupon(); }}
+                      placeholder="ENTER CODE"
+                      maxLength={32}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-slate-700 outline-none transition placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/15 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyCoupon}
+                      disabled={couponChecking || couponInput.trim() === ''}
+                      className="shrink-0 rounded-lg bg-indigo-600 px-4 py-1.5 text-[11px] font-bold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {couponChecking ? 'Checking…' : 'Apply'}
+                    </button>
+                    {couponError && (
+                      <p className="w-full text-[11px] font-semibold text-rose-500">{couponError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="grid md:grid-cols-3 gap-3 sm:gap-4">
                 {([
                   {
@@ -6724,14 +7368,25 @@ export default function App() {
                     link: 'https://t.me/+7DfVmsKSI4FmNzg1',
                     plan: 'ebooks',
                   },
-                ] as const).map(card => (
+                ] as const).map(card => {
+                  const cardDeal = appliedCoupon?.plans.includes(card.plan) ? appliedCoupon.amounts[card.plan] : undefined;
+                  return (
                   <div
                     key={card.id}
                     className={cn(
-                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-3 shadow-sm",
-                      card.cardClass
+                      "relative flex flex-col rounded-2xl border-2 bg-white dark:bg-slate-800/60 p-3 shadow-sm transition-all duration-300",
+                      card.cardClass,
+                      cardDeal && "border-emerald-400/70 shadow-lg shadow-emerald-500/10 dark:border-emerald-500/50"
                     )}
                   >
+                    {cardDeal && (
+                      <span
+                        key={appliedCoupon!.code}
+                        className="coupon-shine animate-couponPop absolute -top-2.5 -left-2.5 z-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-[10px] font-extrabold text-white shadow-lg shadow-emerald-500/30"
+                      >
+                        {appliedCoupon!.discountPercent}% OFF
+                      </span>
+                    )}
                     {card.ribbon && (
                       <span className="absolute -top-px right-4 bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-b-lg shadow-md">
                         {card.ribbon}
@@ -6747,7 +7402,27 @@ export default function App() {
                       </div>
                       <h3 className={cn("text-lg font-extrabold", card.titleClass)}>{card.title}</h3>
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">{card.subtitle}</p>
-                      <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{planPrices[card.plan] ? `₹${Math.round(planPrices[card.plan] / 100).toLocaleString('en-IN')}` : card.price}</p>
+                      {(() => {
+                        const listPaise = planPrices[card.plan];
+                        const deal = appliedCoupon?.plans.includes(card.plan) ? appliedCoupon.amounts[card.plan] : undefined;
+                        const rupees = (paise: number) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
+                        if (deal) {
+                          return (
+                            <>
+                              <div key={appliedCoupon!.code} className="mt-1 flex items-baseline justify-center gap-2">
+                                <span className="coupon-strike text-sm font-bold text-slate-400">{rupees(deal.listAmount)}</span>
+                                <span className="animate-couponPop text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{rupees(deal.finalAmount)}</span>
+                              </div>
+                              <span className="animate-couponSlide mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 ring-1 ring-emerald-500/25 dark:text-emerald-400">
+                                <Tag className="h-3 w-3" /> {appliedCoupon!.code} · saves {rupees(deal.discountAmount)}
+                              </span>
+                            </>
+                          );
+                        }
+                        return (
+                          <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">{listPaise ? rupees(listPaise) : card.price}</p>
+                        );
+                      })()}
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 px-2">{card.per}</p>
                     </div>
 
@@ -6774,7 +7449,8 @@ export default function App() {
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Queries footer */}

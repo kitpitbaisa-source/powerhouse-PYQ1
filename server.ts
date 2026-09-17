@@ -25,6 +25,8 @@ const feedbackContainer = database.container("feedback");
 // Per-user question state: bookmarks, notes and the full attempt history.
 const userQuestionsContainer = database.container("user-questions");
 const userWorkspaceContainer = database.container("user-workspace");
+// Discount coupons applied at checkout (partitioned by the code itself).
+const couponsContainer = database.container("coupons");
 
 console.log("Cosmos DB client initialized for:", endpoint);
 
@@ -299,8 +301,98 @@ async function ensureUserWorkspaceContainer() {
   userWorkspaceContainerReady = true;
 }
 
-async function getEffectivePlans() {
-  const merged: Record<string, { amount: number; days: number; label: string }> =
+// ── Coupons ──────────────────────────────────────────────────────────────────
+// One document per code (id = code = partition key) so a lookup is a point read.
+// Codes are stored and matched upper-case, and are never hard-deleted: an
+// expired or withdrawn coupon is soft-deleted with isActive/deletedAt so past
+// redemptions keep their reference.
+let couponsContainerReady = false;
+async function ensureCouponsContainer() {
+  if (couponsContainerReady) return;
+  await database.containers.createIfNotExists({
+    id: "coupons",
+    partitionKey: { paths: ["/code"] },
+  });
+  couponsContainerReady = true;
+}
+
+const normalizeCouponCode = (code: unknown) =>
+  String(code || "").toUpperCase().replace(/\s+/g, "").slice(0, 32);
+
+// A coupon is valid through the whole of its expiry day, in IST — the audience
+// is Indian, and "expires 30 Sep" should not stop working at 05:30 that morning.
+const couponExpiryMs = (expiryDate: string) => {
+  const d = new Date(`${String(expiryDate).slice(0, 10)}T23:59:59.999+05:30`);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
+// Server-side truth for every discount. The browser only ever receives the
+// result of this; `create-order` runs it again before charging, so a tampered
+// client cannot pay less than the coupon actually allows.
+async function evaluateCoupon(
+  rawCode: unknown,
+  plan: string,
+  email: string,
+  amount: number
+): Promise<
+  | { ok: true; coupon: any; discountPercent: number; discountAmount: number; finalAmount: number; error?: undefined }
+  | { ok: false; error: string }
+> {
+  const code = normalizeCouponCode(rawCode);
+  if (!code) return { ok: false, error: "Enter a coupon code" };
+  const userEmail = String(email || "").toLowerCase().trim();
+
+  await ensureCouponsContainer();
+  let coupon: any = null;
+  try {
+    const { resource } = await couponsContainer.item(code, code).read();
+    coupon = resource;
+  } catch {
+    coupon = null;
+  }
+  if (!coupon || coupon.isActive === false) return { ok: false, error: "This coupon code is not valid" };
+  if (coupon.expiryDate && couponExpiryMs(coupon.expiryDate) < Date.now()) {
+    return { ok: false, error: "This coupon has expired" };
+  }
+  const plans: string[] = Array.isArray(coupon.plans) ? coupon.plans : [];
+  if (plan && plans.length > 0 && !plans.includes(plan)) {
+    return { ok: false, error: "This coupon does not apply to the selected plan" };
+  }
+  const maxRedemptions = Number(coupon.maxRedemptions) || 0;
+  if (maxRedemptions > 0 && Number(coupon.redemptionCount || 0) >= maxRedemptions) {
+    return { ok: false, error: "This coupon has been fully claimed" };
+  }
+  // One redemption per user: a successful payment carrying this code is proof.
+  // Guests previewing a code have no email yet; checkout always re-checks with one.
+  if (userEmail) try {
+    await ensurePaymentsContainer();
+    const { resources } = await paymentsContainer.items
+      .query(
+        {
+          query: "SELECT VALUE COUNT(1) FROM c WHERE c.couponCode = @code AND c.status = 'success'",
+          parameters: [{ name: "@code", value: code }],
+        },
+        { partitionKey: userEmail }
+      )
+      .fetchAll();
+    if ((resources?.[0] || 0) > 0) return { ok: false, error: "You have already used this coupon" };
+  } catch (e: any) {
+    console.error("coupon redemption check failed:", e?.message);
+  }
+
+  const discountPercent = Math.min(Math.max(Number(coupon.discountPercent) || 0, 1), 100);
+  // Razorpay rejects orders under ₹1, so a 100% coupon still charges ₹1.
+  const finalAmount = Math.max(Math.round((amount * (100 - discountPercent)) / 100), 100);
+  return {
+    ok: true,
+    coupon,
+    discountPercent,
+    discountAmount: amount - finalAmount,
+    finalAmount,
+  };
+}
+
+async function getEffectivePlans() {  const merged: Record<string, { amount: number; days: number; label: string }> =
     JSON.parse(JSON.stringify(PLANS));
   try {
     await ensureSettingsContainer();
@@ -1114,7 +1206,7 @@ serverApp.patch("/api/update-question", async (req, res) => {
 // ── Razorpay: create an order (amount fixed server-side per plan) ──
 serverApp.post("/api/payment/create-order", async (req, res) => {
   try {
-    const { email, plan } = req.body || {};
+    const { email, plan, couponCode } = req.body || {};
     const plans = await getEffectivePlans();
     const p = plans[plan];
     if (!email || !p) {
@@ -1123,15 +1215,32 @@ serverApp.post("/api/payment/create-order", async (req, res) => {
     if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
       return res.status(500).json({ error: "Payment gateway not configured" });
     }
+    // The discount is recomputed here rather than trusted from the client.
+    let chargeAmount = p.amount;
+    let appliedCoupon: { code: string; discountPercent: number; discountAmount: number } | null = null;
+    if (couponCode) {
+      const result = await evaluateCoupon(couponCode, plan, email, p.amount);
+      if (!result.ok) return res.status(400).json({ error: result.error });
+      chargeAmount = result.finalAmount;
+      appliedCoupon = {
+        code: normalizeCouponCode(couponCode),
+        discountPercent: result.discountPercent,
+        discountAmount: result.discountAmount,
+      };
+    }
     const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
     const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
       body: JSON.stringify({
-        amount: p.amount,
+        amount: chargeAmount,
         currency: "INR",
         receipt: `rcpt_${Date.now()}`,
-        notes: { email: String(email).toLowerCase().trim(), plan },
+        notes: {
+          email: String(email).toLowerCase().trim(),
+          plan,
+          ...(appliedCoupon ? { coupon: appliedCoupon.code } : {}),
+        },
       }),
     });
     const order: any = await rzpRes.json();
@@ -1151,7 +1260,11 @@ serverApp.post("/api/payment/create-order", async (req, res) => {
         plan,
         planLabel: p.label,
         durationDays: p.days,
-        amount: order.amount ?? p.amount,
+        amount: order.amount ?? chargeAmount,
+        listAmount: p.amount,
+        couponCode: appliedCoupon?.code ?? null,
+        couponDiscountPercent: appliedCoupon?.discountPercent ?? null,
+        couponDiscountAmount: appliedCoupon?.discountAmount ?? null,
         currency: order.currency || "INR",
         status: "created",
         gateway: "razorpay",
@@ -1231,6 +1344,10 @@ serverApp.post("/api/payment/verify", async (req, res) => {
         planLabel: p.label,
         durationDays: p.days,
         amount: prior?.amount ?? p.amount,
+        listAmount: prior?.listAmount ?? p.amount,
+        couponCode: prior?.couponCode ?? null,
+        couponDiscountPercent: prior?.couponDiscountPercent ?? null,
+        couponDiscountAmount: prior?.couponDiscountAmount ?? null,
         currency: prior?.currency || "INR",
         status: "success",
         gateway: "razorpay",
@@ -1239,6 +1356,24 @@ serverApp.post("/api/payment/verify", async (req, res) => {
         createdAt: prior?.createdAt || now,
         verifiedAt: now,
       });
+      // Count the redemption once the payment is confirmed, so an abandoned
+      // checkout never consumes a coupon's limited quota.
+      if (prior?.couponCode) {
+        try {
+          await ensureCouponsContainer();
+          const { resource: coupon } = await couponsContainer.item(prior.couponCode, prior.couponCode).read();
+          if (coupon) {
+            await couponsContainer.items.upsert({
+              ...coupon,
+              redemptionCount: Number(coupon.redemptionCount || 0) + 1,
+              lastRedeemedAt: now,
+              modifiedAt: now,
+            });
+          }
+        } catch (e: any) {
+          console.error("coupon redemption count failed:", e?.message);
+        }
+      }
     } catch (e: any) {
       console.error("payments record (verify) failed:", e?.message);
     }
@@ -1257,6 +1392,131 @@ serverApp.get("/api/plans", async (_req, res) => {
     for (const k of Object.keys(plans)) out[k] = plans[k].amount;
     res.json(out);
   } catch (error: any) {
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Public: preview a coupon before checkout (no state is changed here).
+// Called without a plan, it returns the discounted price of every plan the
+// coupon covers, so the Premium modal can mark them all at once. ──
+serverApp.post("/api/coupon/validate", async (req, res) => {
+  try {
+    const { code, plan, email } = req.body || {};
+    const plans = await getEffectivePlans();
+    if (plan && !plans[plan]) return res.status(400).json({ valid: false, error: "Select a plan first" });
+    const baseAmount = plan ? plans[plan].amount : 0;
+    const result = await evaluateCoupon(code, plan || "", email, baseAmount);
+    if (!result.ok) return res.status(200).json({ valid: false, error: result.error });
+    const eligible: string[] = Array.isArray(result.coupon.plans) && result.coupon.plans.length > 0
+      ? result.coupon.plans.filter((k: string) => !!plans[k])
+      : Object.keys(plans);
+    const amounts: Record<string, { listAmount: number; discountAmount: number; finalAmount: number }> = {};
+    for (const k of eligible) {
+      const list = plans[k].amount;
+      const final = Math.max(Math.round((list * (100 - result.discountPercent)) / 100), 100);
+      amounts[k] = { listAmount: list, discountAmount: list - final, finalAmount: final };
+    }
+    res.json({
+      valid: true,
+      code: normalizeCouponCode(code),
+      discountPercent: result.discountPercent,
+      plans: eligible,
+      amounts,
+      expiryDate: result.coupon.expiryDate || null,
+      description: result.coupon.description || null,
+    });
+  } catch (error: any) {
+    console.error("coupon validate error:", error);
+    res.status(500).json({ valid: false, error: "Could not check that coupon. Please try again." });
+  }
+});
+
+// ── Admin: list coupons (active first, newest first). ?includeDeleted=1 to
+// also return soft-deleted ones. ──
+serverApp.get("/api/admin/coupons", async (req, res) => {
+  try {
+    await ensureCouponsContainer();
+    const includeDeleted = String(req.query.includeDeleted || "") === "1";
+    const query = includeDeleted
+      ? "SELECT * FROM c ORDER BY c.createdAt DESC"
+      : "SELECT * FROM c WHERE NOT IS_DEFINED(c.isActive) OR c.isActive = true ORDER BY c.createdAt DESC";
+    const { resources } = await couponsContainer.items.query(query).fetchAll();
+    res.json(resources);
+  } catch (error: any) {
+    console.error("Error fetching coupons:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: create or update a coupon (upsert by code) ──
+serverApp.post("/api/admin/coupons", async (req, res) => {
+  try {
+    const { code, discountPercent, expiryDate, plans, maxRedemptions, description, isActive } = req.body || {};
+    const id = normalizeCouponCode(code);
+    if (!id || id.length < 3) {
+      return res.status(400).json({ error: "Coupon code must be at least 3 characters" });
+    }
+    const percent = Number(discountPercent);
+    if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+      return res.status(400).json({ error: "Discount must be between 1% and 100%" });
+    }
+    if (!expiryDate || couponExpiryMs(expiryDate) === 0) {
+      return res.status(400).json({ error: "A valid expiry date is required" });
+    }
+    const validPlans = Object.keys(PLANS);
+    const planList = Array.isArray(plans) ? plans.filter((x: any) => validPlans.includes(x)) : [];
+    if (planList.length === 0) {
+      return res.status(400).json({ error: "Select at least one plan" });
+    }
+    const cap = Number(maxRedemptions);
+    if (maxRedemptions !== undefined && maxRedemptions !== null && maxRedemptions !== "" && (!Number.isFinite(cap) || cap < 0)) {
+      return res.status(400).json({ error: "Redemption limit must be 0 (unlimited) or higher" });
+    }
+
+    await ensureCouponsContainer();
+    let existing: any = null;
+    try {
+      const { resource } = await couponsContainer.item(id, id).read();
+      existing = resource;
+    } catch {}
+    const now = new Date().toISOString();
+    const doc = {
+      id,
+      code: id,
+      discountPercent: Math.round(percent),
+      expiryDate: String(expiryDate).slice(0, 10),
+      plans: planList,
+      maxRedemptions: Number.isFinite(cap) ? Math.round(cap) : 0,
+      description: (description && String(description).trim().slice(0, 200)) || null,
+      // Counters survive an edit: editing a coupon must not reset its usage.
+      redemptionCount: Number(existing?.redemptionCount || 0),
+      lastRedeemedAt: existing?.lastRedeemedAt ?? null,
+      isActive: isActive === undefined ? existing?.isActive !== false : !!isActive,
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      deletedAt: null,
+    };
+    await couponsContainer.items.upsert(doc);
+    res.json({ success: true, coupon: doc });
+  } catch (error: any) {
+    console.error("Error saving coupon:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// ── Admin: withdraw a coupon (soft delete — the document is kept so past
+// redemptions still resolve) ──
+serverApp.delete("/api/admin/coupons/:code", async (req, res) => {
+  try {
+    const id = normalizeCouponCode(req.params.code);
+    await ensureCouponsContainer();
+    const { resource } = await couponsContainer.item(id, id).read();
+    if (!resource) return res.status(404).json({ error: "Coupon not found" });
+    const now = new Date().toISOString();
+    await couponsContainer.items.upsert({ ...resource, isActive: false, deletedAt: now, modifiedAt: now });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error deleting coupon:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });

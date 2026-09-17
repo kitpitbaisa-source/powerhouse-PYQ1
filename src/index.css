@@ -132,6 +132,65 @@ button:active:not(:disabled) {
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { scrollbar-width: none; }
 
+/* ── Coupon / discount animations (Premium modal) ── */
+@keyframes couponPop {
+  0%   { opacity: 0; transform: scale(0.72); }
+  55%  { opacity: 1; transform: scale(1.14); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-couponPop { animation: couponPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes couponSlide {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-couponSlide { animation: couponSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes couponStrike {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.coupon-strike { position: relative; }
+.coupon-strike::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 52%;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  animation: couponStrike 0.45s ease-out 0.12s both;
+}
+
+@keyframes couponGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.12); }
+}
+.animate-couponGlow { animation: couponGlow 2.2s ease-in-out infinite; }
+
+@keyframes couponShine {
+  0%   { transform: translateX(-120%); }
+  60%, 100% { transform: translateX(220%); }
+}
+.coupon-shine { position: relative; overflow: hidden; }
+.coupon-shine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%);
+  animation: couponShine 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-couponPop,
+  .animate-couponSlide,
+  .animate-couponGlow,
+  .coupon-strike::after,
+  .coupon-shine::before { animation: none; }
+  .coupon-strike::after { clip-path: none; }
+}
+
 /* Skeleton shimmer for loading states */
 @keyframes shimmer {
   0% { background-position: -400px 0; }
