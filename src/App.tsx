@@ -2060,6 +2060,32 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   );
 };
 
+// Marks + word limit as one segmented pill: rounded at both ends, split by a
+// hairline. Shared by the Mains and Topper's Copy cards so they read the same.
+// Renders nothing unless the paper actually stated a value.
+const MarksWordsPill: React.FC<{ marks?: number | null; words?: number | null }> = ({ marks, words }) => {
+  if (marks == null && words == null) return null;
+  const seg = "px-2.5 py-[3px] leading-none whitespace-nowrap";
+  return (
+    <span
+      className="inline-flex items-stretch overflow-hidden rounded-full text-[10px] font-bold ring-1 ring-inset ring-blue-400/25 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+      title={[marks != null && `${marks} marks`, words != null && `${words} words`].filter(Boolean).join(" · ")}
+    >
+      {marks != null && (
+        <span className={cn(seg, "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:from-blue-400/15 dark:to-indigo-400/15 dark:text-blue-300")}>
+          {marks}<span className="ml-0.5 font-semibold opacity-70">marks</span>
+        </span>
+      )}
+      {marks != null && words != null && <span className="w-px bg-blue-400/25" />}
+      {words != null && (
+        <span className={cn(seg, "bg-gradient-to-r from-indigo-500/10 to-violet-500/15 text-indigo-600 dark:from-indigo-400/10 dark:to-violet-400/15 dark:text-indigo-300")}>
+          {words}<span className="ml-0.5 font-semibold opacity-70">words</span>
+        </span>
+      )}
+    </span>
+  );
+};
+
 interface MainsQuestionCardProps {
   question: MainsQuestion;
   isAnswerVisible: boolean;
@@ -2115,6 +2141,8 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Marks / word limit — only rendered when the paper actually stated them */}
+          <MarksWordsPill marks={question.marks} words={question.words} />
           {onFeedback && (
             <button
               type="button"
@@ -6550,8 +6578,7 @@ export default function App() {
                             {q.topic && <span className="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-300/90 rounded-full ring-1 ring-inset ring-blue-400/15 font-semibold">{q.topic}</span>}
                           </div>
                           <div className="flex gap-1.5 items-center">
-                            {q.marks && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.marks} marks</span>}
-                            {q.words && <span className="text-[10px] px-2 py-0.5 text-blue-400 dark:text-blue-300 font-medium">{q.words} words</span>}
+                            <MarksWordsPill marks={q.marks} words={q.words} />
                             <button
                               type="button"
                               onClick={() => openFeedback(q.id, 'toppers')}

@@ -26,6 +26,9 @@ export interface MainsQuestion {
   modelAnswer?: string;
   model_answer?: string;
   keywords?: string[];
+  marks?: number | null;
+  words?: number | null;
+  questionNumber?: number | string | null;
 }
 
 export interface TopperAnswer {
