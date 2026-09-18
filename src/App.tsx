@@ -147,6 +147,9 @@ function loadRazorpayScript(): Promise<boolean> {
   return razorpayScriptPromise;
 }
 
+const RELEASE_NOTES_VERSION = '2026-09-18';
+const RELEASE_NOTES_STORAGE_KEY = 'release_notes_seen_version';
+
 const LEGAL_TITLES: Record<string, string> = {
   about: "About Us",
   contact: "Contact Us",
@@ -3828,6 +3831,13 @@ export default function App() {
   const [showReleasesModal, setShowReleasesModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<null | '1yr' | '2yr' | 'ebooks'>(null);
 
+  useEffect(() => {
+    if (localStorage.getItem(RELEASE_NOTES_STORAGE_KEY) === RELEASE_NOTES_VERSION) return;
+
+    localStorage.setItem(RELEASE_NOTES_STORAGE_KEY, RELEASE_NOTES_VERSION);
+    setShowReleasesModal(true);
+  }, []);
+
   // ── Checkout coupons ──
   // The applied coupon is a preview only: `create-order` re-validates the code
   // server-side and recomputes the amount, so nothing here can change a price.
@@ -5205,14 +5215,14 @@ export default function App() {
                   {/* New Releases */}
                   <button
                     onClick={() => { setShowReleasesModal(true); setIsUserMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="group flex w-full items-center gap-3 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 px-2 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/25 dark:from-indigo-500/15 dark:via-blue-500/10 dark:to-violet-500/15 dark:text-indigo-200"
                   >
-                    <span className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shrink-0">
-                      <Sparkles className="w-4 h-4" />
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                    <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white shadow-md shadow-indigo-600/20 transition group-hover:scale-105">
+                      <Sparkles className="h-4 w-4" />
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-300 ring-2 ring-white dark:ring-slate-900" />
                     </span>
-                    <span className="flex items-center gap-2">New Releases
-                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[9px] font-bold uppercase tracking-wide">New</span>
+                    <span className="flex items-center gap-2">What’s New
+                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-300">Explore</span>
                     </span>
                   </button>
 
@@ -7808,99 +7818,440 @@ export default function App() {
 
       {/* New Releases Modal */}
       {showReleasesModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade" onClick={() => setShowReleasesModal(false)}>
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop" onClick={(e) => e.stopPropagation()}>
-            <div className="relative shrink-0 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 px-6 pt-7 pb-7 text-center overflow-hidden">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-md animate-overlayFade sm:p-4" onClick={() => setShowReleasesModal(false)}>
+          <div className="relative flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-indigo-200/80 bg-white shadow-2xl shadow-indigo-950/25 dark:border-indigo-500/20 dark:bg-slate-900 animate-modalPop" onClick={(e) => e.stopPropagation()}>
+            <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 px-5 py-5 sm:px-7">
               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+              <div className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-white/20 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-28 right-20 h-56 w-56 rounded-full bg-fuchsia-300/20 blur-3xl" />
               <button
                 onClick={() => setShowReleasesModal(false)}
-                className="absolute top-3 right-3 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                className="absolute right-4 top-4 z-20 rounded-xl bg-white/15 p-2 text-white transition-colors hover:bg-white/25"
                 aria-label="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
-              <div className="relative flex flex-col items-center">
-                <div className="w-16 h-16 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white shadow-lg ring-2 ring-white/30">
-                  <Sparkles className="w-8 h-8" />
+              <div className="relative flex items-center gap-4 pr-12">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg ring-1 ring-inset ring-white/30 backdrop-blur">
+                  <Sparkles className="h-6 w-6" />
                 </div>
-                <h2 className="text-xl font-extrabold text-white mt-3">New Releases</h2>
-                <p className="text-emerald-100 text-xs font-medium mt-1">What's new · What's coming next</p>
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-amber-300 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-indigo-950 shadow-sm">New experience</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-100">September 2026</span>
+                  </div>
+                  <h2 className="text-xl font-black tracking-tight text-white sm:text-2xl">Study smarter. Revise faster.</h2>
+                  <p className="mt-1 text-xs font-medium text-blue-50/90 sm:text-sm">Meet the new tools built to improve every practice session.</p>
+                </div>
               </div>
             </div>
 
-            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
-              {/* Just rolled out */}
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wide">Just rolled out</span>
-                <span className="text-[10px] font-medium text-slate-400">14 September 2026</span>
-              </div>
-              <ul className="space-y-3 mb-6">
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">New Exam, Year and Paper filters</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Prelims and English now have separate Exam, Year and Paper filters, making it easier to find the exact paper you want.</p>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-br from-indigo-50/60 via-slate-50 to-violet-50/50 px-4 py-5 sm:px-7 sm:py-7 dark:from-indigo-500/5 dark:via-slate-950 dark:to-violet-500/5">
+              <div className="grid gap-6 lg:grid-cols-3">
+                <section className="hidden">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm shadow-emerald-500/25">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </span>
+                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Latest release</h3>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">18 September 2026</span>
                   </div>
-                </li>
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Save your default filters</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Pin your preferred Prelims filter combination and it will load automatically when you sign in. Unpinning removes only the saved default.</p>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {([
+                      {
+                        title: 'Modern note-taking',
+                        description: 'Create study notes with bold text, bullet lists, editable titles and full previews on desktop or mobile.',
+                        icon: StickyNote,
+                        tone: 'violet',
+                      },
+                      {
+                        title: 'Check every attempt',
+                        description: 'See correct and wrong totals on each question, preview recent attempts and open the complete attempt history.',
+                        icon: BarChart3,
+                        tone: 'emerald',
+                      },
+                      {
+                        title: 'Sort your practice',
+                        description: 'Order questions by latest, oldest, score or attempt count to quickly focus on the practice you need.',
+                        icon: ArrowDownWideNarrow,
+                        tone: 'blue',
+                      },
+                    ] as const).map(item => {
+                      const ItemIcon = item.icon;
+                      const tone = item.tone === 'violet'
+                        ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300'
+                        : item.tone === 'emerald'
+                        ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
+                        : 'bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300';
+                      const cardTone = item.tone === 'violet'
+                        ? 'border-violet-200/80 hover:border-violet-300 dark:border-violet-500/20'
+                        : item.tone === 'emerald'
+                        ? 'border-emerald-200/80 hover:border-emerald-300 dark:border-emerald-500/20'
+                        : 'border-blue-200/80 hover:border-blue-300 dark:border-blue-500/20';
+                      return (
+                        <article key={item.title} className={cn("rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:bg-slate-800/70 sm:p-5", cardTone)}>
+                          <div className={cn("mb-4 flex h-10 w-10 items-center justify-center rounded-xl", tone)}>
+                            <ItemIcon className="h-5 w-5" />
+                          </div>
+                          <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                          <p className="mt-2 text-[12.5px] font-medium leading-6 text-slate-600 dark:text-slate-300">{item.description}</p>
+                        </article>
+                      );
+                    })}
                   </div>
-                </li>
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Simpler exam names</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">BPSC sessions are grouped under BPSC, all CISF papers under CISF, and EPFO EO/AO variants under EPFO EO/AO.</p>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">638 new Prelims questions</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Added CDS (2) 2026, NDA (2) 2026, UKPSC Prelims 2021 and 2024, and UPSC APFC 2016 question papers.</p>
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">More reliable question loading</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Questions now load in a safer order so the complete list is not replaced by the smaller first-page result.</p>
-                  </div>
-                </li>
-              </ul>
+                </section>
 
-              {/* Coming soon */}
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold uppercase tracking-wide">Coming soon</span>
-              </div>
-              <ul className="space-y-3">
-                <li className="flex gap-3">
-                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">More State PCS exams</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Expanding coverage to additional State PCS examinations beyond BPSC &amp; UPPSC.</p>
+                <section className="order-4 lg:col-span-3">
+                  <div className="mb-4 flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-white shadow-sm shadow-indigo-500/25">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">What’s coming next</h3>
                   </div>
-                </li>
-                <li className="flex gap-3">
-                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Essay practice section</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">A dedicated Mains essay section with curated topics and model approaches.</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      { title: 'More State PCS exams', description: 'More State PCS question papers.', icon: Landmark },
+                      { title: 'Essay practice', description: 'Essay topics and model approaches.', icon: BookOpen },
+                      { title: 'Repeat patterns', description: 'Find repeated, high-yield PYQ concepts.', icon: BarChart3 },
+                    ] as const).map(item => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <article key={item.title} className="flex gap-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm dark:border-indigo-500/15 dark:from-slate-800 dark:to-indigo-500/10">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-500 shadow-sm dark:bg-slate-800 dark:text-indigo-300">
+                            <ItemIcon className="h-4.5 w-4.5" />
+                          </span>
+                          <div>
+                            <h4 className="text-[13px] font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                            <p className="mt-1 text-[11.5px] leading-5 text-slate-500 dark:text-slate-400">{item.description}</p>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
-                </li>
-                <li className="flex gap-3">
-                  <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">AI-powered repeat-pattern insights</p>
-                    <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400 mt-0.5">Smart recommendations that surface repeatedly-asked concepts and high-yield question patterns to focus your prep.</p>
-                  </div>
-                </li>
-              </ul>
+                </section>
 
-              <p className="text-[12px] text-center text-slate-400 mt-6">More updates roll out regularly — stay tuned. 🚀</p>
+                <section className="hidden">
+                  <div className="rounded-3xl border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-violet-50 p-4 sm:p-6 dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-900 dark:to-violet-500/10">
+                    <div className="mb-5 flex items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20">
+                        <BookOpen className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Quick start</h3>
+                        <p className="mt-1 text-[12px] font-medium leading-5 text-slate-600 dark:text-slate-300">Four short paths to start using the tools shown above.</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {([
+                        {
+                          step: '1',
+                          title: 'Write a note',
+                          path: 'Question card → Note icon',
+                          detail: 'Add a title, bold key facts or create a bullet list. Tap the icon again to preview or edit.',
+                          icon: StickyNote,
+                          tone: 'bg-violet-600 shadow-violet-600/20',
+                        },
+                        {
+                          step: '2',
+                          title: 'Sort questions',
+                          path: 'Filters → Latest dropdown',
+                          detail: 'Choose latest, oldest, score or attempts. The selected order applies to the current section.',
+                          icon: ArrowDownWideNarrow,
+                          tone: 'bg-blue-600 shadow-blue-600/20',
+                        },
+                        {
+                          step: '3',
+                          title: 'Check attempts',
+                          path: 'Question card → Attempt counter',
+                          detail: 'Hover or tap for recent results. Select the counter to open your complete attempt timeline.',
+                          icon: BarChart3,
+                          tone: 'bg-emerald-600 shadow-emerald-600/20',
+                        },
+                        {
+                          step: '4',
+                          title: 'Review progress',
+                          path: 'Profile menu → My Workspace',
+                          detail: 'Open Report for performance, or switch to Bookmarks and Notes to revisit saved questions.',
+                          icon: LayoutDashboard,
+                          tone: 'bg-amber-500 shadow-amber-500/20',
+                        },
+                      ] as const).map(item => {
+                        const StepIcon = item.icon;
+                        return (
+                          <article key={item.step} className="relative rounded-2xl border border-white bg-white/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/80">
+                            <span className={cn("absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-extrabold text-white shadow-md", item.tone)}>
+                              {item.step}
+                            </span>
+                            <span className={cn("mb-3 flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md", item.tone)}>
+                              <StepIcon className="h-4.5 w-4.5" />
+                            </span>
+                            <h4 className="text-[13px] font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                            <p className="mt-1.5 text-[10px] font-extrabold uppercase tracking-wide text-blue-600 dark:text-blue-300">{item.path}</p>
+                            <p className="mt-2 text-[11.5px] font-medium leading-5 text-slate-600 dark:text-slate-300">{item.detail}</p>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="order-1 lg:col-span-3">
+                  <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/20">
+                        <Sparkles className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">See what’s new</h3>
+                        <p className="mt-0.5 text-[11.5px] font-medium text-slate-500 dark:text-slate-400">Notes, sorting and attempt history.</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-gradient-to-r from-blue-100 to-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:from-blue-500/15 dark:to-violet-500/15 dark:text-indigo-300">18 September 2026</span>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {([
+                      {
+                        title: 'Write notes',
+                        description: 'Bold facts, add bullets and edit titles.',
+                        image: '/release-screenshots/note-editor.png',
+                        alt: 'Modern note editor with bold text, bullet list and editable title',
+                        badge: 'Notes',
+                        icon: StickyNote,
+                        frame: 'from-violet-500/20 via-indigo-500/10 to-fuchsia-500/20',
+                        iconTone: 'bg-violet-600 shadow-violet-600/25',
+                        imageClass: 'object-cover object-top',
+                      },
+                      {
+                        title: 'Sort questions',
+                        description: 'Sort by date, score or attempts.',
+                        image: '/release-screenshots/question-sorting.png',
+                        alt: 'Question filter panel with sorting options open',
+                        badge: 'Sorting',
+                        icon: ArrowDownWideNarrow,
+                        frame: 'from-blue-500/20 via-cyan-500/10 to-indigo-500/20',
+                        iconTone: 'bg-blue-600 shadow-blue-600/25',
+                        imageClass: 'object-contain',
+                      },
+                      {
+                        title: 'Check attempts',
+                        description: 'See correct, wrong and full attempt history.',
+                        image: '/release-screenshots/attempt-history.png',
+                        alt: 'Attempt history showing total, correct and wrong answer counts',
+                        badge: 'Progress',
+                        icon: BarChart3,
+                        frame: 'from-emerald-500/20 via-teal-500/10 to-cyan-500/20',
+                        iconTone: 'bg-emerald-600 shadow-emerald-600/25',
+                        imageClass: 'object-contain',
+                      },
+                    ] as const).map(item => {
+                      const TourIcon = item.icon;
+                      return (
+                        <article key={item.title} className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-800/70">
+                          <a
+                            href={item.image}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn("relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br p-3", item.frame)}
+                            title={`Open ${item.badge.toLowerCase()} screenshot`}
+                          >
+                            <div className="absolute inset-0 opacity-35" style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
+                            <img
+                              src={item.image}
+                              alt={item.alt}
+                              loading="lazy"
+                              className={cn("relative h-full w-full rounded-2xl border border-white/50 shadow-2xl shadow-slate-950/20 transition duration-500 group-hover:scale-[1.025]", item.imageClass)}
+                            />
+                            <span className="absolute bottom-5 right-5 rounded-full bg-slate-950/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-md">
+                              View full size
+                            </span>
+                          </a>
+                          <div className="p-4 sm:p-5">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md", item.iconTone)}>
+                                <TourIcon className="h-4.5 w-4.5" />
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wide text-slate-500 dark:bg-slate-700 dark:text-slate-300">{item.badge}</span>
+                            </div>
+                            <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                            <p className="mt-2 text-[12px] font-medium leading-5 text-slate-600 dark:text-slate-300">{item.description}</p>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="order-2 lg:col-span-3">
+                  <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-600/20">
+                        <BookOpen className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">How to use these features</h3>
+                        <p className="mt-1 text-[12px] font-medium text-slate-600 dark:text-slate-300">Pin filters. Revise notes. Improve weak areas.</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-gradient-to-r from-blue-100 to-violet-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:from-blue-500/15 dark:to-violet-500/15 dark:text-indigo-300">Start here</span>
+                  </div>
+
+                  <div className="space-y-5">
+                    {([
+                      {
+                        title: 'Pin default filters',
+                        eyebrow: 'Default filters',
+                        description: 'Save your usual filters for every visit.',
+                        image: '/release-screenshots/pinned-default-filters.png',
+                        alt: 'Filter panel with selected exam and year and the pin button highlighted',
+                        icon: Pin,
+                        tone: 'blue',
+                        path: 'Filters → Pin',
+                        steps: [
+                          'Choose your filters.',
+                          'Tap the Pin button.',
+                          'They load next time. Tap Pin again to remove.',
+                        ],
+                      },
+                      {
+                        title: 'Review saved questions',
+                        eyebrow: 'Saved questions',
+                        description: 'Show only bookmarks or questions with notes.',
+                        image: '/release-screenshots/notes-filter.png',
+                        alt: 'Notes filter selected with saved notes displayed above matching questions',
+                        icon: StickyNote,
+                        tone: 'emerald',
+                        path: 'Filters → Bookmark / Notes',
+                        steps: [
+                          'Tap Bookmark for saved questions.',
+                          'Tap Notes for questions with notes.',
+                          'Tap a note icon to view or edit.',
+                        ],
+                      },
+                      {
+                        title: 'Improve weak areas',
+                        eyebrow: 'Progress report',
+                        description: 'Use your report to plan revision.',
+                        image: '/release-screenshots/workspace-report.png',
+                        alt: 'My Workspace report with accuracy, strong areas, weak areas and subject performance bars',
+                        icon: BarChart3,
+                        tone: 'violet',
+                        path: 'Profile menu → My Workspace → Report',
+                        steps: [
+                          'Open My Workspace and select Report.',
+                          'Check accuracy, correct and wrong answers.',
+                          'Revise topics listed under Needs Work.',
+                        ],
+                      },
+                    ] as const).map(item => {
+                      const WalkthroughIcon = item.icon;
+                      const theme = item.tone === 'blue'
+                        ? {
+                            border: 'border-blue-200/80 dark:border-blue-500/20',
+                            surface: 'from-blue-50/90 to-indigo-50/70 dark:from-blue-500/10 dark:to-indigo-500/5',
+                            icon: 'from-blue-600 to-indigo-600 shadow-blue-600/20',
+                            label: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+                            step: 'bg-blue-600',
+                          }
+                        : item.tone === 'emerald'
+                        ? {
+                            border: 'border-emerald-200/80 dark:border-emerald-500/20',
+                            surface: 'from-emerald-50/90 to-teal-50/70 dark:from-emerald-500/10 dark:to-teal-500/5',
+                            icon: 'from-emerald-600 to-teal-600 shadow-emerald-600/20',
+                            label: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+                            step: 'bg-emerald-600',
+                          }
+                        : {
+                            border: 'border-violet-200/80 dark:border-violet-500/20',
+                            surface: 'from-violet-50/90 to-indigo-50/70 dark:from-violet-500/10 dark:to-indigo-500/5',
+                            icon: 'from-violet-600 to-indigo-600 shadow-violet-600/20',
+                            label: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+                            step: 'bg-violet-600',
+                          };
+                      return (
+                        <article key={item.title} className={cn("overflow-hidden rounded-3xl border bg-white shadow-sm dark:bg-slate-800/70", theme.border)}>
+                          <div className="grid xl:grid-cols-[minmax(0,1.65fr)_minmax(19rem,0.85fr)]">
+                            <a
+                              href={item.image}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn("group relative flex min-h-64 items-center justify-center overflow-hidden bg-gradient-to-br p-3 sm:p-4", theme.surface)}
+                              title={`Open ${item.eyebrow.toLowerCase()} screenshot`}
+                            >
+                              <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle, rgba(99,102,241,0.35) 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
+                              <img
+                                src={item.image}
+                                alt={item.alt}
+                                loading="lazy"
+                                className="relative max-h-[36rem] w-full rounded-2xl border border-white/60 object-contain shadow-2xl shadow-slate-950/20 transition duration-500 group-hover:scale-[1.01]"
+                              />
+                              <span className="absolute bottom-6 right-6 rounded-full bg-slate-950/75 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-md">
+                                View full size
+                              </span>
+                            </a>
+
+                            <div className="flex flex-col p-5 sm:p-6">
+                              <div className="mb-4 flex items-start justify-between gap-3">
+                                <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg", theme.icon)}>
+                                  <WalkthroughIcon className="h-5 w-5" />
+                                </span>
+                                <span className={cn("rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wide", theme.label)}>{item.eyebrow}</span>
+                              </div>
+                              <h4 className="text-lg font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                              <p className="mt-2 text-[12.5px] font-medium leading-6 text-slate-600 dark:text-slate-300">{item.description}</p>
+                              <p className="mt-4 rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-extrabold uppercase tracking-wide text-slate-600 dark:bg-slate-700/70 dark:text-slate-300">{item.path}</p>
+                              <ol className="mt-4 space-y-3">
+                                {item.steps.map((step, stepIndex) => (
+                                  <li key={step} className="flex gap-3">
+                                    <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold text-white shadow-sm", theme.step)}>
+                                      {stepIndex + 1}
+                                    </span>
+                                    <p className="pt-0.5 text-[11.5px] font-medium leading-5 text-slate-600 dark:text-slate-300">{step}</p>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="hidden">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-6 dark:border-slate-700">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-700 text-white dark:bg-slate-600">
+                        <RefreshCw className="h-4 w-4" />
+                      </span>
+                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Earlier this week</h3>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">14 September 2026</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    {([
+                      { title: 'Better paper filters', description: 'Separate Exam, Year and Paper filters.', icon: Filter },
+                      { title: 'Saved defaults', description: 'Pin your preferred filter combination.', icon: Pin },
+                      { title: 'Simpler exam names', description: 'Cleaner grouping for BPSC, CISF and EPFO.', icon: Tag },
+                      { title: '638 new questions', description: 'More CDS, NDA, UKPSC and APFC PYQs.', icon: Database },
+                      { title: 'Reliable loading', description: 'Safer loading of the complete question list.', icon: RefreshCw },
+                    ] as const).map(item => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <article key={item.title} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                          <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <ItemIcon className="h-4.5 w-4.5" />
+                          </span>
+                          <h4 className="text-[13px] font-extrabold text-slate-900 dark:text-white">{item.title}</h4>
+                          <p className="mt-1.5 text-[11.5px] leading-5 text-slate-500 dark:text-slate-400">{item.description}</p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
             </div>
           </div>
         </div>
