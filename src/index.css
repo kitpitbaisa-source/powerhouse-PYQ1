@@ -68,6 +68,33 @@ textarea:focus-visible {
   border-color: rgba(59, 130, 246, 0.7);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
 }
+
+.note-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184);
+  pointer-events: none;
+}
+
+.note-editor,
+.note-paper-lines {
+  background-color: rgba(250, 250, 255, 0.96);
+  background-image:
+    linear-gradient(to right, transparent 0, transparent 35px, rgba(139, 92, 246, 0.12) 35px, rgba(139, 92, 246, 0.12) 36px, transparent 36px),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(99, 102, 241, 0.11) 29px, rgba(99, 102, 241, 0.11) 30px);
+  background-attachment: local;
+}
+
+.note-editor {
+  background-position: 0 0, 0 12px;
+}
+
+.dark .note-editor,
+.dark .note-paper-lines {
+  background-color: rgba(30, 41, 59, 0.72);
+  background-image:
+    linear-gradient(to right, transparent 0, transparent 35px, rgba(167, 139, 250, 0.12) 35px, rgba(167, 139, 250, 0.12) 36px, transparent 36px),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(129, 140, 248, 0.12) 29px, rgba(129, 140, 248, 0.12) 30px);
+}
 .dark input:focus,
 .dark input:focus-visible,
 .dark select:focus,

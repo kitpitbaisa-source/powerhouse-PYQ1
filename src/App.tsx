@@ -51,7 +51,9 @@ import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   LayoutDashboard,
-  Tag
+  Tag,
+  Bold,
+  List
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
@@ -540,6 +542,7 @@ type QuestionMeta = {
 type RemoteQuestionState = {
   isBookmarked: boolean;
   notes: string;
+  noteTitle: string;
   attemptCount: number;
   correctCount: number;
   wrongCount: number;
@@ -556,6 +559,7 @@ type RemoteQuestionState = {
 const emptyRemoteQuestionState = (): RemoteQuestionState => ({
   isBookmarked: false,
   notes: "",
+  noteTitle: "",
   attemptCount: 0,
   correctCount: 0,
   wrongCount: 0,
@@ -706,6 +710,7 @@ async function loadRemoteQuestionState(email: string | null) {
       remoteQuestionState.set(remoteStateKey(item.questionType, item.questionId), {
         isBookmarked: !!item.isBookmarked,
         notes: item.notes || "",
+        noteTitle: item.noteTitle || "",
         attemptCount: item.attemptCount ?? 0,
         correctCount: item.correctCount ?? 0,
         wrongCount: item.wrongCount ?? 0,
@@ -733,7 +738,7 @@ function saveRemoteQuestionState(
   email: string | null | undefined,
   questionType: string,
   question: QuestionMeta,
-  patch: { isBookmarked?: boolean; notes?: string }
+  patch: { isBookmarked?: boolean; notes?: string; noteTitle?: string }
 ) {
   const key = remoteStateKey(questionType, question.id);
   const current = remoteQuestionState.get(key) || emptyRemoteQuestionState();
@@ -857,7 +862,6 @@ interface QuestionCardProps {
   onCheckStatus?: () => void;
   onOpenPremium?: () => void;
   onFeedback?: () => void;
-  feedbackSlot?: React.ReactNode;
   showNoteInline?: boolean;
   onSubjectClick?: (subject: string) => void;
   onTopicClick?: (topic: string) => void;
@@ -1109,6 +1113,12 @@ const workspaceTypeLabel: Record<string, string> = {
   english: 'English',
 };
 
+const getNoteTitle = (
+  noteTitle: string | null | undefined,
+  topic: string | null | undefined,
+  subject: string | null | undefined
+) => noteTitle?.trim() || topic?.trim() || subject?.trim() || 'Study note';
+
 // Shown in the workspace while signed out. A guest's bookmarks, notes and
 // attempts live only in this tab's memory, so the banner sets the expectation
 // before they lose anything on a refresh.
@@ -1127,6 +1137,106 @@ const GuestSessionNotice: React.FC<{ onSignIn: () => void }> = ({ onSignIn }) =>
   </div>
 );
 
+const noteInlineMarkdownToHtml = (text: string) => {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+  return escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+};
+
+const noteMarkdownToEditorHtml = (note: string) => {
+  if (!note) return '';
+  const lines = note.split(/\r?\n/);
+  const blocks: string[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    blocks.push(`<ul>${listItems.map(item => `<li>${noteInlineMarkdownToHtml(item)}</li>`).join('')}</ul>`);
+    listItems = [];
+  };
+
+  lines.forEach(line => {
+    const bullet = line.match(/^\s*[-•]\s+(.*)$/);
+    if (bullet) {
+      listItems.push(bullet[1]);
+      return;
+    }
+    flushList();
+    blocks.push(line ? `<div>${noteInlineMarkdownToHtml(line)}</div>` : '<div><br></div>');
+  });
+  flushList();
+  return blocks.join('');
+};
+
+const noteEditorToMarkdown = (root: HTMLElement) => {
+  const serialize = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+    if (!(node instanceof HTMLElement)) return '';
+
+    const content = Array.from(node.childNodes).map(serialize).join('');
+    switch (node.tagName) {
+      case 'BR':
+        return '\n';
+      case 'B':
+      case 'STRONG':
+        return content ? `**${content}**` : '';
+      case 'LI':
+        return `- ${content.replace(/\n+/g, ' ').trim()}\n`;
+      case 'DIV':
+      case 'P':
+        return `${content}\n`;
+      default:
+        return content;
+    }
+  };
+
+  return Array.from(root.childNodes)
+    .map(serialize)
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n$/, '');
+};
+
+const NoteContent: React.FC<{ note: string; className?: string; bulletClassName?: string }> = ({
+  note,
+  className,
+  bulletClassName = "bg-violet-500 shadow-violet-500/30",
+}) => {
+  const renderInline = (line: string, lineIndex: number) =>
+    line.split(/(\*\*[^*]+\*\*)/g).map((part, partIndex) => {
+      const isBold = part.startsWith('**') && part.endsWith('**');
+      return isBold ? (
+        <strong key={`${lineIndex}-${partIndex}`} className="font-bold text-slate-900 dark:text-white">
+          {part.slice(2, -2)}
+        </strong>
+      ) : (
+        <React.Fragment key={`${lineIndex}-${partIndex}`}>{part}</React.Fragment>
+      );
+    });
+
+  return (
+    <div className={cn("space-y-2 whitespace-pre-wrap", className)}>
+      {note.split(/\r?\n/).map((line, lineIndex) => {
+        const bullet = line.match(/^\s*[-•]\s+(.+)$/);
+        if (bullet) {
+          return (
+            <div key={lineIndex} className="flex items-start gap-2.5">
+              <span className={cn("mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full shadow-sm", bulletClassName)} />
+              <span className="min-w-0">{renderInline(bullet[1], lineIndex)}</span>
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={lineIndex} className="h-2" aria-hidden="true" />;
+        return <div key={lineIndex}>{renderInline(line, lineIndex)}</div>;
+      })}
+    </div>
+  );
+};
+
 const WorkspaceEntryCard: React.FC<{
   entry: WorkspaceEntryShape;
   onRemove: () => void;
@@ -1142,10 +1252,10 @@ const WorkspaceEntryCard: React.FC<{
   const totalAttempts = state.correctCount + state.wrongCount;
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-3.5 py-3 transition-colors hover:border-indigo-300 dark:hover:border-indigo-500/50">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm shadow-slate-900/5 transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-900/5 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-indigo-500/50">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
             <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 ring-1 ring-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400">
               Q{entry.questionId}
             </span>
@@ -1167,12 +1277,12 @@ const WorkspaceEntryCard: React.FC<{
             )}
           </div>
 
-          <p className="text-[12.5px] leading-[19px] text-slate-700 dark:text-slate-200 line-clamp-3">
+          <p className="text-[13px] font-medium leading-[21px] text-slate-700 dark:text-slate-200 line-clamp-3">
             {questionText || <span className="italic text-slate-400">Question not available in the current list.</span>}
           </p>
 
           {totalAttempts > 0 && (
-            <div className="mt-1.5 flex items-center gap-2 text-[10px] font-semibold">
+            <div className="mt-2.5 flex items-center gap-2 text-[10px] font-semibold">
               <span className="text-emerald-600 dark:text-emerald-400">{state.correctCount} correct</span>
               <span className="text-slate-300 dark:text-slate-600">·</span>
               <span className="text-rose-600 dark:text-rose-400">{state.wrongCount} wrong</span>
@@ -1531,7 +1641,6 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onCheckStatus,
   onOpenPremium,
   onFeedback,
-  feedbackSlot,
   showNoteInline,
   onSubjectClick,
   onTopicClick,
@@ -1551,7 +1660,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [isNotePreviewVisible, setIsNotePreviewVisible] = useState(false);
   const [questionNote, setQuestionNote] = useState(() => remoteQuestionState.get(remoteKey)?.notes ?? "");
+  const [questionNoteTitle, setQuestionNoteTitle] = useState(() =>
+    getNoteTitle(remoteQuestionState.get(remoteKey)?.noteTitle, question.topic, question.subject)
+  );
   const notesButtonRef = useRef<HTMLButtonElement>(null);
+  const noteEditorRef = useRef<HTMLDivElement>(null);
+  const notePreviewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isTouchNotePreview, setIsTouchNotePreview] = useState(false);
+  const [activeNoteFormats, setActiveNoteFormats] = useState({ bold: false, list: false });
   const [remoteStateVersion, bumpRemoteStateVersion] = useReducer((n: number) => n + 1, 0);
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
 
@@ -1577,10 +1693,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // a ref because the Escape listener is bound once per open.
   const questionNoteRef = useRef(questionNote);
   questionNoteRef.current = questionNote;
+  const questionNoteTitleRef = useRef(questionNoteTitle);
+  questionNoteTitleRef.current = questionNoteTitle;
 
   const closeNotes = () => {
     setIsNotesOpen(false);
-    saveRemoteQuestionState(userEmail, storageScope, question, { notes: questionNoteRef.current });
+    const title = getNoteTitle(questionNoteTitleRef.current, question.topic, question.subject);
+    setQuestionNoteTitle(title);
+    questionNoteTitleRef.current = title;
+    saveRemoteQuestionState(userEmail, storageScope, question, {
+      notes: questionNoteRef.current,
+      noteTitle: title,
+    });
   };
 
   // Wipes the note immediately (rather than waiting for Done) so the workspace
@@ -1589,7 +1713,49 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const clearNote = () => {
     setQuestionNote("");
     questionNoteRef.current = "";
+    if (noteEditorRef.current) noteEditorRef.current.innerHTML = "";
     saveRemoteQuestionState(userEmail, storageScope, question, { notes: "" });
+  };
+
+  const syncActiveNoteFormats = () => {
+    setActiveNoteFormats({
+      bold: document.queryCommandState('bold'),
+      list: document.queryCommandState('insertUnorderedList'),
+    });
+  };
+
+  const applyNoteFormat = (format: 'bold' | 'list') => {
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(format === 'bold' ? 'bold' : 'insertUnorderedList');
+    const nextValue = noteEditorToMarkdown(editor);
+    setQuestionNote(nextValue);
+    questionNoteRef.current = nextValue;
+    syncActiveNoteFormats();
+  };
+
+  const showNotePreview = (touch = false) => {
+    if (notePreviewCloseTimerRef.current) clearTimeout(notePreviewCloseTimerRef.current);
+    setIsTouchNotePreview(touch);
+    setIsNotePreviewVisible(true);
+  };
+
+  const hideNotePreview = () => {
+    if (isTouchNotePreview) return;
+    if (notePreviewCloseTimerRef.current) clearTimeout(notePreviewCloseTimerRef.current);
+    notePreviewCloseTimerRef.current = setTimeout(() => setIsNotePreviewVisible(false), 140);
+  };
+
+  const closeNotePreview = () => {
+    if (notePreviewCloseTimerRef.current) clearTimeout(notePreviewCloseTimerRef.current);
+    setIsNotePreviewVisible(false);
+    setIsTouchNotePreview(false);
+  };
+
+  const openNoteEditor = () => {
+    closeNotePreview();
+    setIsNotesOpen(true);
   };
 
   // The signed-in user's saved state is the only source of truth, so re-sync
@@ -1602,10 +1768,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const remote = remoteQuestionState.get(remoteKey);
     setIsBookmarked(remote?.isBookmarked ?? false);
     setQuestionNote(remote?.notes ?? "");
+    setQuestionNoteTitle(getNoteTitle(remote?.noteTitle, question.topic, question.subject));
   }, [remoteStateVersion, remoteKey]);
 
   useEffect(() => {
     if (!isNotesOpen) return;
+
+    if (noteEditorRef.current) {
+      noteEditorRef.current.innerHTML = noteMarkdownToEditorHtml(questionNoteRef.current);
+      noteEditorRef.current.focus();
+    }
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeNotes();
@@ -1614,9 +1786,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [isNotesOpen]);
 
+  useEffect(() => () => {
+    if (notePreviewCloseTimerRef.current) clearTimeout(notePreviewCloseTimerRef.current);
+  }, []);
+
   const notesButtonRect = isNotePreviewVisible
     ? notesButtonRef.current?.getBoundingClientRect()
     : null;
+  const notePreviewOpensUp = !!notesButtonRect && notesButtonRect.bottom > window.innerHeight * 0.6;
 
   if (isLocked) {
     return (
@@ -1734,13 +1911,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               ref={notesButtonRef}
               type="button"
               onClick={() => {
-                setIsNotePreviewVisible(false);
-                setIsNotesOpen(true);
+                const usesTouchInteraction = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+                if (usesTouchInteraction && questionNote.trim()) {
+                  showNotePreview(true);
+                } else {
+                  openNoteEditor();
+                }
               }}
-              onMouseEnter={() => setIsNotePreviewVisible(true)}
-              onMouseLeave={() => setIsNotePreviewVisible(false)}
-              onFocus={() => setIsNotePreviewVisible(true)}
-              onBlur={() => setIsNotePreviewVisible(false)}
+              onMouseEnter={() => showNotePreview(false)}
+              onMouseLeave={hideNotePreview}
+              onFocus={() => showNotePreview(false)}
+              onBlur={hideNotePreview}
               aria-expanded={isNotesOpen}
               title={questionNote ? "View or edit your note" : "Add a note"}
               className={cardIconButton}
@@ -1794,26 +1975,73 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       </div>
 
       {isNotePreviewVisible && notesButtonRect && createPortal(
-        <div
-          className="pointer-events-none fixed z-[100] w-56 overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/95 shadow-xl shadow-emerald-900/15 backdrop-blur-xl dark:border-emerald-500/25 dark:bg-slate-900/95 dark:shadow-black/30"
-          style={{
-            top: Math.min(notesButtonRect.bottom + 7, window.innerHeight - 140),
-            right: Math.max(8, window.innerWidth - notesButtonRect.right),
-          }}
-        >
-          <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-emerald-100/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <FilePlus className="h-3 w-3" /> My notes
+        <>
+          {isTouchNotePreview && (
+            <button
+              type="button"
+              className="fixed inset-0 z-[99] cursor-default bg-slate-950/25 backdrop-blur-[2px]"
+              onClick={closeNotePreview}
+              aria-label="Close note preview"
+            />
+          )}
+          <div
+            className="fixed z-[100] flex w-72 max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-2xl border border-violet-200/80 bg-white/95 shadow-2xl shadow-violet-950/15 backdrop-blur-xl dark:border-violet-500/25 dark:bg-slate-900/95 dark:shadow-black/30"
+            onMouseEnter={() => showNotePreview(isTouchNotePreview)}
+            onMouseLeave={hideNotePreview}
+            style={isTouchNotePreview ? {
+              left: '50%',
+              top: '50%',
+              width: 'calc(100vw - 1rem)',
+              maxWidth: '42rem',
+              height: '77vh',
+              maxHeight: '77vh',
+              transform: 'translate(-50%, -50%)',
+            } : {
+              right: Math.max(8, window.innerWidth - notesButtonRect.right),
+              ...(notePreviewOpensUp
+                ? { bottom: Math.max(8, window.innerHeight - notesButtonRect.top + 7) }
+                : { top: Math.max(8, notesButtonRect.bottom + 7) }),
+              maxHeight: 'min(70vh, 32rem)',
+            }}
+          >
+            <div className="flex items-center gap-1.5 border-b border-violet-200/70 bg-gradient-to-r from-violet-100/80 to-indigo-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:border-violet-500/20 dark:from-violet-500/15 dark:to-indigo-500/10 dark:text-violet-300">
+              <FilePlus className="h-3 w-3" />
+              <span className="min-w-0 flex-1 truncate">{questionNoteTitle}</span>
+              {isTouchNotePreview && (
+                <button
+                  type="button"
+                  onClick={closeNotePreview}
+                  className="rounded-md p-1 text-violet-500 hover:bg-violet-200/70 dark:text-violet-300 dark:hover:bg-violet-500/20"
+                  aria-label="Close note preview"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="note-paper-lines min-h-0 flex-1 overflow-y-auto border-l-2 border-violet-400/60 px-3.5 py-3 text-[11px] leading-[22px] text-slate-700 dark:border-violet-400/40 dark:text-slate-200">
+              {questionNote.trim()
+                ? <NoteContent note={questionNote.trim()} />
+                : "No note added yet. Click to add one."}
+            </div>
+            {isTouchNotePreview && (
+              <div className="sticky bottom-0 z-10 mt-auto border-t border-violet-100 bg-white/95 p-2.5 shadow-[0_-8px_24px_-18px_rgba(76,29,149,0.45)] backdrop-blur-md dark:border-violet-500/15 dark:bg-slate-900/95">
+                <button
+                  type="button"
+                  onClick={openNoteEditor}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-violet-600/20"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit note
+                </button>
+              </div>
+            )}
           </div>
-          <p className="max-h-24 overflow-hidden whitespace-pre-wrap border-l-2 border-emerald-400/60 px-3 py-2 text-[11px] leading-[19px] text-emerald-950/80 dark:border-emerald-400/40 dark:text-emerald-50/85">
-            {questionNote.trim() || "No note added yet. Click to add one."}
-          </p>
-        </div>,
+        </>,
         document.body
       )}
 
-      {isNotesOpen && (
+      {isNotesOpen && createPortal(
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-md"
           onMouseDown={() => closeNotes()}
           role="presentation"
         >
@@ -1822,65 +2050,128 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             aria-modal="true"
             aria-labelledby={`question-note-title-${storageScope}-${question.id}`}
             onMouseDown={(event) => event.stopPropagation()}
-            className="flex max-h-[calc(100%-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-2xl shadow-emerald-950/25 dark:border-emerald-500/20 dark:bg-slate-900"
+            className="flex h-[81vh] max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] border border-violet-200/70 bg-white shadow-2xl shadow-violet-950/20 dark:border-violet-500/20 dark:bg-slate-900"
           >
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-3.5 py-2.5 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/5">
-              <h3
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-violet-200/70 bg-gradient-to-r from-violet-50 via-white to-indigo-50 px-5 py-4 sm:px-6 dark:border-violet-500/20 dark:from-violet-500/10 dark:via-slate-900 dark:to-indigo-500/10">
+              <div
                 id={`question-note-title-${storageScope}-${question.id}`}
-                className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-slate-900 dark:text-white"
+                className="flex min-w-0 items-center gap-3 text-sm font-bold text-slate-900 dark:text-white"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-300">
-                  <FilePlus className="h-4 w-4" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/20 ring-1 ring-inset ring-white/20">
+                  <StickyNote className="h-5 w-5" />
                 </span>
-                <span className="flex min-w-0 flex-col leading-tight">
-                  <span className="truncate">My Notes</span>
-                  <span className="truncate text-[10px] font-semibold text-emerald-700/70 dark:text-emerald-300/70">
-                    Q{question.id}
+                <span className="flex min-w-0 flex-1 flex-col gap-1 leading-tight">
+                  <span className="group/title flex min-w-0 items-center gap-2">
+                    <input
+                      value={questionNoteTitle}
+                      onChange={(event) => setQuestionNoteTitle(event.target.value)}
+                      onBlur={() => {
+                        const title = getNoteTitle(questionNoteTitle, question.topic, question.subject);
+                        setQuestionNoteTitle(title);
+                        questionNoteTitleRef.current = title;
+                      }}
+                      maxLength={120}
+                      aria-label="Editable note title"
+                      title="Click to edit note title"
+                      className="min-w-0 w-full border-0 border-b border-dashed border-violet-300 bg-transparent p-0 pb-0.5 text-base font-extrabold text-slate-900 shadow-none outline-none transition focus:border-violet-500 focus:shadow-none dark:border-violet-500/40 dark:text-white dark:focus:border-violet-400"
+                      placeholder={question.topic || question.subject || 'Study note'}
+                    />
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-violet-100 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+                      <Pencil className="h-2.5 w-2.5" />
+                      <span className="hidden sm:inline">Edit title</span>
+                    </span>
+                  </span>
+                  <span className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Question {question.id} · {question.subject}
                   </span>
                 </span>
-              </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => closeNotes()}
                 aria-label="Close notes"
-                className="shrink-0 rounded-lg p-1 text-slate-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300"
+                className="shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col px-3.5 pt-3">
-              <textarea
+            <div className="border-b border-violet-100 bg-violet-50/35 px-5 py-2 sm:px-6 dark:border-violet-500/15 dark:bg-violet-500/5">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    applyNoteFormat('bold');
+                  }}
+                  aria-pressed={activeNoteFormats.bold}
+                  className={cn(
+                    "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
+                    activeNoteFormats.bold
+                      ? "bg-violet-600 text-white shadow-sm shadow-violet-500/25 ring-1 ring-inset ring-violet-500 dark:bg-violet-500 dark:ring-violet-400"
+                      : "text-slate-500 hover:bg-violet-100 hover:text-violet-700 dark:text-slate-400 dark:hover:bg-violet-500/15 dark:hover:text-violet-300"
+                  )}
+                  title="Bold selected text"
+                  aria-label="Bold selected text"
+                >
+                  <Bold className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    applyNoteFormat('list');
+                  }}
+                  aria-pressed={activeNoteFormats.list}
+                  className={cn(
+                    "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
+                    activeNoteFormats.list
+                      ? "bg-violet-600 text-white shadow-sm shadow-violet-500/25 ring-1 ring-inset ring-violet-500 dark:bg-violet-500 dark:ring-violet-400"
+                      : "text-slate-500 hover:bg-violet-100 hover:text-violet-700 dark:text-slate-400 dark:hover:bg-violet-500/15 dark:hover:text-violet-300"
+                  )}
+                  title="Bulleted list"
+                  aria-label="Bulleted list"
+                >
+                  <List className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-2.5 pt-3 sm:px-3">
+              <div
+                ref={noteEditorRef}
                 id={`question-note-${storageScope}-${question.id}`}
-                value={questionNote}
-                onChange={(event) => updateQuestionNote(event.target.value)}
-                placeholder="Write a note for this question..."
-                autoFocus
-                style={{
-                  lineHeight: "28px",
-                  backgroundImage:
-                    "repeating-linear-gradient(to bottom, transparent 0px, transparent 27px, rgba(16,185,129,0.18) 27px, rgba(16,185,129,0.18) 28px)",
-                  backgroundAttachment: "local",
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                data-placeholder="Write a note for this question..."
+                onInput={(event) => {
+                  const nextValue = noteEditorToMarkdown(event.currentTarget);
+                  updateQuestionNote(nextValue);
+                  questionNoteRef.current = nextValue;
+                  syncActiveNoteFormats();
                 }}
-                className="min-h-[11rem] w-full flex-1 resize-none rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-3 py-1 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/15 dark:border-emerald-500/25 dark:bg-slate-800/70 dark:text-slate-100 dark:focus:border-emerald-500"
+                onKeyUp={syncActiveNoteFormats}
+                onMouseUp={syncActiveNoteFormats}
+                className="note-editor min-h-[12rem] w-full flex-1 overflow-y-auto rounded-2xl border border-violet-200/80 px-5 py-3 text-[15px] leading-[30px] text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 dark:border-violet-500/25 dark:text-slate-100 dark:focus:border-violet-400 [&_strong]:font-bold [&_strong]:text-violet-950 dark:[&_strong]:text-violet-100 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6 [&_ul]:marker:text-violet-500 [&_li]:pl-1"
               />
             </div>
-            <div className="flex shrink-0 items-center justify-between gap-2 px-3.5 py-2.5">
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
-                {questionNote.trim().length} characters · saved automatically
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3">
+              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                {questionNote.trim().length} characters · saves when closed
               </span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={clearNote}
                   disabled={questionNote.trim() === ""}
-                  className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => closeNotes()}
-                  className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition hover:from-emerald-500 hover:to-teal-500"
+                  className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition hover:from-violet-500 hover:to-indigo-500"
                 >
                   Done
                 </button>
@@ -1888,9 +2179,22 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
-      {feedbackSlot}
+      {showNoteInline && questionNote.trim() !== "" && (
+        <div className="mb-4 overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm shadow-emerald-950/5 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+          <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10 dark:text-emerald-300">
+            <FilePlus className="h-3 w-3" /> {questionNoteTitle}
+          </div>
+          <div className="border-l-2 border-emerald-400/60 bg-emerald-50/55 px-4 py-3 dark:border-emerald-400/40 dark:bg-emerald-500/5">
+            <NoteContent
+              note={questionNote.trim()}
+              className="text-[12px] leading-[22px] text-emerald-950/85 dark:text-emerald-50/90"
+              bulletClassName="bg-emerald-500 shadow-emerald-500/30"
+            />
+          </div>
+        </div>
+      )}
 
       {(() => {
         const md = parseMatchTable(question.question);
@@ -2044,18 +2348,6 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       )}
 
-      {showNoteInline && questionNote.trim() !== "" && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/70 shadow-sm shadow-emerald-900/5 dark:border-emerald-500/25 dark:bg-emerald-500/10">
-          <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-emerald-100/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <FilePlus className="h-3 w-3" /> My note
-          </div>
-          <div className="border-l-2 border-emerald-400/60 px-3 py-2 dark:border-emerald-400/40">
-            <p className="whitespace-pre-wrap text-[11.5px] leading-[21px] text-emerald-950/80 dark:text-emerald-50/85">
-              {questionNote.trim()}
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -3613,29 +3905,36 @@ export default function App() {
     setShowFeedbackModal(true);
   };
 
-  // Rendered inside the originating question card so per-question feedback opens
-  // in place, matching the attempt-history and notes popups.
   const renderFeedbackModal = () => (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-overlayFade">
-          <div className="relative flex max-h-[calc(100%-2rem)] w-full max-w-md flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-modalPop">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md animate-overlayFade sm:p-5"
+          onMouseDown={() => setShowFeedbackModal(false)}
+          role="presentation"
+        >
+          <div
+            className="relative flex max-h-[calc(100%-1.5rem)] w-full max-w-[30rem] flex-col overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white shadow-2xl shadow-blue-950/30 dark:border-slate-600/70 dark:bg-[#101a2f] animate-modalPop"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             {/* Gradient header */}
-            <div className="relative shrink-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-4 py-2.5 overflow-hidden">
+            <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 py-6 text-center sm:py-7">
+              <div className="pointer-events-none absolute -left-16 -top-20 h-44 w-44 rounded-full bg-cyan-300/15 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-20 -right-12 h-44 w-44 rounded-full bg-fuchsia-400/20 blur-3xl" />
               <button
                 onClick={() => setShowFeedbackModal(false)}
-                className="absolute top-2 right-2 text-white/80 hover:text-white hover:bg-white/10 p-1 rounded-full transition-colors"
+                className="absolute right-3 top-3 z-20 rounded-xl p-2 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
                 aria-label="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="h-5 w-5" />
               </button>
-              <div className="flex items-center gap-2 pr-7">
-                <div className="w-7 h-7 shrink-0 rounded-lg bg-white/15 ring-1 ring-white/25 flex items-center justify-center">
-                  <MessageSquareText className="w-3.5 h-3.5 text-white" />
+              <div className="relative flex flex-col items-center">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 shadow-lg shadow-indigo-950/15 ring-1 ring-inset ring-white/25 backdrop-blur-sm">
+                  <MessageSquareText className="h-6 w-6 text-white" />
                 </div>
-                <div className="min-w-0">
-                  <h2 className="text-[13px] font-bold text-white leading-tight truncate">
+                <div className="min-w-0 max-w-full">
+                  <h2 className="truncate text-xl font-extrabold leading-tight text-white">
                     {feedbackTarget.questionId != null ? 'Feedback on this question' : 'Send Feedback'}
                   </h2>
-                  <p className="text-[10px] text-white/80 truncate">
+                  <p className="mt-1.5 truncate text-xs font-semibold uppercase tracking-wide text-white/75">
                     {feedbackTarget.questionId != null
                       ? `${feedbackTarget.questionType.toUpperCase()} · Q#${feedbackTarget.questionId}`
                       : 'Tell us what we can improve'}
@@ -3644,52 +3943,52 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6 sm:p-7">
               {feedbackDone ? (
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-500/10">
+                    <CheckCircle2 className="h-7 w-7 text-emerald-500" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Thank you!</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Your feedback has been received.</p>
+                  <h3 className="mb-1 text-lg font-bold text-slate-900 dark:text-white">Thank you!</h3>
+                  <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">Your feedback has been received.</p>
                   <button
                     onClick={() => setShowFeedbackModal(false)}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25"
+                    className="w-full rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 active:scale-95"
                   >
                     Done
                   </button>
                 </div>
               ) : (
                 <>
-                  <label className="block shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Your name / alias <span className="font-normal text-slate-400">(optional)</span></label>
+                  <label className="mb-2 block shrink-0 text-[13px] font-bold text-slate-600 dark:text-slate-400">Your name / alias <span className="font-medium text-slate-400">(optional)</span></label>
                   <input
                     type="text"
                     value={feedbackAlias}
                     onChange={(e) => setFeedbackAlias(e.target.value)}
                     placeholder="Anonymous"
-                    className="w-full shrink-0 mb-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2 text-slate-900 dark:text-white placeholder-slate-400"
+                    className="mb-5 w-full shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-medium text-slate-900 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-800/90 dark:text-white"
                   />
-                  <label className="block shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Feedback</label>
+                  <label className="mb-2 block shrink-0 text-[13px] font-bold text-slate-600 dark:text-slate-400">Feedback</label>
                   <textarea
                     value={feedbackComment}
                     onChange={(e) => setFeedbackComment(e.target.value)}
                     placeholder={feedbackTarget.questionId != null ? "Is something wrong with this question? Let us know…" : "Share your suggestions, issues, or ideas…"}
-                    className="min-h-[6rem] w-full flex-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm p-2.5 text-slate-900 dark:text-white placeholder-slate-400 resize-none"
+                    className="min-h-[8rem] w-full flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-sm leading-6 text-slate-900 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-800/90 dark:text-white"
                   />
                   {feedbackError && <p className="shrink-0 text-xs text-rose-500 mt-2">{feedbackError}</p>}
-                  <div className="flex shrink-0 gap-2 mt-3">
+                  <div className="mt-5 flex shrink-0 gap-3">
                     <button
                       onClick={() => setShowFeedbackModal(false)}
-                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      className="flex-1 rounded-2xl bg-slate-100 py-3.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={submitFeedback}
                       disabled={feedbackSubmitting || !feedbackComment.trim()}
-                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold transition-all active:scale-95 shadow-md shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {feedbackSubmitting ? 'Sending…' : (<><Send className="w-3.5 h-3.5" /> Send</>)}
+                      {feedbackSubmitting ? 'Sending…' : (<><Send className="h-4 w-4" /> Send</>)}
                     </button>
                   </div>
                 </>
@@ -5845,7 +6144,6 @@ export default function App() {
                         onOpenPremium={() => setShowPremiumModal(true)}
                         onFeedback={() => openFeedback(q.id, 'prelims')}
                         showNoteInline={notedOnly}
-                        feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'prelims' ? renderFeedbackModal() : null}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
                         isEditor={isEditor}
@@ -6252,7 +6550,6 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'csat')}
                           showNoteInline={csatNotedOnly}
-                          feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'csat' ? renderFeedbackModal() : null}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -6448,7 +6745,6 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'english')}
                           showNoteInline={englishNotedOnly}
-                          feedbackSlot={showFeedbackModal && feedbackTarget.questionId === q.id && feedbackTarget.questionType === 'english' ? renderFeedbackModal() : null}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -6708,7 +7004,7 @@ export default function App() {
       </footer>
 
       {/* Login Modal */}
-      {showFeedbackModal && feedbackTarget.questionId === null && renderFeedbackModal()}
+      {showFeedbackModal && createPortal(renderFeedbackModal(), document.body)}
 
       {showLoginModal && (
         <div
@@ -6870,7 +7166,7 @@ export default function App() {
 
             {/* Notes */}
             {workspaceTab === 'notes' && (
-              <div className="overflow-y-auto px-5 sm:px-7 py-5 flex-1">
+              <div className="flex-1 overflow-y-auto bg-gradient-to-b from-violet-50/50 via-white to-white px-4 py-6 sm:px-8 dark:from-violet-500/5 dark:via-slate-900 dark:to-slate-900">
                 {!userEmail && <GuestSessionNotice onSignIn={() => { setShowReport(false); setShowLoginModal(true); }} />}
                 {notedEntries.length === 0 ? (
                   <div className="text-center py-12">
@@ -6879,7 +7175,7 @@ export default function App() {
                     <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Use the notes icon on any question to jot something down.</p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="mx-auto max-w-4xl space-y-4">
                     {notedEntries.map(entry => (
                       <WorkspaceEntryCard
                         key={entry.key}
@@ -6887,9 +7183,16 @@ export default function App() {
                         onRemove={() => removeWorkspaceEntry(entry, { notes: '' })}
                         removeLabel="Delete note"
                       >
-                        <p className="mt-2 whitespace-pre-wrap rounded-lg border-l-2 border-emerald-400/70 bg-emerald-50/70 px-3 py-2 text-[12px] leading-[21px] text-emerald-950/80 ring-1 ring-emerald-200/70 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-50/85 dark:ring-emerald-500/20">
-                          {entry.state.notes}
-                        </p>
+                        <div className="note-paper-lines mt-4 rounded-2xl border border-violet-200/80 px-5 py-5 shadow-inner shadow-violet-100/30 ring-1 ring-violet-100/70 dark:border-violet-500/20 dark:shadow-none dark:ring-violet-500/10">
+                          <h3 className="mb-3 text-base font-extrabold text-slate-900 dark:text-white">
+                            {getNoteTitle(
+                              entry.state.noteTitle,
+                              entry.question?.topic || entry.state.topic,
+                              entry.question?.subject || entry.state.subject
+                            )}
+                          </h3>
+                          <NoteContent note={entry.state.notes} className="text-[13px] leading-6 text-slate-700 dark:text-slate-200" />
+                        </div>
                       </WorkspaceEntryCard>
                     ))}
                   </div>
