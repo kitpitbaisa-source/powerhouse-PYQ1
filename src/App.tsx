@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, useReducer } from 'react';
 import { createPortal } from 'react-dom';
+import { getExamCategory } from './exam-utils';
 import { 
   Landmark, 
   Trophy, 
@@ -72,26 +73,6 @@ const subjectColors: SubjectColorMap = {
   "International Relations": "bg-gradient-to-r from-sky-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-sky-500/20",
   "Default": "bg-gradient-to-r from-indigo-500 to-blue-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20"
 };
-
-function getExamCategory(exam?: string | null): string {
-  // Defensive: a malformed or partially-entered question can reach the UI
-  // without an exam, and this runs inside render paths that must not throw.
-  const normalized = (exam ?? "").trim();
-  if (!normalized) return "Other";
-  const upper = normalized.toUpperCase();
-  if (upper.includes("CIVIL SERVICES") || upper.includes("CSE") || upper.includes("UPSC")) return "UPSC CSE";
-  if (upper.includes("NDA")) return "NDA";
-  if (upper.includes("CDS")) return "CDS";
-  if (upper.includes("CAPF")) return "CAPF";
-  if (upper.includes("BPSC")) return "BPSC";
-  if (upper.includes("CISF")) return "CISF";
-  if (upper.includes("EPFO EO/AO")) return "EPFO EO/AO";
-  if (upper.includes("STATE PCS") || /\bPCS\b/.test(upper)) return "State PCS";
-  return normalized
-    .replace(/\s*[-–]?\s*(?:19|20)\d{2}\s*$/u, "")
-    .replace(/\s+\([12]\)\s*$/u, "")
-    .trim();
-}
 
 type PrelimsFilterPreferences = {
   exam: string;
@@ -4104,6 +4085,72 @@ export default function App() {
   const [loginHistory, setLoginHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [activeSessionsMap, setActiveSessionsMap] = useState<Record<string, number>>({});
+  type AdminUserUsage = {
+    bookmarks: number;
+    notes: number;
+    attempts: number;
+    correct: number;
+    wrong: number;
+    topExam: string | null;
+    topExamAttempts: number;
+    examBreakdown: { exam: string; attempts: number }[];
+  };
+  type AdminExamUsage = { exam: string; attempts: number; users: number };
+  const [adminUserUsage, setAdminUserUsage] = useState<Record<string, AdminUserUsage>>({});
+  const [adminExamUsage, setAdminExamUsage] = useState<AdminExamUsage[]>([]);
+  const [isLoadingUserUsage, setIsLoadingUserUsage] = useState(false);
+  const [adminCouponsPortalTarget, setAdminCouponsPortalTarget] = useState<HTMLDivElement | null>(null);
+  const [adminUsagePortalTarget, setAdminUsagePortalTarget] = useState<HTMLDivElement | null>(null);
+  const [adminFeedbackPortalTarget, setAdminFeedbackPortalTarget] = useState<HTMLDivElement | null>(null);
+  const adminUsageRows = useMemo(
+    () => allUsers.map(user => ({
+      email: user.email,
+      usage: adminUserUsage[user.email] || { bookmarks: 0, notes: 0, attempts: 0, correct: 0, wrong: 0, topExam: null, topExamAttempts: 0, examBreakdown: [] },
+    })),
+    [allUsers, adminUserUsage]
+  );
+  const adminUsageTotals = useMemo(
+    () => adminUsageRows.reduce(
+      (totals, row) => ({
+        bookmarks: totals.bookmarks + row.usage.bookmarks,
+        notes: totals.notes + row.usage.notes,
+        attempts: totals.attempts + row.usage.attempts,
+        correct: totals.correct + row.usage.correct,
+        wrong: totals.wrong + row.usage.wrong,
+      }),
+      { bookmarks: 0, notes: 0, attempts: 0, correct: 0, wrong: 0 }
+    ),
+    [adminUsageRows]
+  );
+  const rankedAdminUsageRows = useMemo(
+    () => [...adminUsageRows].sort((a, b) => b.usage.attempts - a.usage.attempts),
+    [adminUsageRows]
+  );
+  const mostActiveAdminUser = rankedAdminUsageRows[0]?.usage.attempts > 0 ? rankedAdminUsageRows[0] : null;
+  const maxAdminAttempts = Math.max(1, ...rankedAdminUsageRows.map(row => row.usage.attempts));
+  const topAdminExams = adminExamUsage.slice(0, 5);
+  const maxAdminExamAttempts = Math.max(1, ...topAdminExams.map(exam => exam.attempts));
+
+  const fetchAllUserUsage = async () => {
+    setIsLoadingUserUsage(true);
+    try {
+      const response = await fetch('/api/admin/user-usage', { headers: adminHeaders() });
+      const body = await response.text();
+      const data = body ? JSON.parse(body) : null;
+      if (!response.ok) throw new Error(data?.error || `Failed to load usage (${response.status})`);
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("Usage API returned an invalid response");
+      }
+      setAdminUserUsage(data.users || {});
+      setAdminExamUsage(Array.isArray(data.exams) ? data.exams : []);
+    } catch (error: any) {
+      setAdminUserUsage({});
+      setAdminExamUsage([]);
+      setAdminMessage({ text: error.message || "Failed to load user usage", type: "error" });
+    } finally {
+      setIsLoadingUserUsage(false);
+    }
+  };
 
   const fetchLoginHistory = async (email: string) => {
     if (expandedUserHistory === email) {
@@ -4170,11 +4217,12 @@ export default function App() {
   }, [userEmail]);
 
   useEffect(() => {
-    if (isAdmin && userEmail) {
+    if (isAdmin && userEmail && isAdminView && adminUnlocked) {
       fetchAllUsers();
       fetchActiveSessions();
+      fetchAllUserUsage();
     }
-  }, [isAdmin, userEmail]);
+  }, [isAdmin, userEmail, isAdminView, adminUnlocked]);
 
   const handleUpdateUser = async (
     email: string,
@@ -5483,16 +5531,231 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              <div ref={setAdminCouponsPortalTarget} />
               </>)}
               </div>
 
               {/* Right column: users list + payments stacked to fill the row height */}
               <div className="md:col-span-2 flex flex-col gap-8 min-w-0">
+              {/* Study activity dashboard */}
+              {adminUsagePortalTarget && createPortal(
+              <div className="overflow-hidden rounded-3xl border border-indigo-200/70 bg-white shadow-xl shadow-indigo-950/5 dark:border-indigo-500/20 dark:bg-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 px-6 py-4 dark:border-slate-700 dark:from-indigo-500/10 dark:via-blue-500/5 dark:to-violet-500/10">
+                  <div>
+                    <h3 className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                      <BarChart3 className="h-5 w-5 text-indigo-500" />
+                      User Study Activity
+                    </h3>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Usage across all registered users.</p>
+                  </div>
+                  <button
+                    onClick={fetchAllUserUsage}
+                    disabled={isLoadingUserUsage}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:opacity-60"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", isLoadingUserUsage && "animate-spin")} />
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="p-5">
+                  <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {([
+                      { label: "Bookmarks", value: adminUsageTotals.bookmarks, icon: Bookmark, tone: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" },
+                      { label: "Notes", value: adminUsageTotals.notes, icon: StickyNote, tone: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300" },
+                      { label: "Attempts", value: adminUsageTotals.attempts, icon: BarChart3, tone: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300" },
+                      { label: "Correct", value: adminUsageTotals.correct, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
+                      { label: "Wrong", value: adminUsageTotals.wrong, icon: XCircle, tone: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" },
+                    ] as const).map(metric => {
+                      const MetricIcon = metric.icon;
+                      return (
+                        <div key={metric.label} className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                          <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", metric.tone)}>
+                            <MetricIcon className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <p className="text-base font-black tabular-nums text-slate-900 dark:text-white">{metric.value}</p>
+                            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{metric.label}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {mostActiveAdminUser && (
+                    <div className="mb-5 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 p-4 text-white shadow-lg shadow-indigo-600/20">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-inset ring-white/20">
+                            <Trophy className="h-5 w-5 text-amber-300" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-blue-100">Most active user</p>
+                            <p className="truncate text-sm font-black" title={mostActiveAdminUser.email}>{mostActiveAdminUser.email}</p>
+                            <p className="mt-0.5 text-[10px] text-blue-100">{mostActiveAdminUser.usage.attempts.toLocaleString()} total question attempts</p>
+                          </div>
+                        </div>
+                        <div className="rounded-xl bg-white/10 px-4 py-2.5 ring-1 ring-inset ring-white/15">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-blue-100">Most attempted exam</p>
+                          <p className="mt-0.5 max-w-[240px] truncate text-xs font-extrabold" title={mostActiveAdminUser.usage.topExam || "No exam data"}>
+                            {mostActiveAdminUser.usage.topExam || "No exam data"}
+                          </p>
+                          <p className="text-[10px] font-bold text-amber-300">{mostActiveAdminUser.usage.topExamAttempts.toLocaleString()} attempts</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {topAdminExams.length > 0 && (
+                    <div className="mb-5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-4 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:via-slate-900 dark:to-violet-500/10">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="flex items-center gap-2 text-xs font-extrabold text-slate-800 dark:text-white">
+                            <Landmark className="h-4 w-4 text-indigo-500" />
+                            Most attempted exams
+                          </h4>
+                          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Ranked by total questions attempted.</p>
+                        </div>
+                        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wide text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+                          Top {topAdminExams.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {topAdminExams.map((exam, index) => (
+                          <div key={exam.exam} className="grid grid-cols-[24px_minmax(100px,0.9fr)_minmax(140px,2fr)_auto] items-center gap-2">
+                            <span className={cn(
+                              "flex h-6 w-6 items-center justify-center rounded-lg text-[9px] font-black",
+                              index === 0
+                                ? "bg-gradient-to-br from-amber-300 to-orange-400 text-amber-950 shadow-sm"
+                                : "bg-white text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-300"
+                            )}>
+                              {index + 1}
+                            </span>
+                            <span className="truncate text-[10px] font-bold text-slate-700 dark:text-slate-200" title={exam.exam}>{exam.exam}</span>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-white shadow-inner dark:bg-slate-700">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-blue-500 to-violet-500"
+                                style={{ width: `${Math.max((exam.attempts / maxAdminExamAttempts) * 100, 4)}%` }}
+                              />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] font-black tabular-nums text-indigo-600 dark:text-indigo-300">{exam.attempts}</p>
+                              <p className="text-[8px] text-slate-400">{exam.users} users</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {isLoadingUserUsage ? (
+                    <div className="space-y-3 py-2">
+                      {[...Array(4)].map((_, index) => (
+                        <div key={index} className="grid grid-cols-[minmax(120px,0.8fr)_minmax(180px,2fr)_auto] items-center gap-3">
+                          <div className="skeleton h-3.5 rounded" />
+                          <div className="skeleton h-3 rounded-full" />
+                          <div className="skeleton h-5 w-16 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : adminUsageRows.length === 0 ? (
+                    <p className="py-8 text-center text-xs text-slate-400">No registered users found.</p>
+                  ) : (
+                    <div className="max-h-[640px] space-y-3 overflow-y-auto pr-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                        <span>User exam focus</span>
+                        <span className="flex gap-3">
+                          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Correct</span>
+                          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" />Wrong</span>
+                        </span>
+                      </div>
+                      {rankedAdminUsageRows.map(({ email, usage }, index) => (
+                        <div key={email} className="grid gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/35 sm:grid-cols-[24px_minmax(130px,0.8fr)_minmax(150px,1fr)_minmax(180px,1.5fr)_auto] sm:items-center">
+                          <span className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-lg text-[9px] font-black",
+                            index === 0
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                              : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300"
+                          )}>
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-bold text-slate-700 dark:text-slate-200" title={email}>{email}</p>
+                            <p className="text-[9px] text-slate-400">{usage.attempts} attempts</p>
+                          </div>
+                          <div className="min-w-0 rounded-lg bg-white px-2.5 py-2 shadow-sm dark:bg-slate-800">
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                              <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400">Exam split</p>
+                              <p className="text-[8px] font-bold tabular-nums text-slate-400">{usage.attempts} total</p>
+                            </div>
+                            {usage.examBreakdown.length > 0 ? (
+                              <>
+                                <div className="mb-1.5 flex h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                                  {usage.examBreakdown.map((exam, examIndex) => (
+                                    <span
+                                      key={exam.exam}
+                                      title={`${exam.exam}: ${exam.attempts} attempts`}
+                                      className={([
+                                        "bg-indigo-500",
+                                        "bg-blue-500",
+                                        "bg-violet-500",
+                                        "bg-cyan-500",
+                                        "bg-amber-500",
+                                        "bg-fuchsia-500",
+                                      ] as const)[examIndex % 6]}
+                                      style={{ width: `${(exam.attempts / usage.attempts) * 100}%` }}
+                                    />
+                                  ))}
+                                </div>
+                                <div className="flex gap-2 overflow-x-auto pb-0.5">
+                                  {usage.examBreakdown.map((exam, examIndex) => (
+                                    <span key={exam.exam} className="inline-flex shrink-0 items-center gap-1 text-[8px] font-semibold text-slate-500 dark:text-slate-300" title={`${exam.exam}: ${exam.attempts} attempts`}>
+                                      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ([
+                                        "bg-indigo-500",
+                                        "bg-blue-500",
+                                        "bg-violet-500",
+                                        "bg-cyan-500",
+                                        "bg-amber-500",
+                                        "bg-fuchsia-500",
+                                      ] as const)[examIndex % 6])} />
+                                      <span>{exam.exam}</span>
+                                      <strong className="tabular-nums text-slate-700 dark:text-slate-100">{exam.attempts}</strong>
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-[9px] text-slate-400">No attempts</p>
+                            )}
+                          </div>
+                          <div className="h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" title={`${usage.correct} correct, ${usage.wrong} wrong`}>
+                            <div className="flex h-full" style={{ width: `${Math.max((usage.attempts / maxAdminAttempts) * 100, usage.attempts > 0 ? 3 : 0)}%` }}>
+                              <span className="h-full bg-emerald-500" style={{ width: `${usage.attempts ? (usage.correct / usage.attempts) * 100 : 0}%` }} />
+                              <span className="h-full bg-rose-500" style={{ width: `${usage.attempts ? (usage.wrong / usage.attempts) * 100 : 0}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] font-bold tabular-nums">
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300" title="Bookmarks">
+                              <Bookmark className="h-3 w-3" />{usage.bookmarks}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-violet-600 dark:text-violet-300" title="Notes">
+                              <StickyNote className="h-3 w-3" />{usage.notes}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>,
+              adminUsagePortalTarget
+              )}
+
               {/* User List */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden flex flex-col flex-shrink-0">
+              <div className="order-1 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden flex flex-col flex-shrink-0">
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center flex-shrink-0">
                   <h3 className="font-bold text-slate-900 dark:text-white">All Registered Users ({allUsers.length})</h3>
-                  <button onClick={() => { fetchAllUsers(); fetchActiveSessions(); }} className="text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 px-3 py-1.5 rounded-lg transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]">Refresh</button>
+                  <button onClick={() => { fetchAllUsers(); fetchActiveSessions(); fetchAllUserUsage(); }} className="text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 px-3 py-1.5 rounded-lg transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]">Refresh</button>
                 </div>
                 <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-left text-sm">
@@ -5573,6 +5836,7 @@ export default function App() {
                            )}
                          </td>
                          <td className="px-6 py-4 text-right">
+                           <div className="flex items-center justify-end gap-1">
                            {user.email !== userEmail ? (
                              <button 
                                onClick={() => handleDeleteUser(user.email)}
@@ -5584,6 +5848,7 @@ export default function App() {
                            ) : (
                              <span className="text-[10px] font-bold text-blue-500/50 uppercase tracking-tighter">You</span>
                            )}
+                           </div>
                          </td>
                        </tr>
                        {expandedUserHistory === user.email && (
@@ -5622,8 +5887,9 @@ export default function App() {
                 </div>
               </div>
 
-            {/* Coupons — create, edit, pause and withdraw discount codes */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+            {/* Coupons — rendered into the left admin tools column */}
+            {adminCouponsPortalTarget && createPortal(
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-800">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <Tag className="w-5 h-5 text-emerald-500" />
@@ -5669,7 +5935,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Code</label>
                     <input
@@ -5761,95 +6027,78 @@ export default function App() {
               {adminCoupons.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-6">No coupons yet.</p>
               ) : (
-                <div className="overflow-x-auto max-h-[360px] overflow-y-auto rounded-xl border border-slate-100 dark:border-slate-700/60">
-                  <table className="w-full text-sm min-w-[620px]">
-                    <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 sticky top-0 z-10">
-                        <th className="py-2 pr-3 font-bold">Code</th>
-                        <th className="py-2 pr-3 font-bold">Off</th>
-                        <th className="py-2 pr-3 font-bold">Plans</th>
-                        <th className="py-2 pr-3 font-bold">Expires</th>
-                        <th className="py-2 pr-3 font-bold">Used</th>
-                        <th className="py-2 pr-3 font-bold">Status</th>
-                        <th className="py-2 font-bold text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminCoupons.map(c => {
-                        const expired = c.expiryDate ? new Date(`${c.expiryDate}T23:59:59.999+05:30`).getTime() < Date.now() : false;
-                        const withdrawn = c.isActive === false;
-                        const capped = (c.maxRedemptions || 0) > 0 && (c.redemptionCount || 0) >= c.maxRedemptions;
-                        const status = withdrawn ? 'Withdrawn' : expired ? 'Expired' : capped ? 'Fully claimed' : 'Live';
-                        return (
-                          <tr key={c.code} className="border-b border-slate-100 dark:border-slate-700/60 last:border-0">
-                            <td className="py-2.5 pr-3 font-extrabold tracking-wide text-slate-800 dark:text-slate-100">
-                              {c.code}
-                              {c.description && <span className="block text-[10px] font-medium text-slate-400 normal-case tracking-normal">{c.description}</span>}
-                            </td>
-                            <td className="py-2.5 pr-3 font-bold text-emerald-600 dark:text-emerald-400">{c.discountPercent}%</td>
-                            <td className="py-2.5 pr-3 text-[11px] text-slate-500 dark:text-slate-400">
-                              {(c.plans || []).map(p => p === '1yr' ? '1 Yr' : p === '2yr' ? '2 Yr' : 'Ebooks').join(', ') || '—'}
-                            </td>
-                            <td className={cn("py-2.5 pr-3 text-[11px]", expired ? "text-rose-500 font-bold" : "text-slate-500 dark:text-slate-400")}>
-                              {c.expiryDate || '—'}
-                            </td>
-                            <td className="py-2.5 pr-3 text-[11px] text-slate-500 dark:text-slate-400">
-                              {c.redemptionCount || 0}{(c.maxRedemptions || 0) > 0 ? ` / ${c.maxRedemptions}` : ' / ∞'}
-                            </td>
-                            <td className="py-2.5 pr-3">
-                              <span className={cn(
-                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                status === 'Live' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                                  : status === 'Withdrawn' ? "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
-                                  : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
-                              )}>
-                                {status}
-                              </span>
-                            </td>
-                            <td className="py-2.5 text-right whitespace-nowrap">
-                              <button
-                                onClick={() => {
-                                  setCouponEditing(c.code);
-                                  setCouponForm({
-                                    code: c.code,
-                                    discountPercent: String(c.discountPercent),
-                                    expiryDate: c.expiryDate || '',
-                                    plans: c.plans || [],
-                                    maxRedemptions: String(c.maxRedemptions || 0),
-                                    description: c.description || '',
-                                  });
-                                }}
-                                className="text-[11px] font-bold text-blue-600 hover:text-blue-500 px-2"
-                              >
-                                Edit
-                              </button>
-                              {withdrawn ? (
-                                <button
-                                  onClick={() => setCouponActive(c, true)}
-                                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-500 px-2"
-                                >
-                                  Reactivate
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => withdrawCoupon(c.code)}
-                                  className="text-[11px] font-bold text-rose-600 hover:text-rose-500 px-2"
-                                >
-                                  Deactivate
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  {adminCoupons.map(c => {
+                    const expired = c.expiryDate ? new Date(`${c.expiryDate}T23:59:59.999+05:30`).getTime() < Date.now() : false;
+                    const withdrawn = c.isActive === false;
+                    const capped = (c.maxRedemptions || 0) > 0 && (c.redemptionCount || 0) >= c.maxRedemptions;
+                    const status = withdrawn ? 'Withdrawn' : expired ? 'Expired' : capped ? 'Fully claimed' : 'Live';
+                    return (
+                      <div key={c.code} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-extrabold tracking-wide text-slate-800 dark:text-slate-100">{c.code}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-400">{c.discountPercent}% off · {(c.plans || []).map(p => p === '1yr' ? '1 Yr' : p === '2yr' ? '2 Yr' : 'Ebooks').join(', ') || 'No plans'}</p>
+                          </div>
+                          <span className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold",
+                            status === 'Live' ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                              : status === 'Withdrawn' ? "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                              : "bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+                          )}>
+                            {status}
+                          </span>
+                        </div>
+                        {c.description && <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">{c.description}</p>}
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[9px] text-slate-400">
+                          <span>Expires {c.expiryDate || '—'}</span>
+                          <span>{c.redemptionCount || 0}{(c.maxRedemptions || 0) > 0 ? ` / ${c.maxRedemptions}` : ' / ∞'} used</span>
+                        </div>
+                        <div className="mt-2 flex justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setCouponEditing(c.code);
+                              setCouponForm({
+                                code: c.code,
+                                discountPercent: String(c.discountPercent),
+                                expiryDate: c.expiryDate || '',
+                                plans: c.plans || [],
+                                maxRedemptions: String(c.maxRedemptions || 0),
+                                description: c.description || '',
+                              });
+                            }}
+                            className="rounded-md px-2 py-1 text-[10px] font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                          >
+                            Edit
+                          </button>
+                          {withdrawn ? (
+                            <button
+                              onClick={() => setCouponActive(c, true)}
+                              className="rounded-md px-2 py-1 text-[10px] font-bold text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                            >
+                              Reactivate
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => withdrawCoupon(c.code)}
+                              className="rounded-md px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                            >
+                              Deactivate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-            </div>
+            </div>,
+            adminCouponsPortalTarget
+            )}
 
             {/* Payments — fills the gap under the users list in the right column */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 flex-1 min-h-0 flex flex-col">
+            <div className="order-3 flex flex-col gap-8">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 min-h-0 flex flex-col">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <IndianRupee className="w-5 h-5 text-blue-500" />
@@ -5925,11 +6174,14 @@ export default function App() {
                 </div>
               )}
             </div>
+            <div ref={setAdminFeedbackPortalTarget} />
+            </div>
             </div>
             </div>
 
             {/* All User Feedback */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+            {adminFeedbackPortalTarget && createPortal(
+            <div className="flex h-[460px] min-h-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <MessageSquareText className="w-5 h-5 text-blue-500" />
@@ -5951,7 +6203,7 @@ export default function App() {
                   <p className="text-sm text-slate-400 dark:text-slate-500">No feedback submitted yet.</p>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                   {adminFeedback.map((f) => (
                     <div key={f.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 bg-slate-50/60 dark:bg-slate-900/40">
                       <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
@@ -5966,12 +6218,15 @@ export default function App() {
                           {f.createdAt ? new Date(f.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{f.comment}</p>
+                      <p className="break-words whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{f.comment}</p>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </div>,
+            adminFeedbackPortalTarget
+            )}
+            <div ref={setAdminUsagePortalTarget} />
           </div>
         ) : activeTab === 'prelims' ? (
           <>

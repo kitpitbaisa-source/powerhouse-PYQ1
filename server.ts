@@ -3,6 +3,7 @@ import express from "express";
 import path from "path";
 import { timingSafeEqual, createHmac } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
+import { getExamCategory } from "./src/exam-utils";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
 const key = process.env.COSMOS_KEY || "";
@@ -1665,6 +1666,92 @@ serverApp.get("/api/admin/users", async (req, res) => {
     res.json(resources);
   } catch (error: any) {
     console.error("Error fetching users:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+// Load aggregated study activity when the Admin Portal opens.
+serverApp.get("/api/admin/user-usage", async (_req, res) => {
+  try {
+    await ensureUserQuestionsContainer();
+    const { resources } = await userQuestionsContainer.items
+      .query(
+        "SELECT c.userId, c.questionId, c.questionType, c.exam, c.isBookmarked, c.hasNote, c.attemptCount, c.correctCount, c.wrongCount FROM c WHERE c.isActive = true"
+      )
+      .fetchAll();
+
+    const [prelimsQuestions, csatQuestions, englishQuestions] = await Promise.all([
+      getQuestions(),
+      getCSATQuestions(),
+      getEnglishQuestions(),
+    ]);
+    const examByQuestion = new Map<string, string>();
+    for (const [type, questions] of [
+      ["prelims", prelimsQuestions],
+      ["csat", csatQuestions],
+      ["english", englishQuestions],
+    ] as const) {
+      for (const question of questions) {
+        if (question?.id === undefined || question?.id === null || !question?.exam) continue;
+        examByQuestion.set(`${type}:${String(question.id)}`, String(question.exam));
+      }
+    }
+
+    const usageByEmail: Record<string, {
+      bookmarks: number;
+      notes: number;
+      attempts: number;
+      correct: number;
+      wrong: number;
+      topExam: string | null;
+      topExamAttempts: number;
+      examBreakdown: { exam: string; attempts: number }[];
+    }> = {};
+    const userExamAttempts: Record<string, Record<string, number>> = {};
+    const examAttempts: Record<string, number> = {};
+    const examUsers: Record<string, Set<string>> = {};
+    for (const item of resources) {
+      const email = String(item.userId || "").toLowerCase().trim();
+      if (!email) continue;
+      const totals = usageByEmail[email] ||= { bookmarks: 0, notes: 0, attempts: 0, correct: 0, wrong: 0, topExam: null, topExamAttempts: 0, examBreakdown: [] };
+      const attempts = Number(item.attemptCount) || 0;
+      if (item.isBookmarked === true) totals.bookmarks += 1;
+      if (item.hasNote === true) totals.notes += 1;
+      totals.attempts += attempts;
+      totals.correct += Number(item.correctCount) || 0;
+      totals.wrong += Number(item.wrongCount) || 0;
+      const questionType = String(item.questionType || "prelims").trim() || "prelims";
+      const resolvedExam = String(item.exam || "").trim()
+        || examByQuestion.get(`${questionType}:${String(item.questionId)}`)
+        || "";
+      const exam = getExamCategory(resolvedExam);
+      if (attempts > 0) {
+        const userExams = userExamAttempts[email] ||= {};
+        userExams[exam] = (userExams[exam] || 0) + attempts;
+        examAttempts[exam] = (examAttempts[exam] || 0) + attempts;
+        (examUsers[exam] ||= new Set()).add(email);
+      }
+    }
+
+    for (const [email, exams] of Object.entries(userExamAttempts)) {
+      const breakdown = Object.entries(exams)
+        .map(([exam, attempts]) => ({ exam, attempts }))
+        .sort((a, b) => b.attempts - a.attempts);
+      usageByEmail[email].examBreakdown = breakdown;
+      const topExam = breakdown[0];
+      if (topExam) {
+        usageByEmail[email].topExam = topExam.exam;
+        usageByEmail[email].topExamAttempts = topExam.attempts;
+      }
+    }
+
+    const exams = Object.entries(examAttempts)
+      .map(([exam, attempts]) => ({ exam, attempts, users: examUsers[exam]?.size || 0 }))
+      .sort((a, b) => b.attempts - a.attempts);
+
+    res.json({ users: usageByEmail, exams });
+  } catch (error: any) {
+    console.error("Error fetching admin usage dashboard:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
