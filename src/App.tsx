@@ -3458,7 +3458,11 @@ export default function App() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const verifyAdminKey = async (rawKey?: string): Promise<boolean> => {
     const k = (rawKey ?? localStorage.getItem('admin_api_key') ?? "").trim();
-    if (!k) { setAdminUnlocked(false); return false; }
+    if (!k) {
+      setAdminUnlocked(false);
+      setAdminMessage({ text: "Enter the current admin key to unlock the portal.", type: "error" });
+      return false;
+    }
     try {
       const res = await fetch('/api/admin/verify', { headers: { Authorization: `Bearer ${k}` } });
       if (res.ok) {
@@ -3466,9 +3470,20 @@ export default function App() {
         localStorage.setItem('admin_unlock_expiry', String(Date.now() + ADMIN_UNLOCK_MS));
         setAdminKey(k);
         setAdminUnlocked(true);
+        setAdminMessage({ text: "Admin portal unlocked.", type: "success" });
         return true;
       }
-    } catch { /* ignore */ }
+      if (res.status === 401) {
+        localStorage.removeItem('admin_api_key');
+        localStorage.removeItem('admin_unlock_expiry');
+        setAdminKey("");
+        setAdminMessage({ text: "The saved admin key is no longer valid. Enter the current key.", type: "error" });
+      } else {
+        setAdminMessage({ text: `Could not verify the admin key (${res.status}).`, type: "error" });
+      }
+    } catch {
+      setAdminMessage({ text: "Could not reach the admin verification service.", type: "error" });
+    }
     setAdminUnlocked(false);
     return false;
   };
@@ -5385,8 +5400,7 @@ export default function App() {
                 {!adminUnlocked && (
                   <button
                     onClick={async () => {
-                      const ok = await verifyAdminKey(adminKey);
-                      if (!ok) setAdminMessage({ text: "Invalid admin key.", type: "error" });
+                      await verifyAdminKey(adminKey);
                     }}
                     className="mt-3 w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
                   >
