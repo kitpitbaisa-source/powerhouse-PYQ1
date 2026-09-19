@@ -4,7 +4,28 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import Razorpay from "razorpay";
 import crypto from "crypto";
-import { getExamCategory } from "../src/exam-utils";
+
+// Keep this in sync with src/exam-utils.ts. Vercel executes api/index.ts as a
+// standalone function, so importing a source-only helper breaks at runtime.
+function getExamCategory(exam?: string | null): string {
+  const normalized = (exam ?? "").trim();
+  if (!normalized) return "Other";
+
+  const upper = normalized.toUpperCase();
+  if (upper.includes("CIVIL SERVICES") || upper.includes("CSE") || upper.includes("UPSC")) return "UPSC CSE";
+  if (upper.includes("NDA")) return "NDA";
+  if (upper.includes("CDS")) return "CDS";
+  if (upper.includes("CAPF")) return "CAPF";
+  if (upper.includes("BPSC")) return "BPSC";
+  if (upper.includes("CISF")) return "CISF";
+  if (upper.includes("EPFO EO/AO")) return "EPFO EO/AO";
+  if (upper.includes("STATE PCS") || /\bPCS\b/.test(upper)) return "State PCS";
+
+  return normalized
+    .replace(/\s*[-–]?\s*(?:19|20)\d{2}\s*$/u, "")
+    .replace(/\s+\([12]\)\s*$/u, "")
+    .trim();
+}
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
 const key = process.env.COSMOS_KEY || "";
