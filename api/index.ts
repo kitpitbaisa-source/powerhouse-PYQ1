@@ -319,7 +319,7 @@ async function updateQuestionState(
   userId: string,
   questionType: string,
   questionId: any,
-  patch: { isBookmarked?: boolean; notes?: string; isMarkedForRevision?: boolean; isActive?: boolean },
+  patch: { isBookmarked?: boolean; notes?: string; noteTitle?: string; isMarkedForRevision?: boolean; isActive?: boolean },
   meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
 ) {
   const id = `${questionType}:${questionId}`;
@@ -335,6 +335,7 @@ async function updateQuestionState(
 
     const now = new Date().toISOString();
     const notes = patch.notes !== undefined ? patch.notes : existing?.notes ?? "";
+    const noteTitle = patch.noteTitle !== undefined ? patch.noteTitle : existing?.noteTitle ?? "";
     const isActive = patch.isActive !== undefined ? patch.isActive : existing?.isActive ?? true;
 
     const doc = {
@@ -354,6 +355,7 @@ async function updateQuestionState(
       isMarkedForRevision:
         patch.isMarkedForRevision !== undefined ? patch.isMarkedForRevision : existing?.isMarkedForRevision ?? false,
       notes,
+      noteTitle,
       hasNote: !!String(notes).trim(),
 
       // Attempt history is owned by appendAttempt; carry it through untouched.
@@ -736,26 +738,35 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
   }
 });
 
-// PATCH /api/update-question - Update answer/explanation for a Prelims or English question.
+// PATCH /api/update-question - Update objective answers or a Mains model answer.
 // Authorized by the caller's email role (admin or editor), NOT the admin key,
 // so designated editors can edit answers without the master key.
 serverApp.patch("/api/update-question", async (req, res) => {
   try {
-    const { section = "prelims", id, answer, explanation, email } = req.body;
+    const { section = "prelims", id, answer, explanation, modelAnswer, email } = req.body;
     if (!(await canEditQuestions(email))) {
       return res.status(403).json({ error: "Not authorized to edit questions" });
     }
-    if (section !== "prelims" && section !== "english") {
-      return res.status(400).json({ error: "section must be prelims or english" });
+    if (section !== "prelims" && section !== "english" && section !== "mains") {
+      return res.status(400).json({ error: "section must be prelims, mains or english" });
     }
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
-    if (!answer && explanation === undefined) {
-      return res.status(400).json({ error: "Provide at least answer or explanation to update" });
+    if (section === "mains" ? modelAnswer === undefined : (!answer && explanation === undefined)) {
+      return res.status(400).json({
+        error: section === "mains"
+          ? "modelAnswer is required"
+          : "Provide at least answer or explanation to update",
+      });
     }
 
-    const targetContainer = section === "english" ? englishQuestionsContainer : questionsContainer;
+    const targetContainer =
+      section === "mains"
+        ? mainsQuestionsContainer
+        : section === "english"
+          ? englishQuestionsContainer
+          : questionsContainer;
     const itemId = String(id);
     const { resource: existing } = await targetContainer.item(itemId, itemId).read();
     if (!existing) {
@@ -763,7 +774,11 @@ serverApp.patch("/api/update-question", async (req, res) => {
     }
 
     // Build update — only touch fields that were provided
-    if (answer) {
+    if (section === "mains") {
+      const value = String(modelAnswer ?? "");
+      existing.modelAnswer = value;
+      existing.model_answer = value;
+    } else if (answer) {
       // Accept full option text directly, or match a single letter to the option
       const trimmed = answer.trim();
       if (trimmed.length === 1) {
@@ -776,14 +791,22 @@ serverApp.patch("/api/update-question", async (req, res) => {
         existing.answer = trimmed;
       }
     }
-    if (explanation !== undefined) {
+    if (section !== "mains" && explanation !== undefined) {
       existing.explanation = explanation;
     }
 
     const { resource: updated } = await targetContainer.item(itemId, itemId).replace(existing);
 
     // Update local cache + bump version so all instances re-fetch
-    if (section === "english") {
+    if (section === "mains") {
+      if (mainsCache) {
+        mainsCache = mainsCache.map((q: any) =>
+          String(q.id) === itemId
+            ? { ...q, modelAnswer: updated.modelAnswer, model_answer: updated.model_answer }
+            : q
+        );
+      }
+    } else if (section === "english") {
       if (englishCache) {
         englishCache = englishCache.map((q: any) =>
           String(q.id) === itemId ? { ...q, answer: updated.answer, explanation: updated.explanation } : q
@@ -802,6 +825,7 @@ serverApp.patch("/api/update-question", async (req, res) => {
       id: updated.id,
       answer: updated.answer,
       explanation: updated.explanation,
+      modelAnswer: updated.modelAnswer ?? updated.model_answer ?? "",
     });
   } catch (error: any) {
     console.error("Error updating question:", error);
@@ -2106,7 +2130,7 @@ serverApp.get("/api/question-state", async (req, res) => {
       .query(
         {
           query:
-            "SELECT c.questionId, c.questionType, c.isBookmarked, c.isMarkedForRevision, c.notes, c.hasNote, c.subject, c.topic, c.exam, c.year, c.attemptCount, c.correctCount, c.wrongCount, c.lastOption, c.lastIsCorrect, c.lastAttemptAt, c.updatedAt FROM c WHERE c.isActive = true AND (c.isBookmarked = true OR c.hasNote = true OR c.isMarkedForRevision = true OR c.attemptCount > 0) ORDER BY c.updatedAt DESC",
+            "SELECT c.questionId, c.questionType, c.isBookmarked, c.isMarkedForRevision, c.notes, c.noteTitle, c.hasNote, c.subject, c.topic, c.exam, c.year, c.attemptCount, c.correctCount, c.wrongCount, c.lastOption, c.lastIsCorrect, c.lastAttemptAt, c.updatedAt FROM c WHERE c.isActive = true AND (c.isBookmarked = true OR c.hasNote = true OR c.isMarkedForRevision = true OR c.attemptCount > 0) ORDER BY c.updatedAt DESC",
         },
         { partitionKey: userEmail }
       )
@@ -2160,7 +2184,7 @@ serverApp.get("/api/question-attempts", async (req, res) => {
 // ── Per-user question state: save a bookmark, note or revision mark ──
 serverApp.post("/api/question-state", async (req, res) => {
   try {
-    const { email, questionId, questionType, isBookmarked, notes, isMarkedForRevision, subject, topic, exam, year } =
+    const { email, questionId, questionType, isBookmarked, notes, noteTitle, isMarkedForRevision, subject, topic, exam, year } =
       req.body || {};
     const userEmail = String(email || "").toLowerCase().trim();
     if (!userEmail || questionId === undefined || questionId === null) {
@@ -2168,6 +2192,9 @@ serverApp.post("/api/question-state", async (req, res) => {
     }
     if (notes !== undefined && (typeof notes !== "string" || notes.length > 5000)) {
       return res.status(400).json({ error: "notes must be a string of at most 5000 characters" });
+    }
+    if (noteTitle !== undefined && (typeof noteTitle !== "string" || noteTitle.length > 120)) {
+      return res.status(400).json({ error: "noteTitle must be a string of at most 120 characters" });
     }
     const type = (questionType && String(questionType).trim()) || "prelims";
     await ensureUserQuestionsContainer();
@@ -2178,6 +2205,7 @@ serverApp.post("/api/question-state", async (req, res) => {
       {
         isBookmarked: isBookmarked === undefined ? undefined : !!isBookmarked,
         notes,
+        noteTitle: noteTitle === undefined ? undefined : noteTitle.trim(),
         isMarkedForRevision: isMarkedForRevision === undefined ? undefined : !!isMarkedForRevision,
       },
       {

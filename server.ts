@@ -645,7 +645,7 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     toppersCache = null;
     toppersCacheTimestamp = 0;
     const [questions, mainsQuestions, csatQuestions, englishQuestions] = await Promise.all([
-      getQuestions(), 
+      getQuestions(),
       getMainsQuestions(),
       getCSATQuestions(),
       getEnglishQuestions()
@@ -1139,26 +1139,35 @@ serverApp.delete("/api/filter-preferences", async (req, res) => {
   }
 });
 
-// PATCH /api/update-question - Update answer/explanation for a Prelims or English question.
+// PATCH /api/update-question - Update objective answers or a Mains model answer.
 // Authorized by the caller's email role (admin or editor), NOT the admin key,
 // so designated editors can edit answers without the master key.
 serverApp.patch("/api/update-question", async (req, res) => {
   try {
-    const { section = "prelims", id, answer, explanation, email } = req.body;
+    const { section = "prelims", id, answer, explanation, modelAnswer, email } = req.body;
     if (!(await canEditQuestions(email))) {
       return res.status(403).json({ error: "Not authorized to edit questions" });
     }
-    if (section !== "prelims" && section !== "english") {
-      return res.status(400).json({ error: "section must be prelims or english" });
+    if (section !== "prelims" && section !== "english" && section !== "mains") {
+      return res.status(400).json({ error: "section must be prelims, mains or english" });
     }
     if (!id) {
       return res.status(400).json({ error: "id is required" });
     }
-    if (!answer && explanation === undefined) {
-      return res.status(400).json({ error: "Provide at least answer or explanation to update" });
+    if (section === "mains" ? modelAnswer === undefined : (!answer && explanation === undefined)) {
+      return res.status(400).json({
+        error: section === "mains"
+          ? "modelAnswer is required"
+          : "Provide at least answer or explanation to update",
+      });
     }
 
-    const targetContainer = section === "english" ? englishQuestionsContainer : questionsContainer;
+    const targetContainer =
+      section === "mains"
+        ? mainsQuestionsContainer
+        : section === "english"
+          ? englishQuestionsContainer
+          : questionsContainer;
     const itemId = String(id);
     const { resource: existing } = await targetContainer.item(itemId, itemId).read();
     if (!existing) {
@@ -1166,7 +1175,11 @@ serverApp.patch("/api/update-question", async (req, res) => {
     }
 
     // Build update — only touch fields that were provided
-    if (answer) {
+    if (section === "mains") {
+      const value = String(modelAnswer ?? "");
+      existing.modelAnswer = value;
+      existing.model_answer = value;
+    } else if (answer) {
       // Accept full option text directly, or match a single letter to the option
       const trimmed = answer.trim();
       if (trimmed.length === 1) {
@@ -1179,13 +1192,16 @@ serverApp.patch("/api/update-question", async (req, res) => {
         existing.answer = trimmed;
       }
     }
-    if (explanation !== undefined) {
+    if (section !== "mains" && explanation !== undefined) {
       existing.explanation = explanation;
     }
 
     const { resource: updated } = await targetContainer.item(itemId, itemId).replace(existing);
 
-    if (section === "english") {
+    if (section === "mains") {
+      mainsCache = null;
+      mainsCacheTimestamp = 0;
+    } else if (section === "english") {
       englishCache = null;
       englishCacheTimestamp = 0;
     } else {
@@ -1199,6 +1215,7 @@ serverApp.patch("/api/update-question", async (req, res) => {
       id: updated.id,
       answer: updated.answer,
       explanation: updated.explanation,
+      modelAnswer: updated.modelAnswer ?? updated.model_answer ?? "",
     });
   } catch (error: any) {
     console.error("Error updating question:", error);

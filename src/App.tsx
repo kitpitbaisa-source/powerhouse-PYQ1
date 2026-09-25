@@ -6,13 +6,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef, useReducer } from 'react';
 import { createPortal } from 'react-dom';
 import { getExamCategory } from './exam-utils';
-import { 
-  Landmark, 
-  Trophy, 
-  Search, 
-  RotateCcw, 
+import {
+  Landmark,
+  Trophy,
+  Search,
+  RotateCcw,
   LogOut,
-  ChevronDown, 
+  ChevronDown,
   ExternalLink,
   Send,
   Filter,
@@ -1087,12 +1087,13 @@ type WorkspaceEntryShape = {
   key: string;
   questionId: number | string;
   questionType: string;
-  question: Question | undefined;
+  question: Question | MainsQuestion | undefined;
   state: RemoteQuestionState;
 };
 
 const workspaceTypeLabel: Record<string, string> = {
   prelims: 'Prelims',
+  mains: 'Mains',
   csat: 'CSAT',
   english: 'English',
 };
@@ -1541,7 +1542,7 @@ const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLi
   // First convert markdown bold to HTML
   let htmlText = parseMarkdownBold(text);
   if (spaceLists) htmlText = spaceNumberedList(htmlText);
-  
+
   if (!query.trim()) {
     return <span dangerouslySetInnerHTML={{ __html: htmlText }} />;
   }
@@ -1549,21 +1550,21 @@ const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLi
   // Escape special regex characters
   const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escapedQuery})`, "gi");
-  
+
   // Split by HTML tags to avoid highlighting inside tags
   const parts = htmlText.split(/(<[^>]*>)/g);
-  
+
   return (
     <>
       {parts.map((part, index) => {
         if (part.startsWith("<") && part.endsWith(">")) {
           return <span key={index} dangerouslySetInnerHTML={{ __html: part }} />;
         }
-        
+
         const subParts = part.split(regex);
         return (
           <React.Fragment key={index}>
-            {subParts.map((subPart, subIndex) => 
+            {subParts.map((subPart, subIndex) =>
               regex.test(subPart) ? (
                 <mark key={subIndex} className="bg-yellow-200 dark:bg-yellow-500/40 text-slate-900 dark:text-white px-0.5 rounded-sm border-b border-yellow-400 dark:border-yellow-300/30 shadow-sm">
                   {subPart}
@@ -1612,13 +1613,13 @@ const CardIconGradients: React.FC = () => (
   </svg>
 );
 
-const QuestionCard: React.FC<QuestionCardProps> = ({ 
-  question, 
+const QuestionCard: React.FC<QuestionCardProps> = ({
+  question,
   storageScope,
-  index, 
-  attemptedOption, 
-  isRevealed, 
-  onOptionClick, 
+  index,
+  attemptedOption,
+  isRevealed,
+  onOptionClick,
   onToggleRevealed,
   isLocked,
   userEmail,
@@ -1781,7 +1782,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   if (isLocked) {
     return (
-      <div 
+      <div
         className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden flex flex-col h-full"
       >
         <div className="absolute inset-0 bg-slate-50/10 dark:bg-slate-900/10 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
@@ -1790,9 +1791,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
           <h4 className="text-[13px] font-bold text-slate-900 dark:text-white mb-2">Premium Question</h4>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4 line-clamp-3">
-            Questions from {question.year} are available for subscribed members only. 
+            Questions from {question.year} are available for subscribed members only.
           </p>
-          
+
           <div className="w-full space-y-2">
             <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-left">
               <p className="text-[9px] text-slate-500 dark:text-slate-400 mb-1.5 font-bold uppercase tracking-wider flex items-center gap-1">
@@ -1813,7 +1814,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 1 Year ₹899 · 2 Years ₹1299
               </p>
             </div>
-            <button 
+            <button
               onClick={onOpenPremium}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
             >
@@ -1848,14 +1849,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }
 
   return (
-    <div 
+    <div
       className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-4 sm:p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group animate-fadeInUp overflow-hidden"
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, animationFillMode: 'both' }}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="mb-3 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span 
+          <span
             onClick={() => onExamClick?.(question.exam)}
             className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
@@ -1925,7 +1926,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                     fill="none"
                   />}
             </button>
-            <span 
+            <span
               onClick={() => onYearClick?.(question.year)}
               className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
@@ -1936,7 +1937,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span 
+            <span
               onClick={() => onSubjectClick?.(question.subject)}
               className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
             >
@@ -1944,7 +1945,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               {question.subject}
             </span>
             {question.topic && (
-              <span 
+              <span
                 onClick={() => onTopicClick?.(question.topic!)}
                 className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
@@ -2192,7 +2193,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </h3>
         );
       })()}
-      
+
       <div className="space-y-2 mb-5 px-1">
         {(question.options || []).map(opt => {
           const isCorrectAnswer = opt === question.answer;
@@ -2225,10 +2226,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           );
         })}
       </div>
-      
+
       <div className={cn("flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700/50 mt-auto", isRevealed && "mb-3")}>
-        <button 
-          onClick={onToggleRevealed} 
+        <button
+          onClick={onToggleRevealed}
           className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-white bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-600 dark:hover:bg-blue-600 px-3 py-1.5 rounded-full flex items-center focus:outline-none transition-colors ring-1 ring-blue-500/20"
         >
           <div
@@ -2238,20 +2239,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
           <span>{isRevealed ? "Hide Answer" : "Show Answer"}</span>
         </button>
-        
+
         <div className="flex items-center gap-2">
-        <a 
-          href={`https://www.google.com/search?q=${encodeURIComponent((question.question || '').replace(/<[^>]*>?/gm, ' '))}`} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          title="Search Google for this question" 
+        <a
+          href={`https://www.google.com/search?q=${encodeURIComponent((question.question || '').replace(/<[^>]*>?/gm, ' '))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Search Google for this question"
           className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-white flex items-center transition-colors px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-600 hover:border-blue-500 focus:outline-none"
         >
           <ExternalLink className="w-3 h-3 mr-1.5" /> Search
         </a>
         </div>
       </div>
-      
+
       {isRevealed && (
         <div className="pt-3 px-1 animate-fadeInUp">
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-full ring-1 ring-emerald-500/20 mb-2.5">
@@ -2366,6 +2367,11 @@ interface MainsQuestionCardProps {
   question: MainsQuestion;
   isAnswerVisible: boolean;
   onToggleAnswer: () => void;
+  userEmail?: string | null;
+  isAdmin?: boolean;
+  isEditor?: boolean;
+  showNoteInline?: boolean;
+  onUpdateModelAnswer?: (id: string, modelAnswer: string) => Promise<void>;
   searchQuery?: string;
   onSubjectClick?: (subject: string) => void;
   onExamClick?: (exam: string) => void;
@@ -2373,10 +2379,301 @@ interface MainsQuestionCardProps {
   onFeedback?: () => void;
 }
 
+const SavedQuestionActions: React.FC<{
+  questionType: string;
+  question: QuestionMeta;
+  userEmail?: string | null;
+}> = ({ questionType, question, userEmail }) => {
+  const remoteKey = remoteStateKey(questionType, question.id);
+  const [isBookmarked, setIsBookmarked] = useState(() => remoteQuestionState.get(remoteKey)?.isBookmarked ?? false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [isNotePreviewVisible, setIsNotePreviewVisible] = useState(false);
+  const [isTouchNotePreview, setIsTouchNotePreview] = useState(false);
+  const [note, setNote] = useState(() => remoteQuestionState.get(remoteKey)?.notes ?? "");
+  const [noteTitle, setNoteTitle] = useState(() =>
+    getNoteTitle(remoteQuestionState.get(remoteKey)?.noteTitle, question.topic, question.subject)
+  );
+  const [remoteStateVersion, bumpRemoteStateVersion] = useReducer((n: number) => n + 1, 0);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const notesButtonRef = useRef<HTMLButtonElement>(null);
+  const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    remoteStateListeners.add(bumpRemoteStateVersion);
+    return () => {
+      remoteStateListeners.delete(bumpRemoteStateVersion);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isNotesOpen) return;
+    const remote = remoteQuestionState.get(remoteKey);
+    setIsBookmarked(remote?.isBookmarked ?? false);
+    setNote(remote?.notes ?? "");
+    setNoteTitle(getNoteTitle(remote?.noteTitle, question.topic, question.subject));
+  }, [remoteStateVersion, remoteKey, isNotesOpen, question.topic, question.subject]);
+
+  useEffect(() => {
+    if (!isNotesOpen || !editorRef.current) return;
+    editorRef.current.innerHTML = noteMarkdownToEditorHtml(note);
+    editorRef.current.focus();
+  }, [isNotesOpen]);
+
+  useEffect(() => () => {
+    if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+  }, []);
+
+  const toggleBookmark = () => {
+    const next = !isBookmarked;
+    setIsBookmarked(next);
+    saveRemoteQuestionState(userEmail, questionType, question, { isBookmarked: next });
+  };
+
+  const saveNote = () => {
+    const nextTitle = getNoteTitle(noteTitle, question.topic, question.subject);
+    setNoteTitle(nextTitle);
+    setIsNotesOpen(false);
+    saveRemoteQuestionState(userEmail, questionType, question, {
+      notes: note,
+      noteTitle: nextTitle,
+    });
+  };
+
+  const clearNote = () => {
+    setNote("");
+    if (editorRef.current) editorRef.current.innerHTML = "";
+    saveRemoteQuestionState(userEmail, questionType, question, { notes: "" });
+  };
+
+  const applyFormat = (command: 'bold' | 'insertUnorderedList') => {
+    editorRef.current?.focus();
+    document.execCommand(command);
+    if (editorRef.current) setNote(noteEditorToMarkdown(editorRef.current));
+  };
+
+  const showNotePreview = (touch = false) => {
+    if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+    setIsTouchNotePreview(touch);
+    setIsNotePreviewVisible(true);
+  };
+
+  const hideNotePreview = () => {
+    if (isTouchNotePreview) return;
+    if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+    previewCloseTimerRef.current = setTimeout(() => setIsNotePreviewVisible(false), 140);
+  };
+
+  const closeNotePreview = () => {
+    if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+    setIsNotePreviewVisible(false);
+    setIsTouchNotePreview(false);
+  };
+
+  const openNoteEditor = () => {
+    closeNotePreview();
+    setIsNotesOpen(true);
+  };
+
+  const notesButtonRect = isNotePreviewVisible
+    ? notesButtonRef.current?.getBoundingClientRect()
+    : null;
+  const notePreviewOpensUp = !!notesButtonRect && notesButtonRect.bottom > window.innerHeight * 0.6;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={toggleBookmark}
+        aria-pressed={isBookmarked}
+        title={isBookmarked ? "Remove bookmark" : "Bookmark this question"}
+        className={cardIconButton}
+      >
+        <Bookmark
+          className={cn("h-3.5 w-3.5", isBookmarked && cardIcon3d)}
+          strokeWidth={2}
+          stroke={isBookmarked ? "url(#pyqIconActive)" : "url(#pyqIconIdle)"}
+          fill={isBookmarked ? "url(#pyqIconActive)" : "none"}
+        />
+      </button>
+      <button
+        ref={notesButtonRef}
+        type="button"
+        onClick={() => {
+          const usesTouchInteraction = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+          if (usesTouchInteraction && note.trim()) {
+            showNotePreview(true);
+          } else {
+            openNoteEditor();
+          }
+        }}
+        onMouseEnter={() => showNotePreview(false)}
+        onMouseLeave={hideNotePreview}
+        onFocus={() => showNotePreview(false)}
+        onBlur={hideNotePreview}
+        aria-expanded={isNotesOpen}
+        title={note.trim() ? "View or edit your note" : "Add a note"}
+        className={cardIconButton}
+      >
+        <FilePlus
+          className={cn("h-3.5 w-3.5", note.trim() && cardIcon3d)}
+          strokeWidth={2}
+          stroke={note.trim() ? "url(#pyqIconActive)" : "url(#pyqIconIdle)"}
+          fill={note.trim() ? "url(#pyqIconActive)" : "none"}
+          fillOpacity={note.trim() ? 0.25 : 0}
+        />
+      </button>
+
+      {isNotePreviewVisible && notesButtonRect && createPortal(
+        <div
+          className="fixed z-[125] w-80 overflow-hidden rounded-2xl border border-violet-200/90 bg-white shadow-2xl shadow-violet-950/15 ring-1 ring-violet-100 dark:border-violet-500/25 dark:bg-slate-900 dark:ring-violet-500/10"
+          style={{
+            left: Math.min(Math.max(12, notesButtonRect.left - 276), window.innerWidth - 332),
+            top: notePreviewOpensUp ? undefined : notesButtonRect.bottom + 8,
+            bottom: notePreviewOpensUp ? window.innerHeight - notesButtonRect.top + 8 : undefined,
+          }}
+          onMouseEnter={() => {
+            if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+          }}
+          onMouseLeave={hideNotePreview}
+        >
+          <div className="flex items-center justify-between border-b border-violet-100 bg-gradient-to-r from-violet-50 to-indigo-50 px-3.5 py-2.5 dark:border-violet-500/15 dark:from-violet-500/10 dark:to-indigo-500/10">
+            <div className="flex min-w-0 items-center gap-2">
+              <StickyNote className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-300" />
+              <span className="truncate text-xs font-bold text-violet-800 dark:text-violet-200">
+                {getNoteTitle(noteTitle, question.topic, question.subject)}
+              </span>
+            </div>
+            {isTouchNotePreview && (
+              <button type="button" onClick={closeNotePreview} className="rounded-md p-1 text-violet-500 hover:bg-violet-200/70 dark:text-violet-300 dark:hover:bg-violet-500/20" aria-label="Close note preview">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="note-paper-lines max-h-64 overflow-y-auto border-l-2 border-violet-400/60 px-3.5 py-3 text-[11px] leading-[22px] text-slate-700 dark:border-violet-400/40 dark:text-slate-200">
+            {note.trim()
+              ? <NoteContent note={note.trim()} />
+              : "No note added yet. Click to add one."}
+          </div>
+          {isTouchNotePreview && (
+            <div className="border-t border-violet-100 bg-white/95 p-2.5 dark:border-violet-500/15 dark:bg-slate-900/95">
+              <button type="button" onClick={openNoteEditor} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-violet-600/20">
+                <Pencil className="h-3.5 w-3.5" /> Edit note
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {isNotesOpen && createPortal(
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
+          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl dark:border-violet-500/25 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-violet-100 bg-gradient-to-r from-violet-50 to-indigo-50 px-4 py-3 dark:border-violet-500/15 dark:from-violet-500/10 dark:to-indigo-500/10">
+              <div className="flex min-w-0 items-center gap-2">
+                <StickyNote className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
+                <input
+                  value={noteTitle}
+                  onChange={(event) => setNoteTitle(event.target.value.slice(0, 120))}
+                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-bold text-slate-900 outline-none dark:text-white"
+                  aria-label="Note title"
+                  placeholder="Note title"
+                />
+              </div>
+              <button type="button" onClick={saveNote} className="rounded-md p-1.5 text-slate-400 hover:bg-white/70 hover:text-violet-600 dark:hover:bg-slate-800">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-1 border-b border-slate-200 px-4 py-2 dark:border-slate-700">
+              <button type="button" onClick={() => applyFormat('bold')} className="rounded-md p-2 text-slate-500 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-500/10">
+                <Bold className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" onClick={() => applyFormat('insertUnorderedList')} className="rounded-md p-2 text-slate-500 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-500/10">
+                <List className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(event) => setNote(noteEditorToMarkdown(event.currentTarget))}
+              className="note-paper-lines min-h-64 flex-1 overflow-y-auto px-5 py-4 text-sm leading-7 text-slate-700 outline-none dark:text-slate-200"
+              data-placeholder="Write your notes here..."
+            />
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3">
+              <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                {note.trim().length} characters · saves when closed
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={clearNote}
+                  disabled={note.trim() === ""}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:disabled:hover:border-slate-600 dark:disabled:hover:bg-slate-800 dark:disabled:hover:text-slate-300"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={saveNote}
+                  className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition hover:from-violet-500 hover:to-indigo-500"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+const SavedQuestionInlineNote: React.FC<{
+  questionType: string;
+  question: QuestionMeta;
+  visible: boolean;
+}> = ({ questionType, question, visible }) => {
+  const remoteKey = remoteStateKey(questionType, question.id);
+  const [remoteStateVersion, bumpRemoteStateVersion] = useReducer((n: number) => n + 1, 0);
+
+  useEffect(() => {
+    remoteStateListeners.add(bumpRemoteStateVersion);
+    return () => {
+      remoteStateListeners.delete(bumpRemoteStateVersion);
+    };
+  }, []);
+
+  const state = remoteQuestionState.get(remoteKey);
+  const note = state?.notes?.trim() || "";
+  if (!visible || !note) return null;
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm shadow-emerald-950/5 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+      <div className="flex items-center gap-1.5 border-b border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10 dark:text-emerald-300">
+        <FilePlus className="h-3 w-3" />
+        {getNoteTitle(state?.noteTitle, question.topic, question.subject)}
+      </div>
+      <div className="border-l-2 border-emerald-400/60 bg-emerald-50/55 px-4 py-3 dark:border-emerald-400/40 dark:bg-emerald-500/5">
+        <NoteContent
+          note={note}
+          className="text-[12px] leading-[22px] text-emerald-950/85 dark:text-emerald-50/90"
+          bulletClassName="bg-emerald-500 shadow-emerald-500/30"
+        />
+      </div>
+    </div>
+  );
+};
+
 const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   question,
   isAnswerVisible,
   onToggleAnswer,
+  userEmail,
+  isAdmin,
+  isEditor,
+  showNoteInline,
+  onUpdateModelAnswer,
   searchQuery = "",
   onSubjectClick,
   onExamClick,
@@ -2386,6 +2683,24 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
   const answer = question.modelAnswer || question.model_answer || "";
   const hasModelAnswer = !!answer.trim();
+  const [isEditingAnswer, setIsEditingAnswer] = useState(false);
+  const [editModelAnswer, setEditModelAnswer] = useState(answer);
+  const [isSavingAnswer, setIsSavingAnswer] = useState(false);
+
+  useEffect(() => {
+    if (!isEditingAnswer) setEditModelAnswer(answer);
+  }, [answer, isEditingAnswer]);
+
+  const saveModelAnswer = async () => {
+    if (!onUpdateModelAnswer) return;
+    setIsSavingAnswer(true);
+    try {
+      await onUpdateModelAnswer(question.id, editModelAnswer);
+      setIsEditingAnswer(false);
+    } finally {
+      setIsSavingAnswer(false);
+    }
+  };
 
   return (
     <div className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group overflow-hidden">
@@ -2434,6 +2749,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
               />
             </button>
           )}
+          <SavedQuestionActions questionType="mains" question={question} userEmail={userEmail} />
           <span
             onClick={() => onYearClick?.(question.year)}
             className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -2446,6 +2762,8 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
       <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] whitespace-pre-wrap flex-grow">
         <HighlightText text={question.question} query={searchQuery} spaceLists />
       </h3>
+
+      <SavedQuestionInlineNote questionType="mains" question={question} visible={!!showNoteInline} />
 
       {question.keywords && question.keywords.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -2480,8 +2798,38 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
 
       {isAnswerVisible && (
         <div className="bg-indigo-50 dark:bg-indigo-900/20 border-l-2 border-indigo-500 p-3 rounded-r-lg shadow-sm">
-          <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-2">Model Answer</p>
-          {hasModelAnswer ? (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">Model Answer</p>
+            {(isAdmin || isEditor) && !isEditingAnswer && (
+              <button
+                type="button"
+                onClick={() => setIsEditingAnswer(true)}
+                className="rounded-md p-1 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-500/20"
+                title="Edit model answer"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {isEditingAnswer ? (
+            <div className="space-y-2">
+              <textarea
+                value={editModelAnswer}
+                onChange={(event) => setEditModelAnswer(event.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-indigo-200 bg-white p-3 text-xs leading-relaxed text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-indigo-500/30 dark:bg-slate-900 dark:text-slate-100"
+                placeholder="Enter the model answer..."
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setEditModelAnswer(answer); setIsEditingAnswer(false); }} className="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                  Cancel
+                </button>
+                <button type="button" onClick={saveModelAnswer} disabled={isSavingAnswer} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-60">
+                  {isSavingAnswer ? "Saving..." : "Save answer"}
+                </button>
+              </div>
+            </div>
+          ) : hasModelAnswer ? (
             <p className="text-[12px] text-indigo-900 dark:text-indigo-200 leading-relaxed whitespace-pre-wrap">
               <HighlightText text={answer} query={searchQuery} />
             </p>
@@ -2608,6 +2956,8 @@ export default function App() {
   const [mainsSubjectFilter, setMainsSubjectFilter] = useState("All");
   const [mainsTopicFilter, setMainsTopicFilter] = useState("All");
   const [mainsSearchQuery, setMainsSearchQuery] = useState("");
+  const [mainsBookmarkedOnly, setMainsBookmarkedOnly] = useState(false);
+  const [mainsNotedOnly, setMainsNotedOnly] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
   const [revealedMainsAnswers, setRevealedMainsAnswers] = useState<Record<string, boolean>>({});
@@ -2622,7 +2972,7 @@ export default function App() {
   const [toppersPaperFilter, setToppersPaperFilter] = useState("All");
   const [toppersSearchQuery, setToppersSearchQuery] = useState("");
   const [activeTopperIndex, setActiveTopperIndex] = useState<Record<string, number>>({});
-  
+
   // CSAT and English filters
   const [csatYearFilter, setCSATYearFilter] = useState("All");
   const [csatSubjectFilter, setCSATSubjectFilter] = useState("All");
@@ -2634,7 +2984,7 @@ export default function App() {
   const [csatBookmarkedOnly, setCSATBookmarkedOnly] = useState(false);
   const [csatNotedOnly, setCSATNotedOnly] = useState(false);
   const [csatSortMode, setCSATSortMode] = useState<QuestionSortMode>('latest');
-  
+
   const [englishYearFilter, setEnglishYearFilter] = useState("All");
   const [englishSubjectFilter, setEnglishSubjectFilter] = useState("All");
   const [englishTopicFilter, setEnglishTopicFilter] = useState("All");
@@ -2680,7 +3030,7 @@ export default function App() {
     }, { threshold: 0.1 });
     englishObserverRef.current.observe(node);
   }, [englishRandomMode]);
-  
+
   const [score, setScore] = useState({ correct: 0, total: 0 });
   // Per-section score for the current practice session (prelims/csat/english).
   const [sectionScores, setSectionScores] = useState<Record<string, { correct: number; total: number }>>({});
@@ -2766,7 +3116,7 @@ export default function App() {
       const response = await fetch('/api/questions');
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
-      
+
       if (Array.isArray(data) && data.length > 0) {
         console.log(`Loaded ${data.length} questions from API`);
        // Keep the 100 shown locally, then append remaining questions from API.
@@ -3193,48 +3543,56 @@ export default function App() {
     };
   }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter]);
 
-  const filteredMainsQuestions = useMemo(() => {
-    if (mainsRandomMode) {
-      return mainsRandomizedQuestions;
-    }
-    return mainsQuestions
-      .filter(q => {
-        // Skip questions without valid question text
-        if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
-        
-        const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
-        const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
-        const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
-        const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
-        const matchesSearch = mainsSearchQuery === "" ||
-          matchesQuestionId(q.id, mainsSearchQuery) ||
-          (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
-          (q.model_answer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
-          (q.modelAnswer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
-          (q.subject || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
-          (q.exam || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
-          (q.year || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
+  const matchesMainsBaseFilters = useCallback((q: MainsQuestion) => {
+    if (!q.question || q.question.trim() === '' || q.question.startsWith('Q_')) return false;
 
-        return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
-      })
-      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)))
-      .slice(0, mainsVisibleCount);
-  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsRandomMode, mainsRandomizedQuestions, mainsVisibleCount]);
+    const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
+    const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
+    const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
+    const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
+    const matchesSearch = mainsSearchQuery === "" ||
+      matchesQuestionId(q.id, mainsSearchQuery) ||
+      (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+      (q.model_answer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+      (q.modelAnswer || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+      (q.subject || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+      (q.exam || "").toLowerCase().includes(mainsSearchQuery.toLowerCase()) ||
+      (q.year || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
+
+    return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
+  }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery]);
+
+  const [bookmarkedMainsCount, notedMainsCount] = useMemo(
+    () => countSavedQuestions("mains", mainsQuestions.filter(matchesMainsBaseFilters)),
+    [mainsQuestions, matchesMainsBaseFilters, workspaceVersion]
+  );
+
+  const filteredMainsQuestions = useMemo(() => {
+    if (mainsRandomMode) return mainsRandomizedQuestions;
+
+    const list = mainsQuestions
+      .filter(q => matchesMainsBaseFilters(q) && matchesSavedFilters("mains", q, mainsBookmarkedOnly, mainsNotedOnly))
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(a.id).localeCompare(String(b.id)));
+
+    if (mainsBookmarkedOnly || mainsNotedOnly) return list;
+    return list.slice(0, mainsVisibleCount);
+  }, [
+    mainsQuestions,
+    matchesMainsBaseFilters,
+    mainsRandomMode,
+    mainsRandomizedQuestions,
+    mainsBookmarkedOnly,
+    mainsNotedOnly,
+    mainsVisibleCount,
+    workspaceVersion,
+  ]);
 
   const isMoreMainsToLoad = useMemo(() => {
     if (mainsRandomMode) return false;
-    const totalFiltered = mainsQuestions.filter(q => {
-      const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
-      const matchesExam = mainsExamFilter === "All" || q.exam === mainsExamFilter;
-      const matchesSubject = mainsSubjectFilter === "All" || q.subject === mainsSubjectFilter;
-      const matchesTopic = mainsTopicFilter === "All" || q.topic === mainsTopicFilter;
-      const matchesSearch = mainsSearchQuery === "" ||
-        matchesQuestionId(q.id, mainsSearchQuery) ||
-        (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
-      return matchesYear && matchesExam && matchesSubject && matchesTopic && matchesSearch;
-    }).length;
+    if (mainsBookmarkedOnly || mainsNotedOnly) return false;
+    const totalFiltered = mainsQuestions.filter(matchesMainsBaseFilters).length;
     return totalFiltered > mainsVisibleCount;
-  }, [mainsQuestions, mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsVisibleCount, mainsRandomMode]);
+  }, [mainsQuestions, matchesMainsBaseFilters, mainsVisibleCount, mainsRandomMode, mainsBookmarkedOnly, mainsNotedOnly]);
 
   // Toppers copy filter lists
   const toppersYearsList = useMemo(() => {
@@ -3259,7 +3617,7 @@ export default function App() {
     return toppersQuestions.filter(q => {
       const matchesYear = toppersYearFilter === "All" || q.year === toppersYearFilter;
       const matchesSubject = toppersSubjectFilter === "All" || q.subject === toppersSubjectFilter;
-      const matchesTopper = toppersTopperFilter === "All" || 
+      const matchesTopper = toppersTopperFilter === "All" ||
         q.answers?.some(a => a.topperName === toppersTopperFilter);
       const matchesPaper = toppersPaperFilter === "All" || q.paper === toppersPaperFilter;
       const matchesSearch = toppersSearchQuery === "" ||
@@ -3658,7 +4016,7 @@ export default function App() {
   const checkUserStatus = async (email: string) => {
     try {
       const response = await fetch(`/api/user-status?email=${encodeURIComponent(email)}`);
-      
+
       if (!response.ok) {
         const text = await response.text();
         console.warn(`User status check failed (${response.status}):`, text);
@@ -3766,14 +4124,14 @@ export default function App() {
     loadReport();
   }, [showReport, workspaceTab]);
 
-  // Bookmarks and notes can point at any section, but the CSAT and English
-  // lists only load when their tab is visited. Pull them in when the workspace
-  // opens so every saved entry can show its actual question text.
+  // Bookmarks and notes can point at any section. Pull any unloaded lists in
+  // when the workspace opens so every saved entry can show its question text.
   useEffect(() => {
     if (!showReport || !userEmail) return;
+    if (mainsQuestions.length === 0 && !isLoadingMains) fetchMainsQuestions();
     if (csatQuestions.length === 0 && !isLoadingCSAT) fetchCSATQuestions();
     if (englishQuestions.length === 0 && !isLoadingEnglish) fetchEnglishQuestions();
-  }, [showReport, userEmail]);
+  }, [showReport, userEmail, mainsQuestions.length, isLoadingMains, csatQuestions.length, isLoadingCSAT, englishQuestions.length, isLoadingEnglish]);
 
   type WorkspaceEntry = WorkspaceEntryShape;
 
@@ -3783,8 +4141,9 @@ export default function App() {
   const workspaceEntries = useMemo<WorkspaceEntry[]>(() => {
     // Index by string id: some questions use non-numeric ids (e.g. "mcq_3210"),
     // which a numeric lookup would silently miss.
-    const index: Record<string, Map<string, Question>> = {
+    const index: Record<string, Map<string, Question | MainsQuestion>> = {
       prelims: new Map(questions.map(q => [String(q.id), q])),
+      mains: new Map(mainsQuestions.map(q => [String(q.id), q])),
       csat: new Map(csatQuestions.map(q => [String(q.id), q])),
       english: new Map(englishQuestions.map(q => [String(q.id), q])),
     };
@@ -3797,7 +4156,7 @@ export default function App() {
       rows.push({ key, questionId, questionType, question: index[questionType]?.get(rawId), state });
     });
     return rows.sort((a, b) => String(b.state.updatedAt || '').localeCompare(String(a.state.updatedAt || '')));
-  }, [workspaceVersion, questions, csatQuestions, englishQuestions]);
+  }, [workspaceVersion, questions, mainsQuestions, csatQuestions, englishQuestions]);
 
   const bookmarkedEntries = useMemo(
     () => workspaceEntries.filter(entry => entry.state.isBookmarked),
@@ -4204,11 +4563,11 @@ export default function App() {
     try {
       console.log("Fetching users from API...");
       const response = await fetch('/api/admin/users', { headers: adminHeaders() });
-      
+
       if (!response.ok) {
         throw new Error(`API fetch failed with status ${response.status}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error("API did not return JSON");
@@ -4315,7 +4674,7 @@ export default function App() {
 
     setIsLoggingIn(true);
     const email = loginEmailInput.trim().toLowerCase();
-    
+
     // Store session
     const session = {
       email,
@@ -4323,7 +4682,7 @@ export default function App() {
     };
     localStorage.setItem('user_session', JSON.stringify(session));
     setUserEmail(email);
-    
+
     // Track login device info
     try {
       const ua = navigator.userAgent;
@@ -4342,7 +4701,7 @@ export default function App() {
 
     // Check status
     await checkUserStatus(email);
-    
+
     setIsLoggingIn(false);
     setShowLoginModal(false);
   };
@@ -4371,21 +4730,21 @@ export default function App() {
   };
 
   const yearsList = useMemo(() => {
-    const availableData = questions.filter(q => 
+    const availableData = questions.filter(q =>
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (paperFilter === "All" || q.exam === paperFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
     const uniqueYears = Array.from(new Set(availableData.map(q => q.year))).sort((a, b) => (b as string).localeCompare(a as string));
-    
+
     // Count questions for each year GIVEN current exam/subject/topic filters
     const yearCounts: Record<string, number> = {};
     availableData.forEach(q => {
       yearCounts[q.year] = (yearCounts[q.year] || 0) + 1;
     });
 
-    return { 
+    return {
       options: ["All", ...uniqueYears],
       counts: yearCounts,
       total: availableData.length
@@ -4394,14 +4753,14 @@ export default function App() {
 
   const examsList = useMemo(() => {
     const uniqueExams = [...new Set(questions.map(q => getExamCategory(q.exam)))].sort();
-    
+
     const examCounts: Record<string, number> = {};
     questions.forEach(q => {
       const category = getExamCategory(q.exam);
       examCounts[category] = (examCounts[category] || 0) + 1;
     });
 
-    return { 
+    return {
       options: ["All", ...uniqueExams],
       counts: examCounts
     };
@@ -4428,33 +4787,33 @@ export default function App() {
   }, [questions, examFilter, yearFilter, subjectFilter, topicFilter]);
 
   const subjectsList = useMemo(() => {
-    const availableData = questions.filter(q => 
+    const availableData = questions.filter(q =>
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (paperFilter === "All" || q.exam === paperFilter) &&
       (topicFilter === "All" || q.topic === topicFilter)
     );
     const uniqueSubjects = [...new Set(availableData.map(q => q.subject))].sort();
-    
+
     const subjectCounts: Record<string, number> = {};
     availableData.forEach(q => {
       subjectCounts[q.subject] = (subjectCounts[q.subject] || 0) + 1;
     });
 
-    return { 
+    return {
       options: ["All", ...uniqueSubjects],
       counts: subjectCounts
     };
   }, [questions, yearFilter, examFilter, paperFilter, topicFilter]);
 
   const topicsList = useMemo(() => {
-    const availableData = questions.filter(q => 
+    const availableData = questions.filter(q =>
       (yearFilter === "All" || q.year === yearFilter) &&
       (examFilter === "All" || getExamCategory(q.exam) === examFilter) &&
       (paperFilter === "All" || q.exam === paperFilter) &&
       (subjectFilter === "All" || q.subject === subjectFilter)
     );
-    
+
     const stats: Record<string, number> = {};
     availableData.forEach(q => {
       if (q.topic) {
@@ -4466,7 +4825,7 @@ export default function App() {
       .sort((a, b) => b[1] - a[1] || (a[0] as string).localeCompare(b[0] as string))
       .map(entry => entry[0]);
 
-    return { 
+    return {
       options: ["All", ...sortedTopics],
       counts: stats
     };
@@ -4611,17 +4970,17 @@ export default function App() {
         window.innerHeight + window.scrollY >= document.body.offsetHeight - 2500
       ) {
         if (activeTab === 'prelims') { if (isMoreToLoad) handleLoadMore(); }
-        else if (activeTab === 'mains') handleMainsLoadMore();
+        else if (activeTab === 'mains') { if (isMoreMainsToLoad) handleMainsLoadMore(); }
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleLoadMore, handleMainsLoadMore, activeTab, isAdminView, isMoreToLoad]);
+  }, [handleLoadMore, handleMainsLoadMore, activeTab, isAdminView, isMoreToLoad, isMoreMainsToLoad]);
 
   // Reset mains pagination on filter change
   useEffect(() => {
     setMainsVisibleCount(30);
-  }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery]);
+  }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsBookmarkedOnly, mainsNotedOnly]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean, questionType: string = 'prelims', subject?: string, topic?: string) => {
     // Re-attempting is allowed, but picking the same option again would only
@@ -4689,6 +5048,25 @@ export default function App() {
 
   const handleUpdateEnglishQuestion = (id: number, _year: string, answer: string, explanation: string) =>
     updateQuestionAnswer("english", id, answer, explanation);
+
+  const updateMainsModelAnswer = async (id: string, modelAnswer: string) => {
+    const res = await fetch("/api/update-question", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section: "mains", id, modelAnswer, email: userEmail }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert("Update failed: " + (err.error || "Unknown error"));
+      throw new Error(err.error);
+    }
+    const data = await res.json();
+    setMainsQuestions(items => items.map(q =>
+      String(q.id) === String(id)
+        ? { ...q, modelAnswer: data.modelAnswer, model_answer: data.modelAnswer }
+        : q
+    ));
+  };
 
   const resetFilters = () => {
     setYearFilter("All");
@@ -4827,6 +5205,8 @@ export default function App() {
     setMainsSubjectFilter("All");
     setMainsTopicFilter("All");
     setMainsSearchQuery("");
+    setMainsBookmarkedOnly(false);
+    setMainsNotedOnly(false);
     setMainsRandomMode(false);
   };
 
@@ -4838,7 +5218,11 @@ export default function App() {
       const matchesSearch = mainsSearchQuery === "" ||
         matchesQuestionId(q.id, mainsSearchQuery) ||
         (q.question || "").toLowerCase().includes(mainsSearchQuery.toLowerCase());
-      return matchesYear && matchesExam && matchesSubject && matchesSearch;
+      return matchesYear &&
+        matchesExam &&
+        matchesSubject &&
+        matchesSearch &&
+        matchesSavedFilters("mains", q, mainsBookmarkedOnly, mainsNotedOnly);
     });
     const shuffled = [...baseList].sort(() => Math.random() - 0.5);
     setMainsRandomizedQuestions(shuffled.slice(0, limit));
@@ -4911,7 +5295,7 @@ export default function App() {
     );
   };
 
-  const isAppLoading = 
+  const isAppLoading =
     (activeTab === 'prelims' && isLoadingQuestions) ||
     (activeTab === 'mains' && isLoadingMains) ||
     (activeTab === 'csat' && isLoadingCSAT) ||
@@ -4928,7 +5312,7 @@ export default function App() {
       const matchesPaper = paperFilter === "All" || q.exam === paperFilter;
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter;
       const matchesTopic = topicFilter === "All" || q.topic === topicFilter;
-      const matchesSearch = searchQuery === "" || 
+      const matchesSearch = searchQuery === "" ||
         matchesQuestionId(q.id, searchQuery) ||
         (q.question || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.explanation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -5125,7 +5509,7 @@ export default function App() {
                 </div>
               </div>
             )}
-            
+
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 order-last">
               <div className="relative" ref={userMenuRef}>
                 <button
@@ -5356,7 +5740,7 @@ export default function App() {
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Admin Dashboard</h2>
                 <p className="text-slate-500 dark:text-slate-400">Manage user subscriptions and access.</p>
               </div>
-              <button 
+              <button
                 onClick={() => setIsAdminView(false)}
                 className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
@@ -5434,7 +5818,7 @@ export default function App() {
                 <form onSubmit={handleAddUserFromAdmin} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase">Email</label>
-                    <input 
+                    <input
                       type="email"
                       required
                       placeholder="user@example.com"
@@ -5812,8 +6196,8 @@ export default function App() {
                                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50'
                                  : user.status === 'editor'
                                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50'
-                                 : user.status === 'subscribed' 
-                                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50' 
+                                 : user.status === 'subscribed'
+                                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50'
                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600'
                              }`}>
                                {user.status}
@@ -5852,7 +6236,7 @@ export default function App() {
                          <td className="px-6 py-4 text-right">
                            <div className="flex items-center justify-end gap-1">
                            {user.email !== userEmail ? (
-                             <button 
+                             <button
                                onClick={() => handleDeleteUser(user.email)}
                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
                                title="Deactivate user"
@@ -6246,7 +6630,7 @@ export default function App() {
           <>
             {/* Mobile Filters Toggle Button */}
             <div className="md:hidden w-full mb-4">
-              <button 
+              <button
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                 className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
@@ -6300,7 +6684,7 @@ export default function App() {
                     ? <Pin className="h-3.5 w-3.5 fill-current" />
                     : <PinOff className="h-3.5 w-3.5" />}
                 </button>
-                <button 
+                <button
                   onClick={resetFilters}
                   className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
                 >
@@ -6312,8 +6696,8 @@ export default function App() {
             <div className="mb-4">
               <label htmlFor="search-input" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
               <div className="relative">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   id="search-input"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -6407,9 +6791,9 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {filteredQuestions.map((q, idx) => {
                     const isLocked = !isSubscribed && !latestTwoYears.includes(q.year);
-                    
+
                     return (
-                      <QuestionCard 
+                      <QuestionCard
                         key={q.id}
                         question={q}
                         storageScope="prelims"
@@ -6460,7 +6844,7 @@ export default function App() {
                 )}
 
                 {!isSubscribed && (
-                  <div 
+                  <div
                     className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/40 dark:to-slate-800 p-6 rounded-xl border-2 border-dashed border-indigo-200 dark:border-indigo-500/50 flex flex-col items-center justify-center text-center group"
                   >
                     <div className="bg-indigo-600 p-3 rounded-full mb-4 shadow-lg group-hover:scale-110 transition-transform">
@@ -6470,7 +6854,7 @@ export default function App() {
                     <p className="text-slate-600 dark:text-slate-300 text-xs mb-6 max-w-[250px]">
                       You're viewing the free preview. Get full access to all subjects, 2026 predictions, and future updates by subscribing.
                     </p>
-                    
+
                     <div className="w-full space-y-4">
                       {/* Subscription Plans / Pricing */}
                       <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -6505,7 +6889,7 @@ export default function App() {
                           <li>Provide your registered email: <span className="font-bold text-slate-700 dark:text-white truncate block mt-1">{userEmail}</span></li>
                           <li>Once your subscription is activated, refresh this page.</li>
                         </ol>
-                        
+
                         <div className="mt-4 flex justify-center">
                           <a href="https://telegram.me/UPSC_powerhouse_helpbot" target="_blank" rel="noopener noreferrer">
                             <img src="/telegram-qr.png" alt="Telegram QR Code @UPSC_powerhouse_helpbot" className="w-40 h-40 rounded-lg shadow-md" />
@@ -6517,7 +6901,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button 
+                      <button
                         onClick={() => userEmail && checkUserStatus(userEmail)}
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition-colors shadow-lg flex items-center justify-center gap-2 active:scale-[0.98]"
                       >
@@ -6543,7 +6927,7 @@ export default function App() {
           <>
             {/* Mobile Filters Toggle Button */}
             <div className="md:hidden w-full mb-4">
-              <button 
+              <button
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                 className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
@@ -6564,12 +6948,22 @@ export default function App() {
                   <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
                     <Filter className="w-4 h-4 text-blue-500" />
                   </h2>
-                  <button
-                    onClick={resetMainsFilters}
-                    className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <SavedFilterToggles
+                      bookmarkedOnly={mainsBookmarkedOnly}
+                      onToggleBookmarked={() => setMainsBookmarkedOnly(value => !value)}
+                      bookmarkedCount={bookmarkedMainsCount}
+                      notedOnly={mainsNotedOnly}
+                      onToggleNoted={() => setMainsNotedOnly(value => !value)}
+                      notedCount={notedMainsCount}
+                    />
+                    <button
+                      onClick={resetMainsFilters}
+                      className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -6655,6 +7049,11 @@ export default function App() {
                       question={q}
                       isAnswerVisible={revealedMainsAnswers[q.id]}
                       onToggleAnswer={() => toggleMainsAnswer(q.id)}
+                      userEmail={userEmail}
+                      isAdmin={isAdmin}
+                      isEditor={isEditor}
+                      showNoteInline={mainsNotedOnly}
+                      onUpdateModelAnswer={updateMainsModelAnswer}
                       searchQuery={mainsSearchQuery}
                       onFeedback={() => openFeedback(q.id, 'mains')}
                       onSubjectClick={(subject) => {
@@ -6687,7 +7086,7 @@ export default function App() {
           <>
             {/* Mobile Filters Toggle Button */}
             <div className="md:hidden w-full mb-4">
-              <button 
+              <button
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                 className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
@@ -6814,7 +7213,7 @@ export default function App() {
                     {filteredCSATQuestions.map((q, idx) => {
                       const isLocked = !isSubscribed && !csatLatestTwoYears.includes(q.year);
                       return (
-                        <QuestionCard 
+                        <QuestionCard
                           key={q.id}
                           question={q}
                           storageScope="csat"
@@ -6853,7 +7252,7 @@ export default function App() {
           <>
             {/* Mobile Filters Toggle Button */}
             <div className="md:hidden w-full mb-4">
-              <button 
+              <button
                 onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                 className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
               >
@@ -7006,7 +7405,7 @@ export default function App() {
                     {filteredEnglishQuestions.map((q, idx) => {
                       const isLocked = !isSubscribed && !englishLatestTwoYears.includes(q.year);
                       return (
-                        <QuestionCard 
+                        <QuestionCard
                           key={q.id}
                           question={q}
                           storageScope="english"
@@ -7226,7 +7625,7 @@ export default function App() {
                                       1 Year ₹899 · 2 Years ₹1299
                                     </p>
                                   </div>
-                                  <button 
+                                  <button
                                     onClick={() => setShowPremiumModal(true)}
                                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-[10px] transition-colors shadow-md flex items-center justify-center gap-1.5"
                                   >
