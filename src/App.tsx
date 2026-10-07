@@ -57,7 +57,7 @@ import {
   List
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
-import { MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
+import { EssayQuestion, MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
@@ -2365,6 +2365,7 @@ const MarksWordsPill: React.FC<{ marks?: number | null; words?: number | null }>
 
 interface MainsQuestionCardProps {
   question: MainsQuestion;
+  questionType?: 'mains' | 'essay';
   isAnswerVisible: boolean;
   onToggleAnswer: () => void;
   userEmail?: string | null;
@@ -2374,6 +2375,7 @@ interface MainsQuestionCardProps {
   onUpdateModelAnswer?: (id: string, modelAnswer: string) => Promise<void>;
   searchQuery?: string;
   onSubjectClick?: (subject: string) => void;
+  onTopicClick?: (topic: string) => void;
   onExamClick?: (exam: string) => void;
   onYearClick?: (year: string) => void;
   onFeedback?: () => void;
@@ -2667,6 +2669,7 @@ const SavedQuestionInlineNote: React.FC<{
 
 const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   question,
+  questionType = 'mains',
   isAnswerVisible,
   onToggleAnswer,
   userEmail,
@@ -2676,6 +2679,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onUpdateModelAnswer,
   searchQuery = "",
   onSubjectClick,
+  onTopicClick,
   onExamClick,
   onYearClick,
   onFeedback,
@@ -2726,7 +2730,10 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
             </span>
           )}
           {question.topic && (
-            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
+            <span
+              onClick={() => onTopicClick?.(question.topic!)}
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
               {question.topic}
             </span>
           )}
@@ -2749,7 +2756,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
               />
             </button>
           )}
-          <SavedQuestionActions questionType="mains" question={question} userEmail={userEmail} />
+          <SavedQuestionActions questionType={questionType} question={question} userEmail={userEmail} />
           <span
             onClick={() => onYearClick?.(question.year)}
             className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 flex items-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -2763,7 +2770,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         <HighlightText text={question.question} query={searchQuery} spaceLists />
       </h3>
 
-      <SavedQuestionInlineNote questionType="mains" question={question} visible={!!showNoteInline} />
+      <SavedQuestionInlineNote questionType={questionType} question={question} visible={!!showNoteInline} />
 
       {question.keywords && question.keywords.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -2926,11 +2933,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers' | 'csat' | 'english'>('prelims');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
+  const [essayQuestions, setEssayQuestions] = useState<EssayQuestion[]>([]);
   const [csatQuestions, setCSATQuestions] = useState<Question[]>([]);
   const [englishQuestions, setEnglishQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [hasLoadedAllQuestions, setHasLoadedAllQuestions] = useState(false);
   const [isLoadingMains, setIsLoadingMains] = useState(false);
+  const [isLoadingEssay, setIsLoadingEssay] = useState(false);
   const [isLoadingCSAT, setIsLoadingCSAT] = useState(false);
   const [isLoadingEnglish, setIsLoadingEnglish] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2958,9 +2967,16 @@ export default function App() {
   const [mainsSearchQuery, setMainsSearchQuery] = useState("");
   const [mainsBookmarkedOnly, setMainsBookmarkedOnly] = useState(false);
   const [mainsNotedOnly, setMainsNotedOnly] = useState(false);
+  const [essayYearFilter, setEssayYearFilter] = useState("All");
+  const [essayExamFilter, setEssayExamFilter] = useState("All");
+  const [essayTopicFilter, setEssayTopicFilter] = useState("All");
+  const [essaySearchQuery, setEssaySearchQuery] = useState("");
+  const [essayBookmarkedOnly, setEssayBookmarkedOnly] = useState(false);
+  const [essayNotedOnly, setEssayNotedOnly] = useState(false);
   const [userAttempts, setUserAttempts] = useState<Record<number, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
   const [revealedMainsAnswers, setRevealedMainsAnswers] = useState<Record<string, boolean>>({});
+  const [revealedEssayAnswers, setRevealedEssayAnswers] = useState<Record<string, boolean>>({});
   const [mainsRandomMode, setMainsRandomMode] = useState(false);
   const [mainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
   const [mainsRandomSelectLimit, setMainsRandomSelectLimit] = useState(10);
@@ -3042,6 +3058,7 @@ export default function App() {
     return saved ? parseInt(saved) : 30;
   });
   const [mainsVisibleCount, setMainsVisibleCount] = useState(30);
+  const [essayVisibleCount, setEssayVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
   const [randomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
   const [randomSelectLimit, setRandomSelectLimit] = useState(10);
@@ -3160,6 +3177,21 @@ export default function App() {
       setMainsQuestions([]);
     } finally {
       setIsLoadingMains(false);
+    }
+  };
+
+  const fetchEssayQuestions = async () => {
+    setIsLoadingEssay(true);
+    try {
+      const response = await fetch('/api/essay-questions');
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      setEssayQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
+    } catch (error) {
+      console.warn("Failed to fetch essay questions:", error);
+      setEssayQuestions([]);
+    } finally {
+      setIsLoadingEssay(false);
     }
   };
 
@@ -3317,6 +3349,7 @@ export default function App() {
       fetchTimer = setTimeout(() => {
         fetchQuestions(false);
         fetchMainsQuestions();
+        fetchEssayQuestions();
         fetchToppersQuestions();
         fetchCSATQuestions();
         fetchEnglishQuestions();
@@ -3593,6 +3626,80 @@ export default function App() {
     const totalFiltered = mainsQuestions.filter(matchesMainsBaseFilters).length;
     return totalFiltered > mainsVisibleCount;
   }, [mainsQuestions, matchesMainsBaseFilters, mainsVisibleCount, mainsRandomMode, mainsBookmarkedOnly, mainsNotedOnly]);
+
+  const essayYearsList = useMemo(() => {
+    const list = essayQuestions.filter(q =>
+      (essayExamFilter === "All" || q.exam === essayExamFilter) &&
+      (essayTopicFilter === "All" || q.topic === essayTopicFilter)
+    );
+    const counts: Record<string, number> = {};
+    list.forEach(q => { counts[q.year] = (counts[q.year] || 0) + 1; });
+    const years = ([...new Set(list.map(q => q.year))] as string[]).sort((a, b) => {
+      if (a === "Unspecified") return 1;
+      if (b === "Unspecified") return -1;
+      return b.localeCompare(a);
+    });
+    return { options: ["All", ...years], counts };
+  }, [essayQuestions, essayExamFilter, essayTopicFilter]);
+
+  const essayExamsList = useMemo(() => {
+    const list = essayQuestions.filter(q =>
+      (essayYearFilter === "All" || q.year === essayYearFilter) &&
+      (essayTopicFilter === "All" || q.topic === essayTopicFilter)
+    );
+    const counts: Record<string, number> = {};
+    list.forEach(q => { counts[q.exam] = (counts[q.exam] || 0) + 1; });
+    return { options: ["All", ...[...new Set(list.map(q => q.exam))].sort()], counts };
+  }, [essayQuestions, essayYearFilter, essayTopicFilter]);
+
+  const essayTopicsList = useMemo(() => {
+    const list = essayQuestions.filter(q =>
+      (essayYearFilter === "All" || q.year === essayYearFilter) &&
+      (essayExamFilter === "All" || q.exam === essayExamFilter)
+    );
+    const counts: Record<string, number> = {};
+    list.forEach(q => {
+      if (q.topic) counts[q.topic] = (counts[q.topic] || 0) + 1;
+    });
+    const values = ([...new Set(list.map(q => q.topic).filter(Boolean))] as string[])
+      .sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || a.localeCompare(b));
+    return { options: ["All", ...values], counts };
+  }, [essayQuestions, essayYearFilter, essayExamFilter]);
+
+  const matchesEssayBaseFilters = useCallback((q: EssayQuestion) => {
+    const query = essaySearchQuery.toLowerCase();
+    return (essayYearFilter === "All" || q.year === essayYearFilter) &&
+      (essayExamFilter === "All" || q.exam === essayExamFilter) &&
+      (essayTopicFilter === "All" || q.topic === essayTopicFilter) &&
+      (!query ||
+        matchesQuestionId(q.id, query) ||
+        q.question.toLowerCase().includes(query) ||
+        q.exam.toLowerCase().includes(query) ||
+        (q.topic || "").toLowerCase().includes(query));
+  }, [essayYearFilter, essayExamFilter, essayTopicFilter, essaySearchQuery]);
+
+  const [bookmarkedEssayCount, notedEssayCount] = useMemo(
+    () => countSavedQuestions("essay", essayQuestions.filter(matchesEssayBaseFilters)),
+    [essayQuestions, matchesEssayBaseFilters, workspaceVersion]
+  );
+
+  const filteredEssayQuestions = useMemo(() => {
+    const list = essayQuestions
+      .filter(q => matchesEssayBaseFilters(q) && matchesSavedFilters("essay", q, essayBookmarkedOnly, essayNotedOnly))
+      .sort((a, b) => {
+        if (a.year === "Unspecified") return 1;
+        if (b.year === "Unspecified") return -1;
+        return b.year.localeCompare(a.year) || Number(b.id) - Number(a.id);
+      });
+    if (essayBookmarkedOnly || essayNotedOnly) return list;
+    return list.slice(0, essayVisibleCount);
+  }, [essayQuestions, matchesEssayBaseFilters, essayBookmarkedOnly, essayNotedOnly, essayVisibleCount, workspaceVersion]);
+
+  const isMoreEssayToLoad = useMemo(() =>
+    !essayBookmarkedOnly &&
+    !essayNotedOnly &&
+    essayQuestions.filter(matchesEssayBaseFilters).length > essayVisibleCount,
+  [essayQuestions, matchesEssayBaseFilters, essayBookmarkedOnly, essayNotedOnly, essayVisibleCount]);
 
   // Toppers copy filter lists
   const toppersYearsList = useMemo(() => {
@@ -4129,9 +4236,10 @@ export default function App() {
   useEffect(() => {
     if (!showReport || !userEmail) return;
     if (mainsQuestions.length === 0 && !isLoadingMains) fetchMainsQuestions();
+    if (essayQuestions.length === 0 && !isLoadingEssay) fetchEssayQuestions();
     if (csatQuestions.length === 0 && !isLoadingCSAT) fetchCSATQuestions();
     if (englishQuestions.length === 0 && !isLoadingEnglish) fetchEnglishQuestions();
-  }, [showReport, userEmail, mainsQuestions.length, isLoadingMains, csatQuestions.length, isLoadingCSAT, englishQuestions.length, isLoadingEnglish]);
+  }, [showReport, userEmail, mainsQuestions.length, isLoadingMains, essayQuestions.length, isLoadingEssay, csatQuestions.length, isLoadingCSAT, englishQuestions.length, isLoadingEnglish]);
 
   type WorkspaceEntry = WorkspaceEntryShape;
 
@@ -4144,6 +4252,7 @@ export default function App() {
     const index: Record<string, Map<string, Question | MainsQuestion>> = {
       prelims: new Map(questions.map(q => [String(q.id), q])),
       mains: new Map(mainsQuestions.map(q => [String(q.id), q])),
+      essay: new Map(essayQuestions.map(q => [String(q.id), q])),
       csat: new Map(csatQuestions.map(q => [String(q.id), q])),
       english: new Map(englishQuestions.map(q => [String(q.id), q])),
     };
@@ -4156,7 +4265,7 @@ export default function App() {
       rows.push({ key, questionId, questionType, question: index[questionType]?.get(rawId), state });
     });
     return rows.sort((a, b) => String(b.state.updatedAt || '').localeCompare(String(a.state.updatedAt || '')));
-  }, [workspaceVersion, questions, mainsQuestions, csatQuestions, englishQuestions]);
+  }, [workspaceVersion, questions, mainsQuestions, essayQuestions, csatQuestions, englishQuestions]);
 
   const bookmarkedEntries = useMemo(
     () => workspaceEntries.filter(entry => entry.state.isBookmarked),
@@ -4959,6 +5068,10 @@ export default function App() {
     setMainsVisibleCount(prev => prev + 50);
   }, []);
 
+  const handleEssayLoadMore = useCallback(() => {
+    setEssayVisibleCount(prev => prev + 50);
+  }, []);
+
   // Infinite scroll: load more on scroll near bottom.
   // Guarded so it never runs while the admin dashboard is open (its tall page
   // would otherwise silently inflate visibleCount and freeze the list on Back),
@@ -4971,16 +5084,21 @@ export default function App() {
       ) {
         if (activeTab === 'prelims') { if (isMoreToLoad) handleLoadMore(); }
         else if (activeTab === 'mains') { if (isMoreMainsToLoad) handleMainsLoadMore(); }
+        else if (activeTab === 'essay') { if (isMoreEssayToLoad) handleEssayLoadMore(); }
       }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleLoadMore, handleMainsLoadMore, activeTab, isAdminView, isMoreToLoad, isMoreMainsToLoad]);
+  }, [handleLoadMore, handleMainsLoadMore, handleEssayLoadMore, activeTab, isAdminView, isMoreToLoad, isMoreMainsToLoad, isMoreEssayToLoad]);
 
   // Reset mains pagination on filter change
   useEffect(() => {
     setMainsVisibleCount(30);
   }, [mainsYearFilter, mainsExamFilter, mainsSubjectFilter, mainsTopicFilter, mainsSearchQuery, mainsBookmarkedOnly, mainsNotedOnly]);
+
+  useEffect(() => {
+    setEssayVisibleCount(30);
+  }, [essayYearFilter, essayExamFilter, essayTopicFilter, essaySearchQuery, essayBookmarkedOnly, essayNotedOnly]);
 
   const handleOptionClick = (qid: number, option: string, isCorrect: boolean, questionType: string = 'prelims', subject?: string, topic?: string) => {
     // Re-attempting is allowed, but picking the same option again would only
@@ -5014,6 +5132,10 @@ export default function App() {
 
   const toggleMainsAnswer = (qid: string) => {
     setRevealedMainsAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
+  };
+
+  const toggleEssayAnswer = (qid: string) => {
+    setRevealedEssayAnswers(prev => ({ ...prev, [qid]: !prev[qid] }));
   };
 
   const updateQuestionAnswer = async (
@@ -5210,6 +5332,16 @@ export default function App() {
     setMainsRandomMode(false);
   };
 
+  const resetEssayFilters = () => {
+    setEssayYearFilter("All");
+    setEssayExamFilter("All");
+    setEssayTopicFilter("All");
+    setEssaySearchQuery("");
+    setEssayBookmarkedOnly(false);
+    setEssayNotedOnly(false);
+    setEssayVisibleCount(30);
+  };
+
   const startMainsRandomPractice = (limit: number) => {
     const baseList = mainsQuestions.filter(q => {
       const matchesYear = mainsYearFilter === "All" || q.year === mainsYearFilter;
@@ -5298,6 +5430,7 @@ export default function App() {
   const isAppLoading =
     (activeTab === 'prelims' && isLoadingQuestions) ||
     (activeTab === 'mains' && isLoadingMains) ||
+    (activeTab === 'essay' && isLoadingEssay) ||
     (activeTab === 'csat' && isLoadingCSAT) ||
     (activeTab === 'english' && isLoadingEnglish) ||
     (activeTab === 'toppers' && isLoadingToppers);
@@ -5387,7 +5520,7 @@ export default function App() {
                   { id: 'mains', label: 'Mains', count: mainsQuestions.length },
                   { id: 'csat', label: 'CSAT', count: csatQuestions.length },
                   { id: 'english', label: 'English', count: englishQuestions.length },
-                  { id: 'essay', label: 'Essay', count: 0 },
+                  { id: 'essay', label: 'Essay', count: essayQuestions.length },
                   { id: 'toppers', label: "Topper's Copy", count: toppersQuestions.length },
                 ] as const).map(tab => (
                   <button
@@ -7449,23 +7582,136 @@ export default function App() {
             </section>
           </>
         ) : activeTab === 'essay' ? (
-          <div className="w-full">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-10 text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+          <>
+            <div className="md:hidden w-full mb-4">
+              <button
+                onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
+              >
+                <span className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  {isMobileFiltersOpen ? 'Hide Filters' : 'Show Filters'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isMobileFiltersOpen && "rotate-180")} />
+              </button>
+            </div>
+
+            <aside className={cn(
+              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              isMobileFiltersOpen ? "block" : "hidden"
+            )}>
+              <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                    <Filter className="w-4 h-4 text-blue-500" />
+                  </h2>
+                  <div className="flex items-center gap-1.5">
+                    <SavedFilterToggles
+                      bookmarkedOnly={essayBookmarkedOnly}
+                      onToggleBookmarked={() => setEssayBookmarkedOnly(value => !value)}
+                      bookmarkedCount={bookmarkedEssayCount}
+                      notedOnly={essayNotedOnly}
+                      onToggleNoted={() => setEssayNotedOnly(value => !value)}
+                      notedCount={notedEssayCount}
+                    />
+                    <button
+                      onClick={resetEssayFilters}
+                      className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Essay Section</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
-                  UPSC Essay papers with model essays, topic analysis, and writing frameworks — coming soon!
-                </p>
-                <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 px-4 py-2 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800/50">
-                  <Lock className="w-3.5 h-3.5" />
-                  Under Development
+
+                <div className="mb-4">
+                  <label htmlFor="essay-search-input" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Search Keywords</label>
+                  <div className="relative">
+                    <input
+                      id="essay-search-input"
+                      value={essaySearchQuery}
+                      onChange={(event) => setEssaySearchQuery(event.target.value)}
+                      placeholder="Keyword or question ID..."
+                      className="w-full border-slate-200 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 text-xs p-2 pr-8 border bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                    />
+                    <Search className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Year</label>
+                  <FancySelect
+                    value={essayYearFilter}
+                    onChange={setEssayYearFilter}
+                    ariaLabel="Essay year"
+                    options={essayYearsList.options.map(year => ({ value: year, label: year === "All" ? "All Years" : `${year} (${essayYearsList.counts[year] || 0})` }))}
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Examination</label>
+                  <FancySelect
+                    value={essayExamFilter}
+                    onChange={setEssayExamFilter}
+                    ariaLabel="Essay examination"
+                    options={essayExamsList.options.map(exam => ({ value: exam, label: exam === "All" ? "All Exams" : `${exam} (${essayExamsList.counts[exam] || 0})` }))}
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Topic (predefined)</label>
+                  <FancySelect
+                    value={essayTopicFilter}
+                    onChange={setEssayTopicFilter}
+                    ariaLabel="Essay topic"
+                    options={essayTopicsList.options.map(topic => ({ value: topic, label: topic === "All" ? "All Topics" : `${topic} (${essayTopicsList.counts[topic] || 0})` }))}
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
+                    Showing <span className="font-bold text-blue-500 dark:text-blue-400">{filteredEssayQuestions.length}</span> questions
+                  </p>
                 </div>
               </div>
-            </div>
-          </div>
+            </aside>
+
+            <section className="flex-grow">
+              {filteredEssayQuestions.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-10 text-center">
+                  <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 mx-auto" />
+                  <h3 className="text-base font-medium text-slate-900 dark:text-white mb-1">No essay questions found</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">Try adjusting your filters.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {filteredEssayQuestions.map(question => (
+                    <MainsQuestionCard
+                      key={question.id}
+                      question={question}
+                      questionType="essay"
+                      isAnswerVisible={revealedEssayAnswers[question.id]}
+                      onToggleAnswer={() => toggleEssayAnswer(question.id)}
+                      userEmail={userEmail}
+                      showNoteInline={essayNotedOnly}
+                      searchQuery={essaySearchQuery}
+                      onFeedback={() => openFeedback(Number(question.id), 'essay')}
+                      onExamClick={(exam) => { setEssayExamFilter(exam); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      onTopicClick={(topic) => { setEssayTopicFilter(topic); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      onYearClick={(year) => { setEssayYearFilter(year); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    />
+                  ))}
+                </div>
+              )}
+              {isMoreEssayToLoad && (
+                <div className="text-center py-6">
+                  <div className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    Loading more questions...
+                  </div>
+                </div>
+              )}
+            </section>
+          </>
         ) : activeTab === 'toppers' ? (
           <div className="w-full">
             {isLoadingToppers ? (

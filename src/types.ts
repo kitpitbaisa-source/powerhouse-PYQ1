@@ -31,6 +31,10 @@ export interface MainsQuestion {
   questionNumber?: number | string | null;
 }
 
+export interface EssayQuestion extends MainsQuestion {
+  source?: string;
+}
+
 export interface TopperAnswer {
   topperName: string;
   rank: string;

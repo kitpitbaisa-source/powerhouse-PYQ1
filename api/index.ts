@@ -37,6 +37,7 @@ const questionsContainer = database.container("questions");
 // State PCS questions live in their own container but are displayed inside Prelims.
 const statePcsContainer = database.container("state_pcs");
 const mainsQuestionsContainer = database.container("mains-questions");
+const essayQuestionsContainer = database.container("essay-questions");
 const csatQuestionsContainer = database.container("csat-questions");
 const englishQuestionsContainer = database.container("english-questions");
 const usersContainer = database.container("users");
@@ -505,6 +506,8 @@ let questionsCache: any[] | null = null;
 let cacheTimestamp = 0;
 let mainsCache: any[] | null = null;
 let mainsCacheTimestamp = 0;
+let essayCache: any[] | null = null;
+let essayCacheTimestamp = 0;
 let toppersCache: any[] | null = null;
 let toppersCacheTimestamp = 0;
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
@@ -592,6 +595,15 @@ async function getMainsQuestions() {
   return resources;
 }
 
+async function getEssayQuestions() {
+  const now = Date.now();
+  if (essayCache && (now - essayCacheTimestamp) < CACHE_TTL) return essayCache;
+  const { resources } = await essayQuestionsContainer.items.readAll({ maxItemCount: -1 }).fetchAll();
+  essayCache = resources;
+  essayCacheTimestamp = now;
+  return resources;
+}
+
 async function getToppersQuestions() {
   const now = Date.now();
   if (toppersCache && (now - toppersCacheTimestamp) < CACHE_TTL) {
@@ -645,6 +657,22 @@ serverApp.get("/api/mains-questions", async (req, res) => {
     res.json(mainsQuestions);
   } catch (error: any) {
     console.error("Error fetching mains questions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+serverApp.get("/api/essay-questions", async (_req, res) => {
+  try {
+    const essayQuestions = await getEssayQuestions();
+    essayQuestions.sort((a: any, b: any) => {
+      if (a.year === "Unspecified") return 1;
+      if (b.year === "Unspecified") return -1;
+      return String(b.year).localeCompare(String(a.year)) || Number(b.id) - Number(a.id);
+    });
+    res.setHeader("Cache-Control", "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800");
+    res.json(essayQuestions);
+  } catch (error: any) {
+    console.error("Error fetching essay questions:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
@@ -707,6 +735,8 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     cacheTimestamp = 0;
     mainsCache = null;
     mainsCacheTimestamp = 0;
+    essayCache = null;
+    essayCacheTimestamp = 0;
     toppersCache = null;
     toppersCacheTimestamp = 0;
     csatCache = null;
@@ -715,8 +745,8 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     englishCacheTimestamp = 0;
     // Bump version so ALL serverless instances know cache is stale
     await bumpCacheVersion();
-    const [questions, mainsQuestions, toppersQuestions, csatQuestions, englishQuestions] = await Promise.all([
-      getQuestions(), getMainsQuestions(), getToppersQuestions(),
+    const [questions, mainsQuestions, essayQuestions, toppersQuestions, csatQuestions, englishQuestions] = await Promise.all([
+      getQuestions(), getMainsQuestions(), getEssayQuestions(), getToppersQuestions(),
       csatQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
       englishQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
     ]);
@@ -728,6 +758,7 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
       message: "Cache refreshed",
       count: questions.length,
       mainsCount: mainsQuestions.length,
+      essayCount: essayQuestions.length,
       toppersCount: toppersQuestions.length,
       csatCount: csatQuestions.length,
       englishCount: englishQuestions.length,
