@@ -4,6 +4,7 @@ import path from "path";
 import { timingSafeEqual, createHmac } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
+import { createSimilarityRouter } from "./features/similarity/search";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
 const key = process.env.COSMOS_KEY || "";
@@ -34,6 +35,8 @@ console.log("Cosmos DB client initialized for:", endpoint);
 
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
+const isAllowedLoginEmail = (value: unknown) =>
+  /^[^\s@]+@gmail\.com$/i.test(String(value || "").trim());
 
 // Returns true if the email is a permanent admin, or a stored user whose role
 // is 'admin' or 'editor'. Both admins and editors may edit question answers.
@@ -412,6 +415,7 @@ async function getEffectivePlans() {  const merged: Record<string, { amount: num
 }
 
 const serverApp = express();
+serverApp.use("/api/similarity", createSimilarityRouter(database, PERMANENT_ADMINS));
 const PORT = 3000;
 
 serverApp.use(express.json());
@@ -467,7 +471,8 @@ async function getQuestions() {
     .fetchAll();
   // Filter out the cache version doc, then merge in State PCS questions so they
   // appear within the Prelims list (stored separately in the state_pcs container).
-  const base = resources.filter((r: any) => r.id !== "__cache_version__");
+  const base = resources.filter((r: any) => r.id !== "__cache_version__")
+    .map((question: any) => ({ ...question, sourceContainer: "questions" }));
   const merged = base.concat(await getStatePcsQuestions());
   questionsCache = merged;
   cacheTimestamp = now;
@@ -483,7 +488,8 @@ async function getStatePcsQuestions() {
       .fetchAll();
     // `isActive === false` marks a document retired by a migration (its id was
     // moved to avoid colliding with the `questions` container) — never serve it.
-    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false);
+    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
+      .map((question: any) => ({ ...question, sourceContainer: "state_pcs" }));
   } catch (e: any) {
     return [];
   }
@@ -497,7 +503,7 @@ async function getTopQuestions(limit: number) {
   const n = Math.max(1, Math.min(Math.floor(limit), 500));
   const query = `SELECT TOP ${n} * FROM c WHERE IS_DEFINED(c.question) AND c.question != "" AND NOT STARTSWITH(c.question, "Q_") ORDER BY c.year DESC, c.id DESC`;
   const { resources } = await questionsContainer.items.query(query).fetchAll();
-  return resources;
+  return resources.map((question: any) => ({ ...question, sourceContainer: "questions" }));
 }
 
 async function getMainsQuestions() {
@@ -987,6 +993,9 @@ serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
+  }
+  if (!isAllowedLoginEmail(email)) {
+    return res.status(400).json({ error: "Only @gmail.com email addresses are allowed" });
   }
 
   const userEmail = email.toLowerCase().trim();
@@ -1841,6 +1850,9 @@ serverApp.post("/api/admin/users/backfill", async (req, res) => {
 serverApp.post("/api/auth/track-login", async (req, res) => {
   const { email, device, browser, os, screenWidth } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
+  if (!isAllowedLoginEmail(email)) {
+    return res.status(400).json({ error: "Only @gmail.com email addresses are allowed" });
+  }
 
   const userEmail = email.toLowerCase().trim();
   const now = new Date().toISOString();

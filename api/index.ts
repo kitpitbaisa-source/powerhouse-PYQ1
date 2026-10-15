@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import Razorpay from "razorpay";
 import crypto from "crypto";
+import { createSimilarityRouter } from "../features/similarity/search";
 
 // Keep this in sync with src/exam-utils.ts. Vercel executes api/index.ts as a
 // standalone function, so importing a source-only helper breaks at runtime.
@@ -149,6 +150,9 @@ async function grantSubscription(email: string, durationDays: number) {
 
 // Permanent admins (cannot be demoted)
 const PERMANENT_ADMINS = ["kitpitbaisa@gmail.com"];
+serverApp.use("/api/similarity", createSimilarityRouter(database, PERMANENT_ADMINS));
+const isAllowedLoginEmail = (value: unknown) =>
+  /^[^\s@]+@gmail\.com$/i.test(String(value || "").trim());
 
 // Returns true if the email is a permanent admin, or a stored user whose role
 // is 'admin' or 'editor'. Both admins and editors may edit question answers.
@@ -550,7 +554,8 @@ async function getQuestions() {
     .fetchAll();
   // Filter out the cache version doc, then merge in State PCS questions so they
   // appear within the Prelims list (stored separately in the state_pcs container).
-  const base = resources.filter((r: any) => r.id !== "__cache_version__");
+  const base = resources.filter((r: any) => r.id !== "__cache_version__")
+    .map((question: any) => ({ ...question, sourceContainer: "questions" }));
   questionsCache = base.concat(await getStatePcsQuestions());
   cacheTimestamp = now;
   return questionsCache;
@@ -565,7 +570,8 @@ async function getStatePcsQuestions() {
       .fetchAll();
     // `isActive === false` marks a document retired by a migration (its id was
     // moved to avoid colliding with the `questions` container) — never serve it.
-    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false);
+    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
+      .map((question: any) => ({ ...question, sourceContainer: "state_pcs" }));
   } catch (e: any) {
     return [];
   }
@@ -579,7 +585,8 @@ async function getTopQuestions(limit: number) {
   const n = Math.max(1, Math.min(Math.floor(limit), 500));
   const query = `SELECT TOP ${n} * FROM c WHERE IS_DEFINED(c.question) AND c.question != "" AND NOT STARTSWITH(c.question, "Q_") ORDER BY c.year DESC, c.id DESC`;
   const { resources } = await questionsContainer.items.query(query).fetchAll();
-  return resources.filter((r: any) => r.id !== "__cache_version__");
+  return resources.filter((r: any) => r.id !== "__cache_version__")
+    .map((question: any) => ({ ...question, sourceContainer: "questions" }));
 }
 
 async function getMainsQuestions() {
@@ -969,6 +976,9 @@ serverApp.get("/api/user-status", async (req, res) => {
   const email = req.query.email as string;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
+  }
+  if (!isAllowedLoginEmail(email)) {
+    return res.status(400).json({ error: "Only @gmail.com email addresses are allowed" });
   }
 
   const userEmail = email.toLowerCase().trim();
@@ -1740,6 +1750,9 @@ serverApp.post("/api/admin/users/backfill", async (req, res) => {
 serverApp.post("/api/auth/track-login", async (req, res) => {
   const { email, device, browser, os, screenWidth } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
+  if (!isAllowedLoginEmail(email)) {
+    return res.status(400).json({ error: "Only @gmail.com email addresses are allowed" });
+  }
 
   const userEmail = email.toLowerCase().trim();
   const now = new Date().toISOString();

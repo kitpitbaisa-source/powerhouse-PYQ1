@@ -1,0 +1,46 @@
+{
+  "ranges": [
+    {
+      "container": "questions",
+      "count": 10842,
+      "maxNumericId": 12022308
+    },
+    {
+      "container": "state_pcs",
+      "count": 4500,
+      "maxNumericId": 20002249
+    },
+    {
+      "container": "mains-questions",
+      "count": 939,
+      "maxNumericId": 41803
+    },
+    {
+      "container": "essay-questions",
+      "count": 366,
+      "maxNumericId": 798
+    },
+    {
+      "container": "csat-questions",
+      "count": 545,
+      "maxNumericId": 77059
+    },
+    {
+      "container": "english-questions",
+      "count": 2109,
+      "maxNumericId": 82870
+    },
+    {
+      "container": "toppers-copy",
+      "count": 309,
+      "maxNumericId": 31019
+    }
+  ],
+  "partitionKey": {
+    "paths": [
+      "/id"
+    ],
+    "kind": "Hash"
+  },
+  "existing": []
+}

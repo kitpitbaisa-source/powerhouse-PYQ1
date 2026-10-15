@@ -17,6 +17,9 @@ export default defineConfig(({mode}) => {
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
+      watch: {
+        ignored: ['**/public/downloads/*.apk', '**/review/**'],
+      },
       proxy: {
         '/api': 'http://localhost:3000',
       },

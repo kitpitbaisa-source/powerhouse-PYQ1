@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { QuestionSourceContainer } from "../features/similarity/types";
+
 export interface Question {
   id: number;
   year: string;
@@ -13,6 +15,7 @@ export interface Question {
   options: string[];
   answer: string;
   explanation: string;
+  sourceContainer?: QuestionSourceContainer;
 }
 
 export interface MainsQuestion {
@@ -29,6 +32,7 @@ export interface MainsQuestion {
   marks?: number | null;
   words?: number | null;
   questionNumber?: number | string | null;
+  sourceContainer?: QuestionSourceContainer;
 }
 
 export interface EssayQuestion extends MainsQuestion {

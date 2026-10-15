@@ -246,6 +246,10 @@ button:active:not(:disabled) {
   );
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .similarity-loading .skeleton { animation: none; }
+}
+
 /* Premium 3D raised header bar (inset top highlight + inset bottom edge + drop shadow) */
 .header-3d {
   box-shadow:

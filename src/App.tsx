@@ -5,7 +5,12 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, useReducer } from 'react';
 import { createPortal } from 'react-dom';
+import { Capacitor } from '@capacitor/core';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { getExamCategory } from './exam-utils';
+import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
+import { highlightSimilarityTerms, similarityHighlightPhrases } from './features/similarity/highlights';
+import type { SimilarityMatch as ApiSimilarityMatch } from './features/similarity/types';
 import {
   Landmark,
   Trophy,
@@ -21,6 +26,8 @@ import {
   CheckCircle2,
   XCircle,
   FolderOpen,
+  Download,
+  Smartphone,
   Lock,
   QrCode,
   KeyRound,
@@ -51,6 +58,7 @@ import {
   StickyNote,
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
+  ArrowRight,
   LayoutDashboard,
   Tag,
   Bold,
@@ -60,6 +68,75 @@ import { fallbackQuestions } from './questions_fallback.ts';
 import { EssayQuestion, MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
 import { cn } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
+
+const ANDROID_APK_DOWNLOAD_URL = "/downloads/PowerhousePYQ.apk";
+const isNativeApp = Capacitor.isNativePlatform();
+
+const AndroidDownloadModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return createPortal(
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="android-download-title"
+      aria-describedby="android-download-description"
+      onCancel={event => { event.preventDefault(); onClose(); }}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
+      }}
+      className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+    >
+      <div className="relative bg-gradient-to-br from-blue-600 to-indigo-600 px-6 py-7 text-center text-white">
+        <button
+          type="button"
+          autoFocus
+          onClick={onClose}
+          aria-label="Close Android app download"
+          className="absolute right-3 top-3 rounded-full bg-white/10 p-2 transition hover:bg-white/20"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+          <Smartphone className="h-7 w-7" />
+        </span>
+        <h2 id="android-download-title" className="text-lg font-bold">Get the Android app</h2>
+        <p id="android-download-description" className="mt-1 text-sm text-blue-100">PYQ Powerhouse on your phone.</p>
+      </div>
+      <div className="space-y-5 p-6">
+        <a
+          href={ANDROID_APK_DOWNLOAD_URL}
+          download="PowerhousePYQ.apk"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
+        >
+          <Download className="h-4 w-4" /> Download APK
+        </a>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/20 dark:bg-blue-500/5">
+          <h3 className="text-xs font-bold text-blue-800 dark:text-blue-200">How to install</h3>
+          <ol className="mt-2 list-decimal space-y-2 pl-4 text-xs leading-5 text-slate-600 dark:text-slate-300">
+            <li>Download the APK on your Android phone.</li>
+            <li>Open the file from your browser downloads.</li>
+            <li>If asked, allow this browser to install apps, then follow Android&apos;s installation prompts.</li>
+          </ol>
+        </div>
+      </div>
+    </dialog>,
+    document.body
+  );
+};
 
 const subjectColors: SubjectColorMap = {
   "Polity": "bg-gradient-to-r from-indigo-500 to-violet-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20",
@@ -109,6 +186,8 @@ const BUSINESS = {
   telegramHelp: "https://telegram.me/UPSC_powerhouse_helpbot",
   telegramChannel: "https://t.me/+7DfVmsKSI4FmNzg1",
 };
+
+const isAllowedLoginEmail = (value: string) => /^[^\s@]+@gmail\.com$/i.test(value.trim());
 
 // Razorpay checkout script loader (loads once, resolves true when ready).
 declare global {
@@ -855,6 +934,7 @@ interface QuestionCardProps {
   isAdmin?: boolean;
   isEditor?: boolean;
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
+  onOpenSimilarity?: (question: Question, scope: 'prelims' | 'csat' | 'english') => void;
 }
 
 const formatAttemptTime = (ts: string | null | undefined) => {
@@ -1308,19 +1388,19 @@ const parseMarkdownBold = (text: string | undefined) => {
 };
 
 // Adds a little vertical breathing room around a numbered-statement list:
-// a gap between the question stem and the first "1.", and between the last
+// a gap between the question stem and the first "1." / "I.", and between the last
 // numbered point and the trailing "Select the correct answer…" line.
 const spaceNumberedList = (html: string) => {
   const parts = html.split(/<br\s*\/?>/i);
   if (parts.length < 2) return html;
-  const isNum = (s: string) => /^\s*\d+[.)]/.test(s.replace(/<[^>]*>/g, ''));
+  const isListItem = (s: string) => /^\s*(?:\d+|[ivxlcdm]+)[.)]/i.test(s.replace(/<[^>]*>/g, ''));
   let out = parts[0];
   for (let i = 1; i < parts.length; i++) {
-    const curNum = isNum(parts[i]);
-    const prevNum = isNum(parts[i - 1]);
+    const curNum = isListItem(parts[i]);
+    const prevNum = isListItem(parts[i - 1]);
     let sep = '<br/>';
     if (curNum !== prevNum) sep = '<br/><span class="block h-3.5"></span>'; // list boundary
-    else if (curNum && prevNum) sep = '<br/><span class="block h-1.5"></span>'; // between statements
+    else if (curNum && prevNum) sep = '<br/><span class="block h-2"></span>'; // between statements
     out += sep + parts[i];
   }
   return out;
@@ -1537,13 +1617,23 @@ const MatchQuestion: React.FC<{ data: MatchData; query: string; badge: React.Rea
   </div>
 );
 
-const HighlightText: React.FC<{ text: string | undefined; query: string; spaceLists?: boolean }> = ({ text, query, spaceLists }) => {
+const HighlightText: React.FC<{
+  text: string | undefined;
+  query: string;
+  spaceLists?: boolean;
+  keywordTokens?: ReadonlySet<string>;
+  keywordPhrases?: readonly string[];
+  keywordTone?: 'indigo' | 'blue' | 'violet';
+}> = ({ text, query, spaceLists, keywordTokens, keywordPhrases, keywordTone }) => {
   if (!text) return null;
   // First convert markdown bold to HTML
   let htmlText = parseMarkdownBold(text);
   if (spaceLists) htmlText = spaceNumberedList(htmlText);
 
   if (!query.trim()) {
+    if (keywordTokens?.size || keywordPhrases?.length) {
+      htmlText = highlightSimilarityTerms(htmlText, keywordTokens ?? new Set(), keywordTone ?? 'indigo', keywordPhrases);
+    }
     return <span dangerouslySetInnerHTML={{ __html: htmlText }} />;
   }
 
@@ -1613,6 +1703,645 @@ const CardIconGradients: React.FC = () => (
   </svg>
 );
 
+type SimilarityQuestion = Question | MainsQuestion;
+
+type SimilarityMatch = {
+  profileId: string;
+  question: SimilarityQuestion;
+  score: number;
+  reasons: string[];
+  sharedConcepts: ApiSimilarityMatch['sharedConcepts'];
+  highlights?: ApiSimilarityMatch['highlights'];
+};
+
+const isObjectiveQuestion = (question: SimilarityQuestion): question is Question =>
+  "options" in question;
+
+const getSimilarityModelAnswer = (question: MainsQuestion) =>
+  question.modelAnswer || question.model_answer || "";
+
+const SimilarityIcon: React.FC<{ className?: string }> = ({ className = "h-4 w-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M2.75 7.75C5.45 4.75 7.85 4.95 11.15 7.65C14.65 10.5 17.45 11.25 21.25 7.25"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M2.75 16.25C5.45 13.25 7.85 13.45 11.15 16.15C14.65 19 17.45 19.75 21.25 15.75"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      opacity="0.28"
+    />
+  </svg>
+);
+
+const similarityFilledBadge3d =
+  "ring-1 ring-inset ring-white/20 transition-shadow duration-200 [box-shadow:inset_0_1px_0_rgba(255,255,255,0.28),0_3px_8px_rgba(15,23,42,0.14)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.34),0_4px_11px_rgba(15,23,42,0.17)]";
+const similarityMatchingCardStyle =
+  "border-blue-400 bg-blue-50/40 shadow-[0_0_25px_-5px_rgba(37,99,235,0.2)] dark:border-blue-500/70 dark:bg-[#0E1929] dark:shadow-[0_0_35px_-2px_rgba(37,99,235,0.3)]";
+
+const getSimilarityExamLabel = (exam: string) => {
+  const category = getExamCategory(exam);
+  if (category !== "NDA") return category;
+
+  const normalized = exam.toUpperCase().replace(/[–—]/g, "-");
+  if (/\bNDA\b.*?(?:\bII\b|\b2\b)/.test(normalized)) return "NDA 2";
+  if (/\bNDA\b.*?(?:\bI\b|\b1\b)/.test(normalized)) return "NDA 1";
+  return "NDA";
+};
+
+const parseSimilarityStatements = (raw: string) => {
+  const text = raw.replace(/<br\s*\/?>/gi, "\n");
+  if (/<[^>]*>/.test(text)) return null;
+  const namedMarkers = [...text.matchAll(/(^|[\s:])((?:True|False)\s+Statement\s*:|(?:Assertion\s*\(\s*A\s*\)|Reason\s*\(\s*R\s*\))\s*:|(?:Statement|Conclusion)\s*[-–—]?\s*(?:\d{1,2}|VIII|VII|VI|IV|III|II|IX|X|V|I)\s*[:.)]+|(?:VIII|VII|VI|IV|III|II|IX|X|V|I)\s*[.)]+|\((?:\d{1,2}|VIII|VII|VI|IV|III|II|IX|X|V|I)\))/gi)];
+  const numericMarkers = [...text.matchAll(/(^[ \t]*|:[ \t]*)(\d{1,2}[ \t]*[.)]+)(?!\d)[ \t]*/gm)];
+  const explicitMarkers = namedMarkers.filter(marker => /^(?:Statement\b|Conclusion\b|Assertion\b|Reason\b|(?:True|False)\s+Statement\b)/i.test(marker[2]));
+  const markers = (explicitMarkers.length >= 2 ? explicitMarkers : [...namedMarkers, ...numericMarkers])
+    .sort((a, b) => a.index! - b.index!);
+  if (markers.length < 2) return null;
+  const romanLabels = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+  const labels = markers.map((marker, index) => /^(?:True|False)\s+Statement\b/i.test(marker[2]) ? String(index + 1) : marker[2]
+    .replace(/^(?:Assertion|Reason)\s*/i, "")
+    .replace(/^(?:Statement|Conclusion)\s*[-–—]?\s*/i, "")
+    .replace(/[().:\s]/g, "")
+    .toUpperCase());
+  const assertionReason = labels.length === 2 && labels[0] === "A" && labels[1] === "R";
+
+  const statements = markers.map((marker, index) => {
+    const content = text.slice(
+      marker.index! + marker[0].length,
+      index + 1 < markers.length ? markers[index + 1].index : text.length
+    ).trim();
+    const prompt = /(?:^|\n|[.!?]\s+)(?=\s*(?:Which (?:of|one|statement|among)|Select (?:the|a)|Choose (?:the|a)|How many (?:of|statements))\b)/i.exec(content);
+    const promptStart = prompt ? prompt.index + prompt[0].length : content.length;
+    return {
+      label: labels[index],
+      heading: marker[2].match(/^(Assertion|Reason|Conclusion|(?:True|False)\s+Statement)/i)?.[1],
+      text: content.slice(0, promptStart).trim(),
+      promptAfter: content.slice(promptStart).trim(),
+    };
+  });
+  const ordinals = labels.map(label => /^\d+$/.test(label) ? Number(label) : romanLabels.indexOf(label) + 1);
+  if (!assertionReason && !ordinals.every((ordinal, index) =>
+    index === 0 ? ordinal === 1
+      : ordinal === ordinals[index - 1] + 1 || (ordinal === 1 && !!statements[index - 1].promptAfter)
+  )) return null;
+  const lastStatement = statements[statements.length - 1];
+  if (statements.some(statement => !statement.text)) return null;
+  const groups: { statements: typeof statements; prompt: string }[] = [];
+  statements.forEach((statement, index) => {
+    if (index === 0 || statements[index - 1].promptAfter) groups.push({ statements: [], prompt: "" });
+    const group = groups[groups.length - 1];
+    group.statements.push(statement);
+    group.prompt = statement.promptAfter;
+  });
+
+  return {
+    intro: text.slice(0, markers[0].index! + markers[0][1].length).trim(),
+    statements,
+    outro: lastStatement.promptAfter,
+    groups,
+  };
+};
+
+const SimilarityQuestionText: React.FC<{
+  text: string;
+  query?: string;
+  badge?: React.ReactNode;
+  keywordTokens?: ReadonlySet<string>;
+  keywordPhrases?: readonly string[];
+  keywordTone?: 'indigo' | 'blue' | 'violet';
+}> = ({ text, query = "", badge, keywordTokens, keywordPhrases, keywordTone }) => {
+  const sections = parseSimilarityStatements(text);
+  const renderText = (value: string) => (
+    <HighlightText text={value} query={query} keywordTokens={keywordTokens} keywordPhrases={keywordPhrases} keywordTone={keywordTone} />
+  );
+  if (!sections) return (
+    <span className="whitespace-pre-wrap font-bold">
+      {badge}
+      <HighlightText text={text} query={query} spaceLists keywordTokens={keywordTokens} keywordPhrases={keywordPhrases} keywordTone={keywordTone} />
+    </span>
+  );
+
+  return (
+    <div className="space-y-3">
+      {(sections.intro || badge) && <p className="whitespace-pre-wrap font-bold">{badge}{renderText(sections.intro)}</p>}
+      {sections.groups.map((group, index) => (
+        <React.Fragment key={index}>
+          <ol className="border-l-[3px] border-blue-300 pl-4 dark:border-blue-400/40">
+            {group.statements.map(statement => (
+              <li key={statement.label} className="flex items-start gap-3 px-3 py-2.5 odd:bg-blue-50/50 even:bg-transparent dark:odd:bg-blue-400/[0.05]">
+                <span className="min-w-6 shrink-0 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400">
+                  {statement.label}.
+                </span>
+                <div className="min-w-0 flex-1 whitespace-pre-wrap font-normal [&_b]:font-normal [&_strong]:font-normal [&_mark]:font-semibold">
+                  {statement.heading && <span className="text-blue-700 dark:text-blue-300">{statement.heading}: </span>}
+                  {renderText(statement.text)}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {group.prompt && <p className="whitespace-pre-wrap pt-1 font-bold text-slate-900 dark:text-slate-100">{renderText(group.prompt)}</p>}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
+
+const SimilarityConceptGlow: React.FC<{
+  concepts: SimilarityMatch['sharedConcepts'];
+}> = ({ concepts }) => {
+  const names = [...new Set(concepts.map(concept => concept.canonicalName.trim()).filter(Boolean))];
+  if (!names.length) return null;
+  return (
+    <div className="my-4 border-t border-violet-300/50 pt-3 dark:border-violet-400/20">
+      <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-violet-900 dark:text-violet-300">
+        <Sparkles className="h-4 w-4" /> Shared concepts
+      </p>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {names.map(name => (
+          <li key={name} className="max-w-full break-words bg-gradient-to-br from-[#080312] via-[#2E1065] to-[#17092E] bg-clip-text text-sm font-bold leading-6 text-transparent [text-shadow:0_0_8px_rgba(139,92,246,0.4),0_0_20px_rgba(124,58,237,0.25)] dark:from-violet-200 dark:via-violet-100 dark:to-violet-300 dark:[text-shadow:0_0_6px_rgba(196,181,253,0.5),0_0_14px_rgba(167,139,250,0.6),0_0_28px_rgba(139,92,246,0.4)]">
+            {name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+const SimilarityQuestionSummary: React.FC<{
+  question: SimilarityQuestion;
+  sharedConcepts: SimilarityMatch['sharedConcepts'];
+  highlights?: SimilarityMatch['highlights'];
+  highlightOptions?: boolean;
+}> = ({ question, sharedConcepts, highlights, highlightOptions }) => (
+  <div className={cn("rounded-2xl border p-5", similarityMatchingCardStyle, "dark:bg-[#0B1220]")}>
+    <div className="mb-4 flex flex-wrap gap-2">
+      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950 dark:text-blue-200">Q{question.id}</span>
+      <span
+        title={question.exam}
+        className={cn(
+          "inline-flex max-w-full truncate rounded-full border border-blue-600 bg-gradient-to-r from-blue-600 to-blue-700 px-2.5 py-1 text-xs font-bold text-white dark:border-blue-400/30",
+          similarityFilledBadge3d
+        )}
+      >
+        {getSimilarityExamLabel(question.exam)} · {question.year}
+      </span>
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+        {question.subject}
+      </span>
+      {question.topic && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">{question.topic}</span>}
+    </div>
+    <div className="text-[15px] font-medium leading-7 text-slate-900 dark:text-slate-100">
+      <SimilarityQuestionText text={question.question} keywordPhrases={similarityHighlightPhrases(highlights, sharedConcepts, "question")} keywordTone="violet" />
+    </div>
+    {isObjectiveQuestion(question) && (
+      <div className="mt-5 space-y-2">
+        {(question.options || []).map((option, optionIndex) => (
+          <div key={option} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium leading-6 text-slate-700 dark:border-slate-800 dark:bg-[#0E1729] dark:text-slate-200">
+            <HighlightText text={option} query="" keywordPhrases={highlightOptions ? similarityHighlightPhrases(highlights, sharedConcepts, "option", optionIndex) : []} keywordTone="violet" />
+          </div>
+        ))}
+      </div>
+    )}
+    {!isObjectiveQuestion(question) && question.paper && (
+      <p className="mt-4 text-xs font-semibold text-slate-600 dark:text-slate-400">{question.paper}</p>
+    )}
+    <SimilarityConceptGlow concepts={sharedConcepts} />
+    <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-400">{question.exam}</p>
+  </div>
+);
+
+const QuestionSimilarityExplorer: React.FC<{
+  source: SimilarityQuestion;
+  scope: 'prelims' | 'mains' | 'csat' | 'english';
+  scopeLabel: string;
+  userEmail?: string | null;
+  onOptionClick?: (question: Question, option: string) => void;
+  onSelect: (question: SimilarityQuestion) => void;
+  onClose: () => void;
+}> = ({
+  source,
+  scope,
+  scopeLabel,
+  userEmail,
+  onOptionClick,
+  onSelect,
+  onClose,
+}) => {
+  const [attemptedOptions, setAttemptedOptions] = useState<Record<string, string>>({});
+  const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
+  const [highlightOptions, setHighlightOptions] = useState(true);
+  const popupBodyRef = useRef<HTMLDivElement>(null);
+  const selectedPaneRef = useRef<HTMLElement>(null);
+  const matchesPaneRef = useRef<HTMLElement>(null);
+  const [loadSimilarity] = useState(() => createSimilarityLoader());
+  const sourceContainer = source.sourceContainer ?? (scope === "mains" ? "mains-questions"
+    : scope === "csat" ? "csat-questions" : scope === "english" ? "english-questions" : "questions");
+  const questionId = String(source.id);
+  const requestKey = similarityRequestKey({ sourceContainer, questionId }, userEmail);
+  const [searchState, setSearchState] = useState<{
+    key: string; status: "loading" | "ready" | "error"; matches: SimilarityMatch[]; message?: string;
+    sourceHighlights?: SimilarityMatch['highlights'];
+  } | null>(null);
+  const visibleState = searchState?.key === requestKey ? searchState : null;
+  const isLoading = !visibleState || visibleState.status === "loading";
+  const matches = useMemo(() => visibleState?.matches ?? [], [visibleState]);
+  useEffect(() => {
+    let active = true;
+    setSearchState({ key: requestKey, status: "loading", matches: [] });
+    loadSimilarity({ sourceContainer, questionId }, userEmail).then(response => {
+      const result: SimilarityMatch[] = response.matches.map(match => {
+        const question = toDisplayQuestion(match.question);
+        return {
+          profileId: match.profileId, question, score: match.score, reasons: match.reasons,
+          sharedConcepts: match.sharedConcepts,
+          highlights: match.highlights,
+        };
+      });
+      if (active) setSearchState({
+        key: requestKey, status: "ready", matches: result,
+        message: response.status === "ready" ? "No similar questions found." : response.message,
+        sourceHighlights: response.status === "ready" ? response.sourceHighlights : undefined,
+      });
+    }).catch(error => {
+      console.error("Could not load similar questions:", error);
+      if (active) setSearchState({
+        key: requestKey, status: "error", matches: [],
+        message: "Could not load similar questions. Close and reopen the explorer to try again.",
+      });
+    });
+    return () => { active = false; };
+  }, [loadSimilarity, requestKey, sourceContainer, questionId, source.question, userEmail]);
+  const referenceConcepts = useMemo(() => matches.flatMap(match => match.sharedConcepts), [matches]);
+  const sourceMotionKey = `${source.id}:${source.exam}:${source.question}`;
+  const sourceExamCategory = getExamCategory(source.exam);
+
+  const attemptQuestion = (question: Question, option: string) => {
+    if (attemptedOptions[question.id] === option) return;
+    setAttemptedOptions(previous => ({ ...previous, [question.id]: option }));
+    setRevealedAnswers(previous => ({ ...previous, [question.id]: true }));
+    if (question.answer) onOptionClick?.(question, option);
+  };
+
+  const togglePopupAnswer = (questionId: number | string) => {
+    setRevealedAnswers(previous => ({ ...previous, [questionId]: !previous[questionId] }));
+  };
+
+  const exploreSimilarQuestion = (question: SimilarityQuestion) => {
+    onSelect(question);
+    requestAnimationFrame(() => {
+      const scrollOptions: ScrollToOptions = { top: 0, behavior: "smooth" };
+      popupBodyRef.current?.scrollTo(scrollOptions);
+      selectedPaneRef.current?.scrollTo(scrollOptions);
+      matchesPaneRef.current?.scrollTo(scrollOptions);
+    });
+  };
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-5"
+      onMouseDown={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 260, damping: 24 }}
+        className="flex h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl dark:border-slate-800 dark:bg-[#070B14] sm:h-[90vh]"
+        onMouseDown={event => event.stopPropagation()}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 bg-gradient-to-r from-white via-blue-50/70 to-indigo-50/70 px-4 py-3.5 dark:border-slate-800 dark:bg-[#0A0F1D] dark:bg-none sm:px-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20">
+                <SimilarityIcon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">Question Similarity Explorer</h2>
+                <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {scopeLabel} · every score on the right is compared with reference question Q{source.id}.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {isObjectiveQuestion(source) && (
+              <button
+                type="button"
+                aria-pressed={highlightOptions}
+                onClick={() => setHighlightOptions(previous => !previous)}
+                title="Highlight important concept phrases in options. This may give hints before you attempt a question."
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition",
+                  highlightOptions
+                    ? "border-violet-300 bg-violet-100 text-violet-900 dark:border-violet-500/40 dark:bg-violet-500/20 dark:text-violet-200"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-violet-500/40"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Highlight options
+                <span className="text-[10px] uppercase">{highlightOptions ? "On" : "Off"}</span>
+              </button>
+            )}
+            <motion.button
+              type="button"
+              onClick={onClose}
+              whileHover={{ rotate: 90, scale: 1.08 }}
+              whileTap={{ scale: 0.9 }}
+              className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
+              aria-label="Close similarity explorer"
+            >
+              <X className="h-5 w-5" />
+            </motion.button>
+          </div>
+        </div>
+
+        <LayoutGroup id="question-similarity-explorer">
+        <div ref={popupBodyRef} className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.8fr)] lg:overflow-hidden">
+          <section ref={selectedPaneRef} className="border-b border-indigo-200/70 bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-100 p-5 dark:border-slate-800 dark:bg-[#070B14] dark:bg-none lg:overflow-y-auto lg:border-b-0 lg:border-r sm:p-6">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Selected question</p>
+              <span className="rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-900 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-100">Reference</span>
+            </div>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={sourceMotionKey}
+                layoutId={`similarity-question-${sourceMotionKey}`}
+                initial={{ opacity: 0, x: 80, scale: 0.96 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -45, scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 280, damping: 26 }}
+              >
+                <SimilarityQuestionSummary
+                  question={source}
+                  sharedConcepts={referenceConcepts}
+                  highlights={visibleState?.sourceHighlights}
+                  highlightOptions={highlightOptions}
+                />
+              </motion.div>
+            </AnimatePresence>
+            <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-[#0C1322]">
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">Practice tip</p>
+              <p className="mt-1.5 text-sm leading-6 text-slate-700 dark:text-slate-300">
+                Attempt each similar question before revealing its answer, then promote it to explore the next set.
+              </p>
+            </div>
+          </section>
+
+          <section ref={matchesPaneRef} className="min-h-0 bg-gradient-to-br from-slate-50 via-white to-slate-100/60 px-4 pb-4 dark:bg-[#070B14] dark:bg-none sm:px-6 sm:pb-6 lg:overflow-y-auto">
+            <div className="sticky top-0 z-20 -mx-4 mb-2 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-2 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-[#070B14]/95 sm:-mx-6 sm:px-6">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Similar questions</p>
+              <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-300">{isLoading ? "Loading..." : `${matches.length} matches`}</span>
+            </div>
+
+            {isLoading ? (
+              <div role="status" className="similarity-loading space-y-4 pt-3">
+                <p className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 motion-reduce:animate-none dark:border-blue-900 dark:border-t-blue-400" />
+                  Loading similar questions...
+                </p>
+                <div aria-hidden="true" className="grid grid-cols-1 gap-x-4 gap-y-6 xl:grid-cols-2">
+                  {[0, 1, 2, 3].map(index => (
+                    <div key={index} className="min-h-[300px] space-y-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0D1424]">
+                      <div className="flex items-center gap-2">
+                        <div className="skeleton h-7 w-7 shrink-0" />
+                        <div className="skeleton h-5 w-20" />
+                        <div className="skeleton ml-auto h-6 w-24 rounded-full" />
+                      </div>
+                      <div className="skeleton h-4 w-28" />
+                      <div className="space-y-2.5">
+                        <div className="skeleton h-4 w-full" />
+                        <div className="skeleton h-4 w-5/6" />
+                        <div className="skeleton h-4 w-2/3" />
+                      </div>
+                      <div className="space-y-2">
+                        {[0, 1, 2, 3].map(option => (
+                          <div key={option} className="skeleton h-10 w-full rounded-xl" />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : visibleState.status === "error" ? (
+              <p role="alert" className="px-2 py-8 text-sm text-red-600 dark:text-red-400">{visibleState.message}</p>
+            ) : matches.length === 0 ? (
+              <p role="status" className="px-2 py-8 text-sm text-slate-500 dark:text-slate-400">{visibleState.message}</p>
+            ) : null}
+
+            <motion.div layout className="grid grid-cols-1 gap-x-4 gap-y-6 pt-3 xl:grid-cols-2">
+              <AnimatePresence mode="popLayout" initial={false}>
+              {matches.map((match, index) => {
+                const questionKey = String(match.question.id);
+                const objectiveQuestion = isObjectiveQuestion(match.question) ? match.question : null;
+                const attemptedOption = attemptedOptions[questionKey];
+                const isRevealed = !!revealedAnswers[questionKey];
+                const showResult = !!attemptedOption && isRevealed && !!objectiveQuestion?.answer;
+                const matchExamCategory = getExamCategory(match.question.exam);
+                const isSameExam = matchExamCategory === sourceExamCategory;
+                const visibleReasons = match.reasons.filter(reason => !/^Shared concepts:/i.test(reason.trimStart()));
+
+                return (
+                <motion.article
+                  key={match.profileId}
+                  layout
+                  layoutId={`similarity-question-${match.question.id}:${match.question.exam}:${match.question.question}`}
+                  initial={{ opacity: 0, x: 24, y: 6, scale: 0.985 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -16, scale: 0.985 }}
+                  whileHover={{ y: -2, scale: 1.004 }}
+                  transition={{
+                    layout: { type: "tween", duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: 0.16, delay: Math.min(index * 0.02, 0.12) },
+                    x: { type: "tween", duration: 0.26, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.02, 0.12) },
+                    y: { type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+                    scale: { duration: 0.2, ease: "easeOut" },
+                  }}
+                  className={cn(
+                    "relative flex min-h-[300px] flex-col rounded-2xl border p-4 transition",
+                    isSameExam
+                      ? similarityMatchingCardStyle
+                      : "border-slate-200 bg-white shadow-sm hover:border-blue-300 dark:border-slate-800 dark:bg-[#0D1424] dark:shadow-[0_0_25px_-5px_rgba(37,99,235,0.12)] dark:hover:border-slate-600 dark:hover:bg-[#131B2E]"
+                  )}
+                >
+                  {isSameExam && (
+                    <span className="absolute -top-3 right-4 inline-flex items-center gap-1 rounded-full border border-blue-400/40 bg-gradient-to-r from-blue-600 to-indigo-600 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm shadow-blue-500/20">
+                      <Sparkles className="h-3 w-3" /> Same exam series
+                    </span>
+                  )}
+                  <div className="mb-3 flex items-start gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-extrabold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{index + 1}</span>
+                      <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">Q{match.question.id}</span>
+                      <span
+                        title={`${isSameExam ? "Same exam category as reference" : `Different exam category from ${sourceExamCategory}`}: ${match.question.exam}`}
+                        className={cn(
+                          "inline-flex max-w-full truncate rounded-full border px-2.5 py-1 text-xs font-bold",
+                          isSameExam
+                            ? cn("border-blue-600 bg-gradient-to-r from-blue-600 to-blue-700 text-white dark:border-blue-400/30", similarityFilledBadge3d)
+                            : "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                        )}
+                      >
+                        {getSimilarityExamLabel(match.question.exam)} · {match.question.year}
+                      </span>
+                    </div>
+                    <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+                      <span aria-label={`Similarity match: ${match.score}%`} className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold",
+                        match.score > 85
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+                          : match.score >= 75
+                            ? "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-500/40 dark:bg-yellow-950/40 dark:text-yellow-200"
+                            : "border-red-200 bg-red-50 text-red-800 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-200"
+                      )}>
+                        <SimilarityIcon className="h-3.5 w-3.5" /> Match {match.score}%
+                      </span>
+                      {objectiveQuestion && scope !== "mains" && (
+                        <AttemptIndicator question={objectiveQuestion} questionType={scope} userEmail={userEmail} />
+                      )}
+                    </div>
+                  </div>
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold tracking-wide text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-600/70">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      {match.question.subject}
+                    </span>
+                    {match.question.topic && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-600/70">{match.question.topic}</span>}
+                  </div>
+                  <div className="mb-5 text-[15px] font-medium leading-7 text-slate-800 dark:text-slate-100">
+                    <SimilarityQuestionText text={match.question.question} keywordPhrases={similarityHighlightPhrases(match.highlights, match.sharedConcepts, "question")} keywordTone="violet" />
+                  </div>
+                  {objectiveQuestion && (
+                  <div className="mb-3 space-y-1.5">
+                    {(objectiveQuestion.options || []).map((option, optionIndex) => {
+                      const isCorrectAnswer = option === objectiveQuestion.answer;
+                      const isSelected = option === attemptedOption;
+
+                      return (
+                        <button
+                          type="button"
+                          key={option}
+                          disabled={showResult || isSelected}
+                          onClick={() => attemptQuestion(objectiveQuestion, option)}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm font-medium leading-6 transition",
+                            !showResult && "border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-800 dark:bg-[#090E1A]/60 dark:text-slate-300 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10",
+                            !showResult && isSelected && "cursor-default ring-1 ring-blue-400/60",
+                            showResult && isCorrectAnswer && "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-500/10 dark:bg-emerald-900/30 dark:text-emerald-400",
+                            showResult && isSelected && !isCorrectAnswer && "border-red-500 bg-red-50 text-red-700 shadow-sm shadow-red-500/10 dark:bg-red-900/30 dark:text-red-400",
+                            showResult && !isCorrectAnswer && !isSelected && "border-slate-200 bg-slate-50/50 text-slate-400 opacity-60 dark:border-slate-700 dark:bg-slate-700/30 dark:text-slate-500"
+                          )}
+                        >
+                          <span className="pr-2"><HighlightText text={option} query="" keywordPhrases={highlightOptions ? similarityHighlightPhrases(match.highlights, match.sharedConcepts, "option", optionIndex) : []} keywordTone="violet" /></span>
+                          {showResult && isCorrectAnswer && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                          {showResult && isSelected && !isCorrectAnswer && <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  )}
+                  <SimilarityConceptGlow concepts={match.sharedConcepts} />
+                  {isRevealed && (
+                    <div className="mb-3">
+                      {objectiveQuestion ? (
+                        <>
+                          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Answer: {objectiveQuestion.answer || "Not available yet"}
+                          </div>
+                          {objectiveQuestion.explanation && (
+                            <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-blue-50 p-3.5 shadow-sm dark:border-indigo-500/20 dark:from-indigo-900/20 dark:to-slate-800/40">
+                              <p className="text-sm leading-6 text-indigo-900 dark:text-indigo-200">
+                                <span className="mb-1.5 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                  <Sparkles className="h-3 w-3" /> Explanation
+                                </span>
+                                <span className="block whitespace-pre-wrap">
+                                  <HighlightText text={objectiveQuestion.explanation} query="" keywordPhrases={similarityHighlightPhrases(match.highlights, match.sharedConcepts, "explanation")} keywordTone="violet" />
+                                </span>
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-blue-50 p-3.5 shadow-sm dark:border-indigo-500/20 dark:from-indigo-900/20 dark:to-slate-800/40">
+                          <p className="text-sm leading-6 text-indigo-900 dark:text-indigo-200">
+                            <span className="mb-1.5 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                              <Sparkles className="h-3 w-3" /> Model Answer
+                            </span>
+                            <span className="block whitespace-pre-wrap">
+                              {getSimilarityModelAnswer(match.question)
+                                ? <HighlightText text={getSimilarityModelAnswer(match.question)} query="" />
+                                : <span className="italic text-slate-500 dark:text-slate-400">Model answer not available yet</span>}
+                            </span>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {visibleReasons.length > 0 && <p className={cn("mb-3 border-t pt-3 text-sm leading-6", isSameExam ? "border-blue-200 text-blue-800 dark:border-blue-500/20 dark:text-blue-300" : "border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-400")}>{visibleReasons.join(" · ")}</p>}
+                  <div className="mt-auto grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => togglePopupAnswer(match.question.id)}
+                      className={cn(
+                        "inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-bold transition",
+                        isSameExam
+                          ? "border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-[#142337] dark:text-slate-200 dark:hover:bg-[#1A2E49]"
+                          : "border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-800 dark:bg-[#141E34] dark:text-slate-300 dark:hover:bg-[#1A2744]"
+                      )}
+                    >
+                      <ChevronDown className={cn("h-3 w-3 transition-transform", isRevealed && "rotate-180")} />
+                      {isRevealed
+                        ? objectiveQuestion ? "Hide answer" : "Hide model answer"
+                        : objectiveQuestion ? "Show answer" : "Show model answer"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exploreSimilarQuestion(match.question)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-400/30 bg-gradient-to-r from-blue-600 to-indigo-600 px-2 py-2.5 text-sm font-bold text-white shadow-sm shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
+                    >
+                      <SimilarityIcon className="h-3.5 w-3.5" /> Explore similar
+                    </button>
+                  </div>
+                </motion.article>
+                );
+              })}
+              </AnimatePresence>
+            </motion.div>
+          </section>
+        </div>
+        </LayoutGroup>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+};
+
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question,
   storageScope,
@@ -1634,7 +2363,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   searchQuery = "",
   isAdmin,
   isEditor,
-  onUpdateQuestion
+  onUpdateQuestion,
+  onOpenSimilarity
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editAnswer, setEditAnswer] = useState("");
@@ -1953,7 +2683,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </span>
             )}
           </div>
-          <div className="shrink-0 pr-1">
+          <div className="flex shrink-0 items-center gap-1.5 pr-1">
+            {onOpenSimilarity && (
+              <button
+                type="button"
+                onClick={() => onOpenSimilarity(question, storageScope)}
+                title="Open question similarity scores"
+                className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
+              >
+                <SimilarityIcon className="h-3.5 w-3.5" /> Similarity
+              </button>
+            )}
             <AttemptIndicator question={question} questionType={storageScope} userEmail={userEmail} />
           </div>
         </div>
@@ -2187,10 +2927,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         return md ? (
           <MatchQuestion data={md} query={searchQuery} badge={badge} />
         ) : (
-          <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[23px] whitespace-pre-wrap px-1">
-            {badge}
-            <HighlightText text={question.question} query={searchQuery} spaceLists />
-          </h3>
+          <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 leading-[23px] px-1">
+            <SimilarityQuestionText text={question.question} query={searchQuery} badge={badge} />
+          </div>
         );
       })()}
 
@@ -2379,6 +3118,7 @@ interface MainsQuestionCardProps {
   onExamClick?: (exam: string) => void;
   onYearClick?: (year: string) => void;
   onFeedback?: () => void;
+  onOpenSimilarity?: (question: MainsQuestion) => void;
 }
 
 const SavedQuestionActions: React.FC<{
@@ -2683,6 +3423,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onExamClick,
   onYearClick,
   onFeedback,
+  onOpenSimilarity,
 }) => {
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
   const answer = question.modelAnswer || question.model_answer || "";
@@ -2766,9 +3507,9 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       </div>
 
-      <h3 className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] whitespace-pre-wrap flex-grow">
-        <HighlightText text={question.question} query={searchQuery} spaceLists />
-      </h3>
+      <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] flex-grow">
+        <SimilarityQuestionText text={question.question} query={searchQuery} />
+      </div>
 
       <SavedQuestionInlineNote questionType={questionType} question={question} visible={!!showNoteInline} />
 
@@ -2782,7 +3523,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       )}
 
-      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between", isAnswerVisible && "mb-3")}>
+      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between gap-2", isAnswerVisible && "mb-3")}>
         <div
           onClick={onToggleAnswer}
           className="flex-grow cursor-pointer flex items-center py-1 -my-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 focus:outline-none"
@@ -2792,6 +3533,16 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
           </div>
           <span>{isAnswerVisible ? "Hide Model Answer" : "Show Model Answer"}</span>
         </div>
+        {onOpenSimilarity && (
+          <button
+            type="button"
+            onClick={() => onOpenSimilarity(question)}
+            title="Open question similarity scores"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
+          >
+            <SimilarityIcon className="h-3.5 w-3.5" /> Similarity
+          </button>
+        )}
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(question.question)}`}
           target="_blank"
@@ -3109,8 +3860,9 @@ export default function App() {
       const session = JSON.parse(saved);
       const currentTime = Date.now();
       const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-      if (currentTime - session.loginTime < sevenDaysInMs) {
-        return session.email;
+      const email = String(session.email || "").trim().toLowerCase();
+      if (currentTime - session.loginTime < sevenDaysInMs && isAllowedLoginEmail(email)) {
+        return email;
       }
       localStorage.removeItem('user_session');
       return null;
@@ -4151,6 +4903,18 @@ export default function App() {
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showAndroidDownloadModal, setShowAndroidDownloadModal] = useState(false);
+  const [similarityExplorer, setSimilarityExplorer] = useState<{
+    question: SimilarityQuestion;
+    scope: 'prelims' | 'mains' | 'csat' | 'english';
+  } | null>(null);
+  const similarityScopeLabel = similarityExplorer?.scope === 'csat'
+    ? 'CSAT question bank'
+    : similarityExplorer?.scope === 'english'
+      ? 'English question bank'
+      : similarityExplorer?.scope === 'mains'
+        ? 'Mains question bank'
+        : 'Prelims question bank';
   const [linkCopied, setLinkCopied] = useState(false);
   // Shareable deep-link that opens the premium plans modal directly.
   const premiumLink = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#premium` : '#premium';
@@ -4557,6 +5321,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail, pendingPlan]);
   const [loginEmailInput, setLoginEmailInput] = useState("");
+  const [loginEmailError, setLoginEmailError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [allUsers, setAllUsers] = useState<{email: string, status: string, expiryDate?: string}[]>([]);
   const [isAdminUserEmail, setIsAdminUserEmail] = useState("");
@@ -4779,10 +5544,14 @@ export default function App() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginEmailInput.trim() || !loginEmailInput.includes('@')) return;
+    const email = loginEmailInput.trim().toLowerCase();
+    if (!isAllowedLoginEmail(email)) {
+      setLoginEmailError("Please enter a valid @gmail.com email address.");
+      return;
+    }
 
     setIsLoggingIn(true);
-    const email = loginEmailInput.trim().toLowerCase();
+    setLoginEmailError("");
 
     // Store session
     const session = {
@@ -5100,12 +5869,23 @@ export default function App() {
     setEssayVisibleCount(30);
   }, [essayYearFilter, essayExamFilter, essayTopicFilter, essaySearchQuery, essayBookmarkedOnly, essayNotedOnly]);
 
-  const handleOptionClick = (qid: number, option: string, isCorrect: boolean, questionType: string = 'prelims', subject?: string, topic?: string) => {
+  const handleOptionClick = (
+    qid: number,
+    option: string,
+    isCorrect: boolean,
+    questionType: string = 'prelims',
+    subject?: string,
+    topic?: string,
+    behavior: { syncSelection?: boolean; allowRepeatedOption?: boolean } = {}
+  ) => {
+    const { syncSelection = true, allowRepeatedOption = false } = behavior;
     // Re-attempting is allowed, but picking the same option again would only
     // inflate the counters without saying anything new about recall.
-    if (userAttempts[qid] === option) return;
-    setUserAttempts(prev => ({ ...prev, [qid]: option }));
-    setRevealedAnswers(prev => ({ ...prev, [qid]: true }));
+    if (!allowRepeatedOption && userAttempts[qid] === option) return;
+    if (syncSelection) {
+      setUserAttempts(prev => ({ ...prev, [qid]: option }));
+      setRevealedAnswers(prev => ({ ...prev, [qid]: true }));
+    }
     setScore(prev => ({
       correct: prev.correct + (isCorrect ? 1 : 0),
       total: prev.total + 1
@@ -5742,20 +6522,6 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* Telegram */}
-                  <a
-                    href="https://t.me/upsc_pyq_powerhouse"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <span className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
-                      <Send className="w-4 h-4 text-sky-500" />
-                    </span>
-                    <span>Join Telegram</span>
-                  </a>
-
                   {/* Send Feedback */}
                   <button
                     onClick={() => { openFeedback(null, 'global'); setIsUserMenuOpen(false); }}
@@ -5765,6 +6531,20 @@ export default function App() {
                       <MessageSquareText className="w-4 h-4 text-emerald-500" />
                     </span>
                     <span>Send Feedback</span>
+                  </button>
+
+                  {/* New Releases */}
+                  <button
+                    onClick={() => { setShowReleasesModal(true); setIsUserMenuOpen(false); }}
+                    className="group flex w-full items-center gap-3 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 px-2 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/25 dark:from-indigo-500/15 dark:via-blue-500/10 dark:to-violet-500/15 dark:text-indigo-200"
+                  >
+                    <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white shadow-md shadow-indigo-600/20 transition group-hover:scale-105">
+                      <Sparkles className="h-4 w-4" />
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-300 ring-2 ring-white dark:ring-slate-900" />
+                    </span>
+                    <span className="flex items-center gap-2">What’s New
+                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-300">Explore</span>
+                    </span>
                   </button>
 
                   <div className="h-px bg-slate-100 dark:bg-slate-800 my-1.5" />
@@ -5792,20 +6572,6 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* New Releases */}
-                  <button
-                    onClick={() => { setShowReleasesModal(true); setIsUserMenuOpen(false); }}
-                    className="group flex w-full items-center gap-3 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-blue-50 to-violet-50 px-2 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/25 dark:from-indigo-500/15 dark:via-blue-500/10 dark:to-violet-500/15 dark:text-indigo-200"
-                  >
-                    <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white shadow-md shadow-indigo-600/20 transition group-hover:scale-105">
-                      <Sparkles className="h-4 w-4" />
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-300 ring-2 ring-white dark:ring-slate-900" />
-                    </span>
-                    <span className="flex items-center gap-2">What’s New
-                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-300">Explore</span>
-                    </span>
-                  </button>
-
                   {/* About the Founder */}
                   <button
                     onClick={() => { setShowFounderModal(true); setIsUserMenuOpen(false); }}
@@ -5814,6 +6580,41 @@ export default function App() {
                     <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-xs shrink-0">R</span>
                     <span>About the Founder</span>
                   </button>
+
+                  <div className="mt-2 flex items-center justify-center gap-3 border-t border-slate-200 px-2 pt-3 pb-1 dark:border-slate-700">
+                    <a
+                      href="https://t.me/upsc_pyq_powerhouse"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      title="Join Telegram"
+                      aria-label="Join Telegram"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600 transition hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-400 dark:hover:bg-sky-500/20"
+                    >
+                      <Send className="h-5 w-5" aria-hidden="true" />
+                    </a>
+                    {!isNativeApp && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowAndroidDownloadModal(true); setIsUserMenuOpen(false); }}
+                        title="Download Android app"
+                        aria-label="Download Android app"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
+                      >
+                        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="m8 4-1.5-2.5M16 4l1.5-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                          <path d="M5 8.5a7 5.5 0 0 1 14 0H5Z" fill="currentColor" />
+                          <circle cx="9" cy="6" r="0.65" className="fill-blue-50 dark:fill-slate-900" />
+                          <circle cx="15" cy="6" r="0.65" className="fill-blue-50 dark:fill-slate-900" />
+                          <path d="M5 9.5h14v8A1.5 1.5 0 0 1 17.5 19h-11A1.5 1.5 0 0 1 5 17.5v-8Z" fill="currentColor" />
+                          <rect x="1.5" y="9.5" width="2.5" height="9" rx="1.25" fill="currentColor" />
+                          <rect x="20" y="9.5" width="2.5" height="9" rx="1.25" fill="currentColor" />
+                          <rect x="8" y="17" width="3" height="6.5" rx="1.5" fill="currentColor" />
+                          <rect x="13" y="17" width="3" height="6.5" rx="1.5" fill="currentColor" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -6944,6 +7745,7 @@ export default function App() {
                         isAdmin={isAdmin}
                         isEditor={isEditor}
                         onUpdateQuestion={handleUpdateQuestion}
+                        onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
                         onSubjectClick={(subject) => {
                           setSubjectFilter(subject);
                           setTopicFilter("All");
@@ -7189,6 +7991,7 @@ export default function App() {
                       onUpdateModelAnswer={updateMainsModelAnswer}
                       searchQuery={mainsSearchQuery}
                       onFeedback={() => openFeedback(q.id, 'mains')}
+                      onOpenSimilarity={question => setSimilarityExplorer({ question, scope: 'mains' })}
                       onSubjectClick={(subject) => {
                         setMainsSubjectFilter(subject);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -7361,6 +8164,7 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'csat')}
                           showNoteInline={csatNotedOnly}
+                          onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -7556,6 +8360,7 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'english')}
                           showNoteInline={englishNotedOnly}
+                          onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
@@ -7927,7 +8732,33 @@ export default function App() {
         </div>
       </footer>
 
+      {showAndroidDownloadModal && !isNativeApp && (
+        <AndroidDownloadModal onClose={() => setShowAndroidDownloadModal(false)} />
+      )}
+
       {/* Login Modal */}
+      {similarityExplorer && (
+        <QuestionSimilarityExplorer
+          source={similarityExplorer.question}
+          scope={similarityExplorer.scope}
+          scopeLabel={similarityScopeLabel}
+          userEmail={userEmail}
+          onOptionClick={similarityExplorer.scope === 'mains'
+            ? undefined
+            : (question, option) => handleOptionClick(
+              question.id,
+              option,
+              option === question.answer,
+              similarityExplorer.scope,
+              question.subject,
+              question.topic,
+              { syncSelection: false, allowRepeatedOption: true }
+            )}
+          onSelect={question => setSimilarityExplorer(current => current ? { ...current, question } : current)}
+          onClose={() => setSimilarityExplorer(null)}
+        />
+      )}
+
       {showFeedbackModal && createPortal(renderFeedbackModal(), document.body)}
 
       {showLoginModal && (
@@ -7978,11 +8809,28 @@ export default function App() {
                       type="email"
                       required
                       value={loginEmailInput}
-                      onChange={(e) => setLoginEmailInput(e.target.value)}
-                      placeholder="e.g. user@example.com"
-                      className="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      onChange={(e) => {
+                        setLoginEmailInput(e.target.value);
+                        if (loginEmailError) setLoginEmailError("");
+                      }}
+                      placeholder="e.g. yourname@gmail.com"
+                      pattern="[^\s@]+@gmail\.com"
+                      title="Only @gmail.com email addresses are allowed"
+                      aria-invalid={!!loginEmailError}
+                      aria-describedby={loginEmailError ? "login-email-error" : undefined}
+                      className={cn(
+                        "w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/60 border rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:border-transparent outline-none transition-all",
+                        loginEmailError
+                          ? "border-red-400 focus:ring-red-500"
+                          : "border-slate-200 dark:border-slate-700 focus:ring-blue-500"
+                      )}
                     />
                   </div>
+                  {loginEmailError && (
+                    <p id="login-email-error" className="mt-2 ml-1 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                      {loginEmailError}
+                    </p>
+                  )}
                 </div>
 
                 <button

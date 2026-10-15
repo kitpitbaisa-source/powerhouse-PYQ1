@@ -1,0 +1,74 @@
+{
+  "status": "source-copy",
+  "exam": "CAPF 2015",
+  "paper": "Paper I: General Ability and Intelligence",
+  "series": "A",
+  "questionCount": 125,
+  "firstId": 20002250,
+  "idStatus": "allocated after read-only global ID check; importer rechecks collisions",
+  "explanationProvenance": "Agent-authored draft study explanations, not explanations supplied by UPSC; independent factual source review remains pending.",
+  "sourcePaper": "photo-15.pdf",
+  "sourceAnswerKey": "upsc_capf_answer_key_2015_set_A_a33906115cba5ca7df17519a1b7f2e5a.pdf",
+  "answerKeyProvenance": "Transcribed from the user-supplied scan labelled CAPF-2015, Series A; not independently authenticated as an official UPSC download.",
+  "droppedQuestions": [],
+  "assetBase": "review/capf-2015",
+  "approvedForLiveImport": true,
+  "uploadReceipt": "upload-receipt.json",
+  "sourceFiles": [
+    {
+      "originalName": "photo-15.pdf",
+      "reviewFile": "source-paper.pdf",
+      "bytes": 1158499,
+      "sha256": "3d274cd61fe4e053bcf4212181e91898c5d6edbf2d3febf060bf2dea6f51bd17"
+    },
+    {
+      "originalName": "upsc_capf_answer_key_2015_set_A_a33906115cba5ca7df17519a1b7f2e5a.pdf",
+      "reviewFile": "answer-key.pdf",
+      "bytes": 910328,
+      "sha256": "c6c1a6bca3afd0a8f1d4c1883039b4b8be85822996035174374f2019c5b647de"
+    }
+  ],
+  "sourceCode": "src/questions.ts",
+  "imageAssets": [
+    "q066-a.png",
+    "q066-b.png",
+    "q066-c.png",
+    "q066-d.png",
+    "q066-matrix.png",
+    "q067-figures.png",
+    "q097-venn.png",
+    "q117-a.png",
+    "q117-b.png",
+    "q117-c.png",
+    "q117-d.png",
+    "q117-pattern.png"
+  ],
+  "reviewNoteQuestions": [
+    3,
+    29,
+    30,
+    33,
+    34,
+    36,
+    39,
+    43,
+    53,
+    74,
+    81,
+    82,
+    86,
+    94,
+    99,
+    109,
+    112,
+    116,
+    117,
+    124
+  ],
+  "validation": {
+    "questions": 125,
+    "answerKeyEntries": 125,
+    "optionsPerQuestion": 4,
+    "questionsWithExplanations": 125
+  }
+}

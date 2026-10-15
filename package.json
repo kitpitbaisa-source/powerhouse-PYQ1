@@ -10,6 +10,10 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "similarity:setup": "tsx scripts/similarity/setup.ts",
+    "similarity:process": "tsx scripts/similarity/process.ts",
+    "similarity:import": "tsx scripts/similarity/import.ts",
+    "similarity:test": "tsx --test features/similarity/pipeline.test.ts features/similarity/search.test.ts src/features/similarity/client.test.ts",
     "cap:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android"
   },
@@ -29,7 +33,8 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "tailwind-merge": "^3.5.0",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
