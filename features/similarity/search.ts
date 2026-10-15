@@ -1,14 +1,14 @@
 import express from "express";
 import { z } from "zod";
 import type { Database } from "@azure/cosmos";
-import { embeddingModel, embeddingPrefix, profileContainerId, promptVersion, schemaVersion, sourceContainers } from "./config";
-import { buildEmbeddingInput, hashContent, validateVector } from "./pipeline";
-import { CosmosPipelineRepository, statusCode } from "./repository";
-import { profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema";
+import { embeddingModel, embeddingPrefix, profileContainerId, promptVersion, schemaVersion, sourceContainers } from "./config.js";
+import { buildEmbeddingInput, hashContent, validateVector } from "./pipeline.js";
+import { CosmosPipelineRepository, statusCode } from "./repository.js";
+import { profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema.js";
 import type {
   QuestionReference, QuestionSourceContainer, SimilarityMatch,
   SimilarityQuestionContent, SimilarityResponse,
-} from "./types";
+} from "./types.js";
 
 const rankingVersion = "concept-cosine-v1";
 const maxResults = 12;

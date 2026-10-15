@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sourceContainers } from "./config";
+import { sourceContainers } from "./config.js";
 
 const text = z.string().trim().min(1);
 const conceptId = text.regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);

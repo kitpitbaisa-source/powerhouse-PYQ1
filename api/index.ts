@@ -4,7 +4,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import Razorpay from "razorpay";
 import crypto from "crypto";
-import { createSimilarityRouter } from "../features/similarity/search";
+// Vercel loads emitted JavaScript as native ESM, without tsx's extension resolution.
+import { createSimilarityRouter } from "../features/similarity/search.js";
 
 // Keep this in sync with src/exam-utils.ts. Vercel executes api/index.ts as a
 // standalone function, so importing a source-only helper breaks at runtime.

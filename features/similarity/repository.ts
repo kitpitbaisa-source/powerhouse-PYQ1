@@ -4,12 +4,12 @@ import {
   type ContainerDefinition, type Database,
 } from "@azure/cosmos";
 import { z } from "zod";
-import { conceptsContainerId, profileContainerId, readStorageConfig } from "./config";
+import { conceptsContainerId, profileContainerId, readStorageConfig } from "./config.js";
 import {
   canonicalConceptSchema, sourceQuestionSchema, storedProfileSchema,
   type SourceQuestion, type StoredProfile,
-} from "./schema";
-import type { CanonicalConcept, QuestionReference, QuestionSourceContainer } from "./types";
+} from "./schema.js";
+import type { CanonicalConcept, QuestionReference, QuestionSourceContainer } from "./types.js";
 
 export interface ProfileSnapshot {
   document: StoredProfile;

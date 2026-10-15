@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { embeddingModel, embeddingPrefix, type EmbeddingConfig, type PipelineConfig } from "./config";
-import { extractionResponseSchema, type SourceQuestion } from "./schema";
-import type { CanonicalConcept } from "./types";
+import { embeddingModel, embeddingPrefix, type EmbeddingConfig, type PipelineConfig } from "./config.js";
+import { extractionResponseSchema, type SourceQuestion } from "./schema.js";
+import type { CanonicalConcept } from "./types.js";
 
 export interface EmbeddingAI {
   embed(input: string): Promise<number[]>;

@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { embeddingModel, embeddingPrefix, promptVersion, schemaVersion, type PipelineConfig } from "./config";
+import { embeddingModel, embeddingPrefix, promptVersion, schemaVersion, type PipelineConfig } from "./config.js";
 import {
   importedExtractionSchema, profileExtractionSchema, validateExtraction,
   type ExtractionResponse, type ImportedExtraction, type ProfileExtraction, type SourceQuestion, type StoredProfile,
-} from "./schema";
-import type { EmbeddingAI, PipelineAI } from "./google";
-import type { PipelineRepository, ProfileSnapshot } from "./repository";
-import type { CanonicalConcept, QuestionReference } from "./types";
+} from "./schema.js";
+import type { EmbeddingAI, PipelineAI } from "./google.js";
+import type { PipelineRepository, ProfileSnapshot } from "./repository.js";
+import type { CanonicalConcept, QuestionReference } from "./types.js";
 
 export function hashContent(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");

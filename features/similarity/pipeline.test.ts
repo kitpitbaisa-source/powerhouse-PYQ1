@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { CosmosClient } from "@azure/cosmos";
+import ts from "typescript";
 import { embeddingModel, promptVersion, type PipelineConfig } from "./config";
 import { GoogleEmbeddingAI, GooglePipelineAI, type PipelineAI } from "./google";
 import { ConceptPipeline, buildEmbeddingInput, hashContent, validateVector } from "./pipeline";
@@ -445,4 +451,44 @@ test("dedicated throughput requires explicit creation and valid allocation befor
   await assert.rejects(ensureContainers(database, 1536, false, 400), /requires --create/);
   await assert.rejects(ensureContainers(database, 1536, true, 399), /at least 400/);
   await assert.rejects(ensureContainers(database, 1536, true, 450), /increments of 100/);
+});
+
+test("the transpiled Vercel API starts in native Node ESM without a TypeScript loader", async () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const output = await mkdtemp(path.join(root, ".vercel-esm-test-"));
+  try {
+    const modules = (await readdir(path.join(root, "features", "similarity")))
+      .filter(name => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+      .map(name => path.join("features", "similarity", name));
+    for (const relative of [path.join("api", "index.ts"), ...modules]) {
+      const source = await readFile(path.join(root, relative), "utf8");
+      const result = ts.transpileModule(source, {
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+      });
+      const destination = path.join(output, relative.replace(/\.ts$/, ".js"));
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, result.outputText);
+    }
+    await writeFile(path.join(output, "package.json"), JSON.stringify({ type: "module" }));
+    const entry = pathToFileURL(path.join(output, "api", "index.js")).href;
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      "--input-type=module",
+      "--eval",
+      `const { default: app } = await import(${JSON.stringify(entry)}); if (typeof app !== "function") throw new Error("Missing Express app"); console.log("native-esm-ready");`,
+    ], {
+      cwd: output,
+      timeout: 15_000,
+      env: {
+        ...process.env,
+        NODE_OPTIONS: "",
+        COSMOS_ENDPOINT: "https://offline.documents.azure.com",
+        COSMOS_KEY: Buffer.from("offline-test-only").toString("base64"),
+        RAZORPAY_KEY_ID: "",
+        RAZORPAY_KEY_SECRET: "",
+      },
+    });
+    assert.match(stdout, /native-esm-ready/);
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
 });
