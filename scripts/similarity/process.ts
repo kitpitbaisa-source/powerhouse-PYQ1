@@ -22,8 +22,9 @@ async function main() {
     console.log(`npm run similarity:process -- [--source CONTAINER] [--id ID] [--limit N] [--process] [--force]
 Sources: ${sourceContainers.join(", ")}
 Default: read-only preview of up to 10 question references; no AI calls or writes.
---process explicitly enables paid Gemini calls and Cosmos profile/concept writes.
---limit caps processing attempts, excluding unchanged profiles; rerun to resume.
+--process explicitly enables paid Gemini calls, Cosmos profile/concept writes and question verification metadata updates.
+--limit caps processing attempts, excluding unchanged profiles and held review flags; rerun to resume.
+Unresolved concept identities or roles are saved as pending_review; other entries continue.
 --force re-extracts selected questions and requires --process.`);
     return;
   }
@@ -46,9 +47,18 @@ Default: read-only preview of up to 10 question references; no AI calls or write
   const references: Iterable<QuestionReference> | AsyncIterable<QuestionReference> = id
     ? [{ sourceContainer: source, questionId: id }]
     : repository.questionReferences(source, values.process ? Number.MAX_SAFE_INTEGER : limit);
-  const counts = { ready: 0, skipped: 0, failed: 0, previewed: 0 };
+  const counts = { ready: 0, skipped: 0, pending_review: 0, failed: 0, previewed: 0 };
+  let attempts = 0;
+  const pendingReview: string[] = [];
+  const heldForReview = pipeline && !id ? await repository.pendingReviewQuestionIds(source) : new Set<string>();
   for await (const reference of references) {
     const key = `${reference.sourceContainer}:${reference.questionId}`;
+    if (heldForReview.has(reference.questionId)) {
+      counts.pending_review++;
+      pendingReview.push(key);
+      console.log(`${key}: pending_review (held; requires an evidence-backed resolution)`);
+      continue;
+    }
     if (!pipeline) {
       await repository.readQuestion(reference);
       console.log(`Would process ${key}`);
@@ -58,14 +68,17 @@ Default: read-only preview of up to 10 question references; no AI calls or write
     try {
       const result = await pipeline.process(reference, values.force);
       counts[result]++;
+      if (result !== "skipped") attempts++;
+      if (result === "pending_review") pendingReview.push(key);
       console.log(`${key}: ${result}`);
     } catch (error) {
       counts.failed++;
+      attempts++;
       console.error(`${key}: ${error instanceof Error ? error.message : "Processing failed."}`);
     }
-    if (counts.ready + counts.failed >= limit) break;
+    if (attempts >= limit) break;
   }
-  console.log(JSON.stringify(counts));
+  console.log(JSON.stringify({ ...counts, pendingReview }));
   if (counts.failed > 0) process.exitCode = 1;
 }
 

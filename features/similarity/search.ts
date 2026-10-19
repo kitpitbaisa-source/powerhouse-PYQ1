@@ -4,11 +4,12 @@ import type { Database } from "@azure/cosmos";
 import { embeddingModel, embeddingPrefix, profileContainerId, promptVersion, schemaVersion, sourceContainers } from "./config.js";
 import { buildEmbeddingInput, hashContent, validateVector } from "./pipeline.js";
 import { CosmosPipelineRepository, statusCode } from "./repository.js";
-import { profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema.js";
+import { classificationReviewIssue, conceptReviewIssue, profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema.js";
 import type {
   QuestionReference, QuestionSourceContainer, SimilarityMatch,
   SimilarityQuestionContent, SimilarityResponse,
 } from "./types.js";
+import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
 
 const rankingVersion = "concept-cosine-v1";
 const maxResults = 12;
@@ -21,7 +22,7 @@ const requestSchema = z.object({
 
 export interface SimilarityStore {
   readProfile(id: string): Promise<StoredProfile | undefined>;
-  readQuestion(reference: QuestionReference): Promise<SourceQuestion | undefined>;
+  readQuestion(reference: QuestionReference): Promise<{ question: SourceQuestion; verification?: QuestionVerification } | undefined>;
   userStatus(email: string): Promise<string | undefined>;
   latestYears(sources: QuestionSourceContainer[]): Promise<string[]>;
   candidates(profile: StoredProfile, sources: QuestionSourceContainer[], years?: string[]): Promise<StoredProfile[]>;
@@ -32,9 +33,11 @@ function bankSources(source: QuestionSourceContainer): QuestionSourceContainer[]
 }
 
 function hasReadyVector(profile: StoredProfile): boolean {
+  if (profile.verification?.status === "pending_review") return false;
   if (profile.processing.status !== "ready" || profile.schemaVersion !== schemaVersion || !profile.embedding) return false;
   if (profile.id !== `${profile.sourceContainer}:${profile.questionId}`) throw new Error("Invalid stored profile identity.");
   const extraction = profileExtractionSchema.parse(profile);
+  if (classificationReviewIssue(extraction) || conceptReviewIssue(extraction)) return false;
   validateVector(profile.embedding, profile.processing.embeddingDimensions);
   return profile.processing.embeddingModel === embeddingModel &&
     profile.processing.promptVersion === promptVersion &&
@@ -86,13 +89,28 @@ export async function findSimilarQuestions(
 ): Promise<SimilarityResponse> {
   const profile = await store.readProfile(`${reference.sourceContainer}:${reference.questionId}`);
   if (!profile || !hasReadyVector(profile)) {
-    const status = profile?.processing.status === "failed" ? "failed"
+    const pendingReview = profile?.verification?.status === "pending_review" || profile?.processing.status === "pending_review";
+    const status = pendingReview ? "pending" : profile?.processing.status === "failed" ? "failed"
       : profile?.processing.status === "stale" || profile?.processing.status === "ready" ? "stale" : "pending";
-    return { status, source: reference, matches: [], message: "No ready concept profile is available for this question." };
+    return {
+      status, source: reference, matches: [],
+      message: pendingReview
+        ? "Question verification or concept review is required before similarity matching."
+        : "No ready concept profile is available for this question.",
+    };
   }
-  const sourceQuestion = await store.readQuestion(reference);
+  const sourceSnapshot = await store.readQuestion(reference);
+  const sourceQuestion = sourceSnapshot?.question;
   if (!sourceQuestion || !sourceQuestion.isActive || hashContent(sourceQuestion) !== profile.processing.sourceContentHash) {
     return { status: "stale", source: reference, matches: [], message: "The concept profile needs updating." };
+  }
+  if (sourceSnapshot.verification?.status === "pending_review") {
+    return { status: "pending", source: reference, matches: [], message: sourceSnapshot.verification.reason };
+  }
+  if (sourceSnapshot.verification?.status === "verified" &&
+      (sourceSnapshot.verification.sourceContentHash !== profile.processing.sourceContentHash ||
+        sourceSnapshot.verification.extractionContentHash !== profile.processing.extractionContentHash)) {
+    return { status: "stale", source: reference, matches: [], message: "The concept profile does not match the question's reviewed version." };
   }
   const subscribed = email && (permanentAdmins.includes(email) ||
     ["subscribed", "admin", "editor"].includes(await store.userStatus(email) ?? ""));
@@ -120,11 +138,16 @@ export async function findSimilarQuestions(
   for (let offset = 0; offset < ranked.length && matches.length < maxResults; offset += maxResults) {
     const batch = await Promise.all(ranked.slice(offset, offset + maxResults).map(async candidate => ({
       ...candidate,
-      question: await store.readQuestion(candidate.profile),
+      snapshot: await store.readQuestion(candidate.profile),
     })));
     for (const candidate of batch) {
-      const { question } = candidate;
+      const question = candidate.snapshot?.question;
+      const verification = candidate.snapshot?.verification;
       if (!question || !question.isActive || hashContent(question) !== candidate.profile.processing.sourceContentHash ||
+          verification?.status === "pending_review" ||
+          (verification?.status === "verified" &&
+            (verification.sourceContentHash !== candidate.profile.processing.sourceContentHash ||
+              verification.extractionContentHash !== candidate.profile.processing.extractionContentHash)) ||
           (years && !years.includes(question.year))) continue;
       const target: QuestionReference = {
         sourceContainer: candidate.profile.sourceContainer, questionId: candidate.profile.questionId,
@@ -155,14 +178,17 @@ class CosmosSimilarityStore implements SimilarityStore {
   async readProfile(id: string) {
     return (await this.repository.readProfile(id))?.document;
   }
-  async readQuestion(reference: QuestionReference): Promise<SourceQuestion | undefined> {
+  async readQuestion(reference: QuestionReference) {
     try {
       const { resource } = await this.database.container(reference.sourceContainer)
         .item(reference.questionId, reference.questionId).read<unknown>();
       if (!resource) return undefined;
       const question = sourceQuestionSchema.parse(resource);
       if (question.id !== reference.questionId) throw new Error("Source question identity does not match its reference.");
-      return question.isActive && !question.question.startsWith("Q_") ? question : undefined;
+      return question.isActive && !question.question.startsWith("Q_") ? {
+        question,
+        verification: z.object({ verification: questionVerificationSchema.optional() }).parse(resource).verification,
+      } : undefined;
     } catch (error) {
       if (statusCode(error) === 404) return undefined;
       throw error;

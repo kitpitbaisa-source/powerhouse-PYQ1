@@ -5,10 +5,19 @@ import { buildEmbeddingInput, hashContent } from "./pipeline";
 import { profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema";
 import { findSimilarQuestions, type SimilarityStore } from "./search";
 import type { QuestionReference, QuestionSourceContainer } from "./types";
+import { flagQuestionForReview, unverifiedQuestion, type QuestionVerification } from "./verification";
 
 const source: QuestionReference = { sourceContainer: "questions", questionId: "418" };
 
 function refreshEmbeddingInput(profile: StoredProfile) {
+  profile.concept_review = {
+    decisions: [...profile.concept_profile.primary_concepts, ...profile.concept_profile.secondary_concepts].map(concept => ({
+      concept_id: concept.concept_id, decision: "reuse", existing_concept_id: concept.concept_id,
+      meaning_scope_rationale: "Reviewed canonical concept with equivalent meaning and scope.",
+      role: concept.role, role_status: "supported", role_rationale: "The source supports this question-specific role.",
+      source_evidence: [{ concept_id: concept.concept_id, field: "question", exact_text: "Source question" }],
+    })),
+  };
   profile.concept_embedding_input = buildEmbeddingInput(profileExtractionSchema.parse(profile));
   profile.processing.embeddingInputHash = hashContent(embeddingPrefix + profile.concept_embedding_input);
 }
@@ -16,6 +25,7 @@ function refreshEmbeddingInput(profile: StoredProfile) {
 class MemoryStore implements SimilarityStore {
   profiles = new Map<string, StoredProfile>();
   questions = new Map<string, SourceQuestion>();
+  verifications = new Map<string, QuestionVerification>();
   status: string | undefined;
   years = ["2026", "2025"];
   searches: { sources: QuestionSourceContainer[]; years?: string[] }[] = [];
@@ -33,6 +43,12 @@ class MemoryStore implements SimilarityStore {
         subject: "Geography", topic: "Borders", subtopics: [],
         question_format: "single_correct_mcq", polarity: "positive_selection",
         reasoning_type: ["recall"], question_intent: "Identify a land border.",
+        review: {
+          status: "supported", primary_concept_id: "land_borders",
+          subject_confidence: 0.95, topic_confidence: 0.95,
+          rationale: "The tested primary concept concerns geographical boundaries.",
+          source_evidence: [{ concept_id: "land_borders", field: "question", exact_text: "Source question" }],
+        },
       },
       concept_profile: {
         primary_concepts: [{ concept_id: "land_borders", canonical_name: "Land borders", role: "primary", confidence: 0.9 }],
@@ -62,7 +78,9 @@ class MemoryStore implements SimilarityStore {
   async readProfile(id: string) { return this.profiles.get(id); }
   async readQuestion(reference: QuestionReference) {
     this.questionReads++;
-    return this.questions.get(`${reference.sourceContainer}:${reference.questionId}`);
+    const key = `${reference.sourceContainer}:${reference.questionId}`;
+    const question = this.questions.get(key);
+    return question ? { question, verification: this.verifications.get(key) } : undefined;
   }
   async userStatus() { return this.status; }
   async latestYears() { return this.years; }
@@ -78,12 +96,77 @@ test("missing and unready profiles return explicit empty matches without searchi
     status: "pending", source, matches: [], message: "No ready concept profile is available for this question.",
   });
   const profile = store.add("418", [1, 0, 0]);
-  for (const status of ["pending_extraction", "extracting", "pending_embedding", "embedding", "failed", "stale"] as const) {
+  for (const status of ["pending_extraction", "extracting", "pending_review", "pending_embedding", "embedding", "failed", "stale"] as const) {
     profile.processing.status = status;
     assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
   }
   assert.equal(store.searches.length, 0);
   assert.equal(store.questionReads, 0);
+});
+
+test("unreviewed or uncertain concept roles cannot supply ready search vectors", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  const reviewed = structuredClone(profile.concept_review);
+  for (const review of [
+    undefined,
+    { decisions: [{ ...reviewed.decisions[0], decision: "review" as const }] },
+    { decisions: [{ ...reviewed.decisions[0], role_status: "unrelated" as const }] },
+  ]) {
+    profile.concept_review = review;
+    assert.equal((await findSimilarQuestions(source, undefined, store)).status, "stale");
+    profile.concept_review = reviewed;
+    candidate.concept_review = review;
+    assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
+  }
+});
+
+test("a persisted review-only profile parses and returns pending without requiring an extraction", async () => {
+  const store = new MemoryStore();
+  const ready = store.add("418", [1, 0, 0]);
+  const verification = flagQuestionForReview(unverifiedQuestion(ready.processing.sourceContentHash), {
+    code: "CANONICAL_SCOPE_REVIEW", check: "concepts",
+    reason: "The proposed concept overlaps an existing identity.",
+    requiredAction: "Review the canonical meaning and scope.", evidence: ["Source evidence"],
+  });
+  const profile = storedProfileSchema.parse({
+    id: ready.id, sourceContainer: ready.sourceContainer, questionId: ready.questionId,
+    schemaVersion, sourceMetadata: ready.sourceMetadata, verification,
+    provenance: { ...ready.provenance, needs_review: true },
+    embedding: null, concept_embedding_input: "",
+    processing: {
+      ...ready.processing, status: "pending_review", embeddingInputHash: null,
+      error: "REVIEW_FLAG[CANONICAL_SCOPE_REVIEW]: The proposed concept overlaps an existing identity.",
+    },
+  });
+  store.profiles.set(profile.id, profile);
+  const result = await findSimilarQuestions(source, undefined, store);
+  assert.equal(result.status, "pending");
+  assert.deepEqual(result.matches, []);
+  assert.match(result.message, /review is required/);
+  assert.equal(store.questionReads, 0);
+  assert.equal(store.searches.length, 0);
+});
+
+test("a blocking verification flag excludes source and candidate vectors even with an old ready processing status", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  const issue = {
+    code: "ANSWER_REVIEW_REQUIRED", check: "answer" as const,
+    reason: "Conflicting answer evidence.", requiredAction: "Review the original answer key.",
+    evidence: ["Review record 001"],
+  };
+  profile.verification = flagQuestionForReview(unverifiedQuestion(profile.processing.sourceContentHash), issue);
+  assert.throws(() => storedProfileSchema.parse(profile), /cannot publish a ready vector/);
+  const blocked = await findSimilarQuestions(source, undefined, store);
+  assert.equal(blocked.status, "pending");
+  assert.deepEqual(blocked.matches, []);
+  assert.equal(store.questionReads, 0);
+  delete profile.verification;
+  candidate.verification = flagQuestionForReview(unverifiedQuestion(candidate.processing.sourceContentHash), issue);
+  assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
 });
 
 test("changed source content or embedding inputs return stale empty results", async () => {
@@ -95,6 +178,48 @@ test("changed source content or embedding inputs return stale empty results", as
   profile.concept_embedding_input += "Changed extraction.";
   assert.equal((await findSimilarQuestions(source, undefined, store)).status, "stale");
   assert.equal(store.searches.length, 0);
+});
+
+test("question-level review flags block matching even when the profile mirror has not caught up", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  const sourceFlag = flagQuestionForReview(unverifiedQuestion(profile.processing.sourceContentHash), {
+    code: "ANSWER_REVIEW_REQUIRED", check: "answer", reason: "The source answer needs review.",
+    requiredAction: "Check original answer evidence.", evidence: [],
+  });
+  store.verifications.set(profile.id, sourceFlag);
+  const blocked = await findSimilarQuestions(source, undefined, store);
+  assert.equal(blocked.status, "pending");
+  assert.deepEqual(blocked.matches, []);
+  assert.equal(store.searches.length, 0);
+  store.verifications.delete(profile.id);
+  store.verifications.set(candidate.id, flagQuestionForReview(unverifiedQuestion(candidate.processing.sourceContentHash), {
+    ...sourceFlag.issues[0], reason: "The candidate answer needs review.",
+  }));
+  assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
+});
+
+test("missing, uncertain and low-confidence classification reviews cannot supply source or candidate vectors", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  const reviewed = structuredClone(profile.classification.review);
+  for (const review of [
+    undefined,
+    { ...reviewed, status: "uncertain" as const },
+    { ...reviewed, status: "conflict" as const },
+    { ...reviewed, subject_confidence: 0.84 },
+    { ...reviewed, topic_confidence: 0.84 },
+    { ...reviewed, source_evidence: [] },
+    { ...reviewed, source_evidence: [{ ...reviewed.source_evidence[0], concept_id: "not_a_primary_concept" }] },
+  ]) {
+    profile.classification.review = review;
+    assert.equal((await findSimilarQuestions(source, undefined, store)).status, "stale");
+    profile.classification.review = reviewed;
+    candidate.classification.review = review;
+    assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
+  }
 });
 
 test("compatible vectors rank by cosine and return source content plus profile reasons, never vectors", async () => {
@@ -160,6 +285,8 @@ test("partial concept overlap is explained without changing the vector ranking s
   candidate.concept_profile.secondary_concepts = [{
     concept_id: "land_borders", canonical_name: "Land borders", role: "secondary", confidence: 0.9,
   }];
+  candidate.classification.review.source_evidence[0].concept_id = "coastal_borders";
+  candidate.classification.review.primary_concept_id = "coastal_borders";
   refreshEmbeddingInput(candidate);
   const result = await findSimilarQuestions(source, undefined, store);
   assert.equal(result.matches[0].relation, "partial_concept_overlap");

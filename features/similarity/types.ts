@@ -1,3 +1,6 @@
+import type { ConceptReview } from "./schema.js";
+import type { QuestionVerification } from "./verification.js";
+
 export type QuestionSourceContainer =
   | "questions"
   | "state_pcs"
@@ -73,6 +76,14 @@ export interface QuestionClassification {
   polarity: "positive_selection" | "negative_selection" | "mixed_or_conditional" | "not_applicable";
   reasoning_type: string[];
   question_intent: string;
+  review?: {
+    status: "supported" | "uncertain" | "conflict";
+    primary_concept_id: string;
+    subject_confidence: number;
+    topic_confidence: number;
+    rationale: string;
+    source_evidence: HighlightEvidence[];
+  };
 }
 
 export interface QuestionClaim {
@@ -98,7 +109,7 @@ export interface ProfileProvenance {
 }
 
 export interface ProfileProcessing {
-  status: "pending_extraction" | "extracting" | "pending_embedding" | "embedding" | "ready" | "stale" | "failed";
+  status: "pending_extraction" | "extracting" | "pending_review" | "pending_embedding" | "embedding" | "ready" | "stale" | "failed";
   sourceContentHash: string | null;
   embeddingInputHash: string | null;
   promptVersion: string;
@@ -123,6 +134,7 @@ export interface QuestionConceptProfile extends QuestionReference {
   classification: QuestionClassification;
   concept_profile: ConceptProfile;
   claims: QuestionClaim[];
+  concept_review?: ConceptReview;
   highlight_evidence?: HighlightEvidence[];
   similarity_profile: {
     concept_summary: string;
@@ -132,6 +144,7 @@ export interface QuestionConceptProfile extends QuestionReference {
   concept_embedding_input: string;
   embedding: number[] | null;
   processing: ProfileProcessing;
+  verification?: QuestionVerification;
 }
 
 export interface CanonicalConcept {
