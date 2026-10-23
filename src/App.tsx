@@ -8,6 +8,9 @@ import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { getExamCategory } from './exam-utils';
+import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
+import { QuestionReviewQueue } from './features/QuestionReviewQueue';
+import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
 import { highlightSimilarityTerms, similarityHighlightPhrases } from './features/similarity/highlights';
 import type { SimilarityMatch as ApiSimilarityMatch } from './features/similarity/types';
@@ -932,6 +935,7 @@ interface QuestionCardProps {
   onYearClick?: (year: string) => void;
   searchQuery?: string;
   isAdmin?: boolean;
+  adminReview?: AdminReviewAccess;
   isEditor?: boolean;
   onUpdateQuestion?: (id: number, year: string, answer: string, explanation: string) => Promise<void>;
   onOpenSimilarity?: (question: Question, scope: 'prelims' | 'csat' | 'english') => void;
@@ -2362,6 +2366,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onYearClick,
   searchQuery = "",
   isAdmin,
+  adminReview,
   isEditor,
   onUpdateQuestion,
   onOpenSimilarity
@@ -2698,6 +2703,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         </div>
       </div>
+
+      {isAdmin && <QuestionReviewPanel key={`${question.sourceContainer ?? storageScope}:${question.id}:${adminReview?.sourceContentHash ?? ""}`}
+        sourceContainer={question.sourceContainer ?? (storageScope === "csat" ? "csat-questions" : storageScope === "english" ? "english-questions" : "questions")}
+        questionId={question.id} verification={question.verification} access={adminReview} />}
 
       {isNotePreviewVisible && notesButtonRect && createPortal(
         <>
@@ -3109,6 +3118,7 @@ interface MainsQuestionCardProps {
   onToggleAnswer: () => void;
   userEmail?: string | null;
   isAdmin?: boolean;
+  adminReview?: AdminReviewAccess;
   isEditor?: boolean;
   showNoteInline?: boolean;
   onUpdateModelAnswer?: (id: string, modelAnswer: string) => Promise<void>;
@@ -3414,6 +3424,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onToggleAnswer,
   userEmail,
   isAdmin,
+  adminReview,
   isEditor,
   showNoteInline,
   onUpdateModelAnswer,
@@ -3508,6 +3519,9 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
       </div>
 
       <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] flex-grow">
+        {isAdmin && <QuestionReviewPanel key={`${question.sourceContainer ?? questionType}:${question.id}:${adminReview?.sourceContentHash ?? ""}`}
+          sourceContainer={question.sourceContainer ?? (questionType === "essay" ? "essay-questions" : "mains-questions")}
+          questionId={question.id} verification={question.verification} access={adminReview} />}
         <SimilarityQuestionText text={question.question} query={searchQuery} />
       </div>
 
@@ -3682,6 +3696,8 @@ function TopperScrollTabs({ answers, activeIdx, onSelect }: { answers: any[]; ac
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers' | 'csat' | 'english'>('prelims');
+  const [showQuestionReviews, setShowQuestionReviews] = useState(() =>
+    new URLSearchParams(window.location.search).get("review") === "answer-explanation");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
   const [essayQuestions, setEssayQuestions] = useState<EssayQuestion[]>([]);
@@ -4673,6 +4689,52 @@ export default function App() {
   // stays unlocked for 7 days before the key must be re-verified.
   const ADMIN_UNLOCK_MS = 7 * 24 * 60 * 60 * 1000;
   const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [questionReviews, setQuestionReviews] = useState<ReviewQuestion[] | null>(null);
+  const [loadingQuestionReviews, setLoadingQuestionReviews] = useState(false);
+  const [questionReviewError, setQuestionReviewError] = useState("");
+  const [questionReviewRefresh, setQuestionReviewRefresh] = useState(0);
+  const questionReviewById = useMemo(() => questionReviews === null ? null : Object.fromEntries(
+    questionReviews.map(review => [`${review.sourceContainer}:${review.questionId}`, review]),
+  ), [questionReviews]);
+  const handleQuestionReviewSaved = useCallback((sourceContainer: string, questionId: string, draft: CorrectionDraft) => {
+    setQuestionReviews(current => current?.map(review =>
+      review.sourceContainer === sourceContainer && review.questionId === questionId
+        ? { ...review, uiReview: reviewStateForDraft(draft, review.sourceContentHash) } : review) ?? null);
+  }, []);
+  useEffect(() => {
+    if (!isAdmin || !adminUnlocked || !adminKey) {
+      setQuestionReviews(null);
+      setLoadingQuestionReviews(false);
+      setQuestionReviewError("");
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingQuestionReviews(true);
+    setQuestionReviewError("");
+    fetch("/api/admin/question-review", {
+      headers: { Authorization: `Bearer ${adminKey}` }, cache: "no-store", signal: controller.signal,
+    }).then(async response => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load review flags.");
+      if (!controller.signal.aborted) setQuestionReviews(data.reviews);
+    }).catch(error => {
+      if (!controller.signal.aborted) setQuestionReviewError(error.message || "Could not load review flags.");
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoadingQuestionReviews(false);
+    });
+    return () => controller.abort();
+  }, [isAdmin, adminUnlocked, adminKey, questionReviewRefresh]);
+  const adminReviewFor = (
+    question: { id: string | number; sourceContainer?: string; question: string; exam?: string | null; year?: string | number | null }, fallbackContainer: string,
+  ): AdminReviewAccess | undefined => isAdmin ? {
+    key: adminUnlocked ? adminKey : "",
+    issues: questionReviewById === null ? undefined :
+      questionReviewById[`${question.sourceContainer ?? fallbackContainer}:${question.id}`]?.issues ?? [],
+    uiReview: questionReviewById?.[`${question.sourceContainer ?? fallbackContainer}:${question.id}`]?.uiReview,
+    sourceContentHash: questionReviewById?.[`${question.sourceContainer ?? fallbackContainer}:${question.id}`]?.sourceContentHash,
+    searchQuestion: question,
+    onSaved: draft => handleQuestionReviewSaved(question.sourceContainer ?? fallbackContainer, String(question.id), draft),
+  } : undefined;
   const verifyAdminKey = async (rawKey?: string): Promise<boolean> => {
     const k = (rawKey ?? localStorage.getItem('admin_api_key') ?? "").trim();
     if (!k) {
@@ -6305,10 +6367,10 @@ export default function App() {
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => { setActiveTab(tab.id); window.scrollTo(0, 0); }}
+                    onClick={() => { setActiveTab(tab.id); setShowQuestionReviews(false); window.scrollTo(0, 0); }}
                     className={cn(
                       "px-2 sm:px-2.5 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1",
-                      activeTab === tab.id
+                      !showQuestionReviews && activeTab === tab.id
                         ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     )}
@@ -6317,7 +6379,7 @@ export default function App() {
                     {tab.count > 0 && (
                       <span className={cn(
                         "text-[8px] px-1 py-px rounded font-bold hidden sm:inline",
-                        activeTab === tab.id
+                        !showQuestionReviews && activeTab === tab.id
                           ? "bg-white/20 text-white"
                           : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       )}>
@@ -6326,6 +6388,12 @@ export default function App() {
                     )}
                   </button>
                 ))}
+                {isAdmin && <button type="button" aria-pressed={showQuestionReviews && !isAdminView}
+                  onClick={() => { setShowQuestionReviews(true); setIsAdminView(false); window.scrollTo(0, 0); }}
+                  className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-bold",
+                    showQuestionReviews && !isAdminView ? "bg-amber-700 text-white" : "text-amber-800 dark:text-amber-300")}>
+                  Flagged questions{questionReviews !== null && ` (${questionReviews.length})`}
+                </button>}
               </div>
             </div>
 
@@ -7560,6 +7628,13 @@ export default function App() {
             )}
             <div ref={setAdminUsagePortalTarget} />
           </div>
+        ) : isAdmin && showQuestionReviews ? (
+          <QuestionReviewQueue reviews={questionReviews} adminKey={adminUnlocked ? adminKey : ""}
+            loading={loadingQuestionReviews} error={questionReviewError}
+            onSaved={handleQuestionReviewSaved}
+            onReload={() => setQuestionReviewRefresh(value => value + 1)}
+            onUnlock={() => setIsAdminView(true)}
+            renderText={(text, search) => <SimilarityQuestionText text={text} query={search} />} />
         ) : activeTab === 'prelims' ? (
           <>
             {/* Mobile Filters Toggle Button */}
@@ -7743,6 +7818,7 @@ export default function App() {
                         showNoteInline={notedOnly}
                         searchQuery={searchQuery}
                         isAdmin={isAdmin}
+                        adminReview={adminReviewFor(q, "questions")}
                         isEditor={isEditor}
                         onUpdateQuestion={handleUpdateQuestion}
                         onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
@@ -7986,6 +8062,7 @@ export default function App() {
                       onToggleAnswer={() => toggleMainsAnswer(q.id)}
                       userEmail={userEmail}
                       isAdmin={isAdmin}
+                      adminReview={adminReviewFor(q, "mains-questions")}
                       isEditor={isEditor}
                       showNoteInline={mainsNotedOnly}
                       onUpdateModelAnswer={updateMainsModelAnswer}
@@ -8153,6 +8230,8 @@ export default function App() {
                           key={q.id}
                           question={q}
                           storageScope="csat"
+                          isAdmin={isAdmin}
+                          adminReview={adminReviewFor(q, "csat-questions")}
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
@@ -8355,6 +8434,7 @@ export default function App() {
                           userEmail={userEmail}
                           searchQuery={englishSearchQuery}
                           isAdmin={isAdmin}
+                          adminReview={adminReviewFor(q, "english-questions")}
                           isEditor={isEditor}
                           onUpdateQuestion={handleUpdateEnglishQuestion}
                           onOpenPremium={() => setShowPremiumModal(true)}
@@ -8494,6 +8574,8 @@ export default function App() {
                       key={question.id}
                       question={question}
                       questionType="essay"
+                      isAdmin={isAdmin}
+                      adminReview={adminReviewFor(question, "essay-questions")}
                       isAnswerVisible={revealedEssayAnswers[question.id]}
                       onToggleAnswer={() => toggleEssayAnswer(question.id)}
                       userEmail={userEmail}

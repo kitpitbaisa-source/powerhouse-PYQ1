@@ -4,6 +4,7 @@
  */
 
 import type { QuestionSourceContainer } from "../features/similarity/types";
+import type { ContentVerification } from "./features/question-review";
 
 export interface Question {
   id: number;
@@ -16,6 +17,7 @@ export interface Question {
   answer: string;
   explanation: string;
   sourceContainer?: QuestionSourceContainer;
+  verification?: ContentVerification;
 }
 
 export interface MainsQuestion {
@@ -33,6 +35,7 @@ export interface MainsQuestion {
   words?: number | null;
   questionNumber?: number | string | null;
   sourceContainer?: QuestionSourceContainer;
+  verification?: ContentVerification;
 }
 
 export interface EssayQuestion extends MainsQuestion {

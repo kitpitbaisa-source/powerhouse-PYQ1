@@ -5,6 +5,7 @@ import { timingSafeEqual, createHmac } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
 import { createSimilarityRouter } from "./features/similarity/search";
+import { createQuestionReviewRouter } from "./features/question-review";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
 const key = process.env.COSMOS_KEY || "";
@@ -442,6 +443,7 @@ function requireAdmin(
   next();
 }
 serverApp.use("/api/admin", requireAdmin);
+serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 
 // Export for Vercel
 export default serverApp;
