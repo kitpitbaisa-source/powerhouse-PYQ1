@@ -289,7 +289,7 @@ test("browser searches the complete cross-bank queue and saves drafts without al
             change("comment", "Browser supporting reference.");
             await wait(() => !button("Save draft online").disabled);
             button("Save draft online").click();
-            await wait(() => document.querySelector('[role="status"]')?.textContent.includes("revision 1 saved"));
+            await wait(() => document.querySelector('[role="status"]')?.textContent.includes("Review saved (revision 1)"));
             check(document.querySelector('[aria-label="Reviewed in this UI"]'), "Successful save did not mark UI reviewed.");
             render("reload");
             await wait(() => button("Review / edit correction draft"));
@@ -314,7 +314,7 @@ test("browser searches the complete cross-bank queue and saves drafts without al
             check(!document.querySelector('[role="status"]'), "A failed save falsely reported success.");
             button("Reload saved draft").click();
             await wait(() => field("explanation")?.value === "Newer administrator draft.");
-            check(document.body.textContent.includes("UI review completed"), "Saved review did not update the UI heading.");
+            check(document.body.textContent.includes("Review completed"), "Saved review did not update the UI heading.");
             const listing = await fetch("/api/admin/question-review", {
               headers: { Authorization: "Bearer offline-admin-key" }
             }).then(response => response.json());
@@ -323,7 +323,7 @@ test("browser searches the complete cross-bank queue and saves drafts without al
             check(document.body.textContent.includes("55 matching flagged questions of 55"), "Incomplete cross-bank queue count.");
             change("search", "river");
             await wait(() => document.querySelectorAll("article").length === 1);
-            check(document.querySelector("article").textContent.includes("state_pcs"),
+            check(document.querySelector("article").textContent.includes("State PCS"),
               "Search did not find a different bank beyond the first 50 results.");
             const selectCheck = value => {
               field("check").value = value;
@@ -339,7 +339,7 @@ test("browser searches the complete cross-bank queue and saves drafts without al
             await wait(() => document.querySelectorAll("article").length === 3);
             change("progress", "reviewed");
             await wait(() => document.querySelectorAll("article").length === 1);
-            check(document.querySelector("article").textContent.includes("questions"), "Reviewed filter lost the saved draft.");
+            check(document.querySelector("article").textContent.includes("Prelims"), "Reviewed filter lost the saved draft.");
             change("progress", "not_reviewed");
             await wait(() => document.querySelectorAll("article").length === 2);
             change("search", "river");
@@ -356,6 +356,12 @@ test("browser searches the complete cross-bank queue and saves drafts without al
             change("progress", "reviewed");
             await wait(() => document.querySelectorAll("article").length === 1);
             check(document.querySelector('[aria-label="Reviewed in this UI"]'), "Queue did not immediately show saved review status.");
+            check(document.querySelector("article").dataset.reviewStatus === "reviewed" &&
+              document.querySelector("article").className.includes("bg-emerald-50"),
+              "The reviewed question card did not immediately turn green.");
+            check(!document.querySelector("article").textContent.includes("SOURCE_ANSWER_EXPLANATION_CONFLICT") &&
+              !document.querySelector("article").textContent.includes("Temporary correction drafts only"),
+              "Technical issue codes or the removed draft notice are still displayed.");
             const restored = await fetch("/api/admin/question-review", {
               headers: { Authorization: "Bearer offline-admin-key" }
             }).then(response => response.json());

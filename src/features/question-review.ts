@@ -68,6 +68,23 @@ export function reviewStateForDraft(
     : { status: "not_reviewed" };
 }
 
+export function reviewIssueSummary(issue: ContentReviewIssue): string {
+  const reason = issue.reason
+    .replace(/^REVIEW_FLAG\[[^\]]+\]:\s*/i, "")
+    .replace(/^The stored extraction records an unresolved answer\/explanation source conflict\.\s*/i, "")
+    .replace(/^Bounded first-pass finding:\s*/i, "")
+    .replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (issue.code === "OFFICIAL_KEY_PRIMARY_MEMBERSHIP_CONFLICT" && /Hume\/B/i.test(reason) && /nominal.*member/i.test(reason)) {
+    return "The official key selects Hume (B), but the cited 1884 letter says he remained a nominal Society member. The answer needs clarification.";
+  }
+  if (issue.code === "ARCHIVED_UPSC_KEY_ANSWER_MISMATCH" && /has now been corrected|already corrected/i.test(reason)) {
+    return "The answer has been corrected, but its explanation and supporting review still need validation.";
+  }
+  const summary = reason.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ") ||
+    `The ${issue.check} needs checking against the original source.`;
+  return summary.length <= 280 ? summary : `${summary.slice(0, 277).replace(/\s+\S*$/, "")}...`;
+}
+
 export function filterReviewQuestions(
   reviews: ReviewQuestion[], search: string, check: ReviewFilter, progress: ReviewProgressFilter = "all",
 ): ReviewQuestion[] {
@@ -93,7 +110,7 @@ export function reviewSearchUrl(question: ReviewSearchQuestion, issue: ContentRe
       const code = entity.toLowerCase().startsWith("#x") ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
       return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : original;
     }).replace(/\s+/g, " ").trim();
-  const query = [question.question, question.exam, question.year, issue.reason]
+  const query = [question.question, question.exam, question.year, reviewIssueSummary(issue)]
     .filter(value => value != null && value !== "").map(value => plain(String(value))).join(" ").trim();
   return `https://www.google.com/search?${new URLSearchParams({ q: query })}`;
 }

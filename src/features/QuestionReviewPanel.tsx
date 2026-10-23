@@ -1,6 +1,6 @@
 import React, { useId, useState } from "react";
 import type { QuestionSourceContainer } from "../../features/similarity/types";
-import { pendingContentIssues, reviewSearchUrl, reviewStateForDraft, type ContentVerification, type ContentReviewIssue,
+import { pendingContentIssues, reviewIssueSummary, reviewSearchUrl, reviewStateForDraft, type ContentVerification, type ContentReviewIssue,
   type CorrectionDraft, type QuestionReviewDetails, type ReviewSearchQuestion, type UiReviewStatus } from "./question-review";
 
 export type AdminReviewAccess = {
@@ -29,6 +29,12 @@ export const QuestionReviewPanel: React.FC<{
   const issues = details?.issues ?? access?.issues ?? pendingContentIssues(verification);
   if (!access || !issues.length) return null;
   const reviewStatus = details ? reviewStateForDraft(details.draft, details.sourceContentHash) : access.uiReview;
+  const reviewed = reviewStatus?.status === "reviewed";
+  const groups = new Map<string, ContentReviewIssue[]>();
+  for (const issue of issues) {
+    const summary = reviewIssueSummary(issue);
+    groups.set(summary, [...(groups.get(summary) ?? []), issue]);
+  }
   const options = details?.original.options ?? [];
   const searchQuestion = details?.original ?? access.searchQuestion;
   const endpoint = `/api/admin/question-review/${encodeURIComponent(sourceContainer)}/${encodeURIComponent(String(questionId))}`;
@@ -65,32 +71,37 @@ export const QuestionReviewPanel: React.FC<{
       if (!response.ok) throw new Error(data.error || "Draft save was not confirmed.");
       setDetails({ ...details, draft: data.draft, staleDraft: false });
       access.onSaved?.(data.draft);
-      notify(`Draft revision ${data.draft.revision} saved online. Marked Reviewed in this UI. Live content and review flags are unchanged.`);
+      notify(`Review saved (revision ${data.draft.revision}).`);
     } catch (caught) { notify(caught instanceof Error ? caught.message : "Draft save was not confirmed.", true); }
     finally { setBusy(false); }
   };
   return (
-    <section aria-label="Answer and explanation review" className="my-3 space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/30">
-      <h4 className="font-bold text-amber-900 dark:text-amber-200">
-        {reviewStatus?.status === "reviewed" ? "UI review completed · Admin only" : "Needs answer/explanation review · Admin only"}
+    <section aria-label="Answer and explanation review" className={`my-3 space-y-3 rounded-xl border p-3 text-[13px] leading-relaxed ${
+      reviewed ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/30"
+        : "border-amber-200 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20"}`}>
+      <h4 className={`font-bold ${reviewed ? "text-emerald-900 dark:text-emerald-200" : "text-amber-900 dark:text-amber-200"}`}>
+        {reviewed ? "Review completed" : "What needs fixing"}
       </h4>
-      {reviewStatus?.status === "reviewed" && <p aria-label="Reviewed in this UI" className="font-bold text-green-800 dark:text-green-300">
-        Reviewed in this UI · {new Date(reviewStatus.reviewedAt).toLocaleString()}
+      {reviewed && <p aria-label="Reviewed in this UI" className="font-bold text-emerald-800 dark:text-emerald-300">
+        Reviewed · {new Date(reviewStatus.reviewedAt).toLocaleString()}
       </p>}
-      <p className="text-amber-800 dark:text-amber-300">Temporary correction drafts only. Reviewed means a draft was saved here; live verification flags remain unchanged.</p>
-      {issues.map(issue => (
-        <div key={`${issue.check}:${issue.code}:${issue.reason}`}>
-          <details className="text-amber-900 dark:text-amber-200">
-            <summary className="cursor-pointer">
-              <code className="break-all font-semibold">{issue.code}</code>
-              <span className="block">{issue.reason.length <= 160 ? issue.reason : `${issue.reason.slice(0, 157)}...`}</span>
-            </summary>
-            <p className="mt-1 whitespace-pre-wrap">{issue.reason}</p>
-            {issue.requiredAction && <p className="mt-1">Required: {issue.requiredAction}</p>}
+      {[...groups].map(([summary, groupedIssues]) => (
+        <div key={summary} className="space-y-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {[...new Set(groupedIssues.map(issue => issue.check === "answer" ? "Answer" : "Explanation"))].join(" & ")}
+          </p>
+          <p className="font-medium text-slate-800 dark:text-slate-100">{summary}</p>
+          <details className="text-xs text-slate-600 dark:text-slate-400">
+            <summary className="cursor-pointer font-semibold">Full review notes</summary>
+            {groupedIssues.map((issue, index) => <div key={index} className="mt-2 space-y-1 whitespace-pre-wrap">
+              <p>{issue.reason}</p>
+              {issue.requiredAction && issue.requiredAction !== issue.reason && <p>What to check: {issue.requiredAction}</p>}
+            </div>)}
           </details>
-          {searchQuestion && <a href={reviewSearchUrl(searchQuestion, issue)} target="_blank" rel="noopener noreferrer"
+          {searchQuestion && <a href={reviewSearchUrl(searchQuestion, { ...groupedIssues[0], reason: summary })} target="_blank" rel="noopener noreferrer"
+            title="Search question + exam + review reason on Google"
             referrerPolicy="no-referrer" className="mt-1 inline-block font-semibold text-blue-700 underline dark:text-blue-300">
-            Google: question + exam + reason
+            Search question + this issue
           </a>}
         </div>
       ))}

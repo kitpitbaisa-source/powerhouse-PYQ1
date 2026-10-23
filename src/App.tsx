@@ -2585,7 +2585,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div
-      className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-4 sm:p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group animate-fadeInUp overflow-hidden"
+      className={cn("relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-4 sm:p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group animate-fadeInUp overflow-hidden",
+        isAdmin && adminReview?.uiReview?.status === "reviewed" && "bg-emerald-50 dark:bg-emerald-950/30 ring-emerald-300 dark:ring-emerald-700 hover:ring-emerald-400 dark:hover:ring-emerald-600")}
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, animationFillMode: 'both' }}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -3459,7 +3460,8 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   };
 
   return (
-    <div className="relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group overflow-hidden">
+    <div className={cn("relative bg-white dark:bg-slate-800/70 backdrop-blur-sm p-5 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_30px_-8px_rgba(59,130,246,0.25)] dark:shadow-black/10 ring-1 ring-slate-200/70 dark:ring-slate-700/70 hover:ring-blue-400/60 dark:hover:ring-blue-500/50 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group overflow-hidden",
+      isAdmin && adminReview?.uiReview?.status === "reviewed" && "bg-emerald-50 dark:bg-emerald-950/30 ring-emerald-300 dark:ring-emerald-700 hover:ring-emerald-400 dark:hover:ring-emerald-600")}>
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex gap-1.5 items-center flex-wrap">
