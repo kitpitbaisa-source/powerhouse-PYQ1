@@ -2445,7 +2445,7 @@ const QuestionSimilarityExplorer: React.FC<{
         onMouseDown={event => event.stopPropagation()}
       >
         <div ref={headerRef} className="relative flex flex-wrap items-center justify-between         gap-1.5 border-b border-slate-200/70 bg-white/90 px-3 py-2 backdrop-blur-xl dark:border-slate-800 dark:bg-[#0A0F1D] sm:gap-2 sm:px-5 sm:py-2.5 lg:gap-3 lg:px-7 lg:py-4">
-          <div ref={headerTitleRef} className="order-1 min-w-0 flex-1 pr-9 sm:flex-none sm:pr-0">
+          <div ref={headerTitleRef} className={cn("order-1 min-w-0 flex-1 sm:flex-none sm:pr-0", !scoreChip && "pr-9")}>
                             <div className="flex items-center gap-2 lg:gap-3">
                               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30 lg:h-10 lg:w-10 lg:rounded-2xl">
                         <SimilarityIcon className="h-4 w-4 lg:h-5 lg:w-5" />
@@ -2454,9 +2454,9 @@ const QuestionSimilarityExplorer: React.FC<{
                                 <h2 className="truncate text-base font-bold leading-tight tracking-tight text-slate-900 dark:text-white lg:text-xl">Similarity Explorer</h2>
                                 <p className="truncate text-[10px] font-medium leading-tight text-slate-500 dark:text-slate-400 lg:text-xs">Compare concepts across related questions</p>
                       </div>
-              {scoreChip && <div className="ml-1 shrink-0 sm:ml-2">{scoreChip}</div>}
             </div>
           </div>
+          {scoreChip && <div className="order-1 shrink-0 mr-8 sm:order-3 sm:mr-9 lg:mr-11">{scoreChip}</div>}
           <motion.button
             type="button"
             onClick={onClose}
@@ -2468,7 +2468,8 @@ const QuestionSimilarityExplorer: React.FC<{
             <X className="h-5 w-5" />
           </motion.button>
           <div ref={headerControlsRef} className={cn(
-            "order-2 flex w-full flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 transition-all duration-200 sm:ml-auto sm:mr-9 sm:w-auto sm:flex-nowrap sm:justify-start sm:gap-x-2 lg:mr-11",
+            "order-2 flex w-full flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 transition-all duration-200 sm:ml-auto sm:w-auto sm:flex-nowrap sm:justify-start sm:gap-x-2",
+            !scoreChip && "sm:mr-9 lg:mr-11",
             controlsHidden && controlsWrapped && "pointer-events-none max-lg:max-h-0 max-lg:overflow-hidden max-lg:opacity-0 max-lg:-mt-1.5 sm:max-lg:-mt-2"
           )}>
             <div className="flex items-center gap-1.5 sm:gap-2">
