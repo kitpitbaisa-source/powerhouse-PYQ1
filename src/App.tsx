@@ -2270,6 +2270,31 @@ const QuestionSimilarityExplorer: React.FC<{
   const [highlightsEnabled, setHighlightsEnabled] = useState(true);
   const [highlightTone, setHighlightTone] = useState<SimilarityHighlightTone>("violet");
   const [showAllConcepts, setShowAllConcepts] = useState(false);
+  const viewPrefsReadyRef = useRef(false);
+  useEffect(() => {
+    viewPrefsReadyRef.current = false;
+    if (!userEmail) return;
+    let cancelled = false;
+    fetch(`/api/similarity-view-preferences?email=${encodeURIComponent(userEmail)}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(saved => {
+        if (cancelled || !saved) return;
+        setShowAllConcepts(saved.showAllConcepts === true);
+        setHighlightsEnabled(saved.highlightsEnabled !== false);
+        if (["violet", "amber", "emerald"].includes(saved.highlightTone)) setHighlightTone(saved.highlightTone);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) viewPrefsReadyRef.current = true; });
+    return () => { cancelled = true; };
+  }, [userEmail]);
+  useEffect(() => {
+    if (!userEmail || !viewPrefsReadyRef.current) return;
+    fetch("/api/similarity-view-preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: userEmail, showAllConcepts, highlightsEnabled, highlightTone }),
+    }).catch(() => {});
+  }, [userEmail, showAllConcepts, highlightsEnabled, highlightTone]);
   const popupBodyRef = useRef<HTMLDivElement>(null);
   const selectedPaneRef = useRef<HTMLElement>(null);
   const matchesPaneRef = useRef<HTMLElement>(null);

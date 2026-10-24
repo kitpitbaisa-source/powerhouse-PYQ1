@@ -14,9 +14,7 @@ import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
-const rankingVersion = "concept-cosine-overlap-v2";
-// Embedding cosine plus up to this much for matching concept IDs (Dice overlap), capped at 100%.
-const overlapWeight = 0.25;
+const rankingVersion = "concept-cosine-v3";
 const maxResults = 12;
 const candidateCount = 50;
 const requestSchema = z.object({
@@ -121,14 +119,6 @@ function allConcepts(profile: StoredProfile): SharedConcept[] {
     .map(concept => ({ conceptId: concept.concept_id, canonicalName: concept.canonical_name }));
 }
 
-function conceptOverlap(source: StoredProfile, candidate: StoredProfile, sharedCount: number): number {
-  const sourceCount = new Set([...source.concept_profile.primary_concepts, ...source.concept_profile.secondary_concepts]
-    .map(concept => concept.concept_id)).size;
-  const candidateCount = new Set([...candidate.concept_profile.primary_concepts, ...candidate.concept_profile.secondary_concepts]
-    .map(concept => concept.concept_id)).size;
-  return sourceCount + candidateCount ? (2 * sharedCount) / (sourceCount + candidateCount) : 0;
-}
-
 export async function findSimilarQuestions(
   reference: QuestionReference,
   email: string | undefined,
@@ -183,8 +173,7 @@ export async function findSimilarQuestions(
     const cosine = cosineScore(profile, candidate);
     if (cosine <= 0) continue;
     const explanation = explainMatch(profile, candidate);
-    const overlap = conceptOverlap(profile, candidate, new Set(explanation.sharedConcepts.map(concept => concept.conceptId)).size);
-    ranked.push({ profile: candidate, score: Math.min(1, cosine + overlapWeight * overlap), explanation });
+    ranked.push({ profile: candidate, score: cosine, explanation });
   }
   ranked.sort((a, b) => b.score - a.score || a.profile.id.localeCompare(b.profile.id));
   const matches: SimilarityMatch[] = [];

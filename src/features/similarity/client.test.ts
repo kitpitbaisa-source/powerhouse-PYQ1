@@ -8,17 +8,14 @@ import { highlightSimilarityTerms, similarityHighlightPhrases } from "./highligh
 import type { Question } from "../../types";
 import type { HighlightEvidence, QuestionReference, SimilarityResponse } from "./types";
 
-test("question-card similarity actions label repetition counts as an illustrative demo", () => {
+test("question-card similarity actions open the explorer without demo statistics", () => {
   let opened = false;
   const actions = QuestionSimilarityActions({ onExplore: () => { opened = true; } });
-  assert.ok(React.isValidElement<{ children: React.ReactElement<{ onClick: () => void }>[] }>(actions));
+  assert.ok(React.isValidElement<{ children: React.ReactElement<{ onClick: () => void }> }>(actions));
   const html = renderToStaticMarkup(actions);
   assert.match(html, /> Similar questions<\/button>/);
-  assert.match(html, /6 PYQs/);
-  assert.match(html, /4 years/);
-  assert.match(html, />Demo<\/span>/);
-  assert.match(html, /not actual question statistics/);
-  actions.props.children[0].props.onClick();
+  assert.doesNotMatch(html, /PYQs|4 years|Demo/);
+  actions.props.children.props.onClick();
   assert.equal(opened, true);
 });
 

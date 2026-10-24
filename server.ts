@@ -1135,6 +1135,69 @@ serverApp.put("/api/filter-preferences", async (req, res) => {
   }
 });
 
+// Similarity popup view settings (concept scope, highlight on/off, highlight
+// colour). One document per user in the same container as the default filters.
+const SIMILARITY_VIEW_TONES = ["violet", "amber", "emerald"];
+const SIMILARITY_VIEW_DEFAULTS = { showAllConcepts: false, highlightsEnabled: true, highlightTone: "violet" };
+
+serverApp.get("/api/similarity-view-preferences", async (req, res) => {
+  const email = String(req.query.email || "").toLowerCase().trim();
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+  try {
+    await ensureUserWorkspaceContainer();
+    const { resource } = await userWorkspaceContainer.item("similarity-view-preferences", email).read();
+    res.json(resource ? {
+      showAllConcepts: resource.showAllConcepts === true,
+      highlightsEnabled: resource.highlightsEnabled !== false,
+      highlightTone: SIMILARITY_VIEW_TONES.includes(resource.highlightTone) ? resource.highlightTone : "violet",
+    } : SIMILARITY_VIEW_DEFAULTS);
+  } catch (error: any) {
+    if (error.code === 404) return res.json(SIMILARITY_VIEW_DEFAULTS);
+    console.error("Error fetching similarity view preferences:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+serverApp.put("/api/similarity-view-preferences", async (req, res) => {
+  const email = String(req.body?.email || "").toLowerCase().trim();
+  const { showAllConcepts, highlightsEnabled, highlightTone } = req.body || {};
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+  if (typeof showAllConcepts !== "boolean" || typeof highlightsEnabled !== "boolean" ||
+      !SIMILARITY_VIEW_TONES.includes(highlightTone)) {
+    return res.status(400).json({ error: "Invalid similarity view preferences" });
+  }
+  try {
+    await ensureUserWorkspaceContainer();
+    let existing: any = null;
+    try {
+      const { resource } = await userWorkspaceContainer.item("similarity-view-preferences", email).read();
+      existing = resource;
+    } catch (error: any) {
+      if (error.code !== 404) throw error;
+    }
+    const now = new Date().toISOString();
+    await userWorkspaceContainer.items.upsert({
+      ...(existing || {}),
+      id: "similarity-view-preferences",
+      userId: email,
+      type: "similarity-view-preferences",
+      createdAt: existing?.createdAt || now,
+      modifiedAt: now,
+      showAllConcepts,
+      highlightsEnabled,
+      highlightTone,
+    });
+    res.json({ showAllConcepts, highlightsEnabled, highlightTone });
+  } catch (error: any) {
+    console.error("Error saving similarity view preferences:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 serverApp.delete("/api/filter-preferences", async (req, res) => {
   const email = String(req.query.email || "").toLowerCase().trim();
   const sectionParam = String(req.query.section || "").trim();
