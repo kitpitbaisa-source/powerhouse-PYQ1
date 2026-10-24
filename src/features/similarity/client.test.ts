@@ -13,7 +13,7 @@ test("question-card similarity actions open the explorer without demo statistics
   const actions = QuestionSimilarityActions({ onExplore: () => { opened = true; } });
   assert.ok(React.isValidElement<{ children: React.ReactElement<{ onClick: () => void }> }>(actions));
   const html = renderToStaticMarkup(actions);
-  assert.match(html, /> Similar questions<\/button>/);
+  assert.match(html, /> Similarity<\/button>/);
   assert.doesNotMatch(html, /PYQs|4 years|Demo/);
   actions.props.children.props.onClick();
   assert.equal(opened, true);

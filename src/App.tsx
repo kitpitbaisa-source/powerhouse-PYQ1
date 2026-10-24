@@ -1774,7 +1774,7 @@ export const QuestionSimilarityActions: React.FC<{ onExplore: () => void }> = ({
       title="Explore questions testing similar concepts"
       className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
     >
-      <SimilarityIcon className="h-3.5 w-3.5" /> Similar questions
+      <SimilarityIcon className="h-3.5 w-3.5" /> Similarity
     </button>
   </div>
 );
