@@ -12,6 +12,7 @@ import type {
 import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
 import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
 import { similarityCacheTags, similarityCdnCacheControl } from "./cache-tags.js";
+import { readRuntimeSimilarity, similarityRuntimeKey, writeRuntimeSimilarity } from "./runtime-cache.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
@@ -321,11 +322,15 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
     if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer, questionId, and optional Gmail email are required." });
     try {
       const { sourceContainer, questionId, email, tier } = parsed.data;
-      const result = await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins, { tier });
+      const runtimeKey = tier ? similarityRuntimeKey(sourceContainer, questionId, tier) : undefined;
+      const stored = runtimeKey ? await readRuntimeSimilarity(runtimeKey) : undefined;
+      const result = stored ?? await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins, { tier });
       if (tier && result.status === "ready") {
+        const tags = similarityCacheTags(result.source, result.matches);
+        if (runtimeKey && !stored) await writeRuntimeSimilarity(runtimeKey, result, tags);
         res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
         res.setHeader("Vercel-CDN-Cache-Control", similarityCdnCacheControl);
-        res.setHeader("Vercel-Cache-Tag", similarityCacheTags(result.source, result.matches).join(","));
+        res.setHeader("Vercel-Cache-Tag", tags.join(","));
       }
       return res.json(result);
     } catch (error) {
