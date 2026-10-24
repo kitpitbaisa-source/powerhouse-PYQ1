@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { embeddingModel, embeddingPrefix, promptVersion, schemaVersion } from "./config";
-import { buildEmbeddingInput, hashContent } from "./pipeline";
+import { buildEmbeddingInput, buildProvisionalEmbeddingInput, hashContent } from "./pipeline";
 import { profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema";
 import { findSimilarQuestions, type SimilarityStore } from "./search";
 import type { QuestionReference, QuestionSourceContainer } from "./types";
-import { flagQuestionForReview, unverifiedQuestion, type QuestionVerification } from "./verification";
+import { flagQuestionForReview, questionVerificationSchema, unverifiedQuestion, type QuestionVerification } from "./verification";
+import { buildMasterRecords } from "../taxonomy/master";
 
 const source: QuestionReference = { sourceContainer: "questions", questionId: "418" };
 
@@ -23,6 +24,19 @@ function refreshEmbeddingInput(profile: StoredProfile) {
 }
 
 class MemoryStore implements SimilarityStore {
+  subtopicMaster = buildMasterRecords({
+    version: "test",
+    subjects: [{
+      id: "S03", name: "Geography", boundary: "Geographical relationships",
+      topics: [{
+        id: "S03-T01", name: "Borders",
+        subtopicRecords: [
+          { id: "S03-T01-ST01", name: "Land borders" },
+          { id: "S03-T01-ST02", name: "Neighbouring countries" },
+        ],
+      }],
+    }],
+  });
   profiles = new Map<string, StoredProfile>();
   questions = new Map<string, SourceQuestion>();
   verifications = new Map<string, QuestionVerification>();
@@ -76,6 +90,7 @@ class MemoryStore implements SimilarityStore {
     return profile;
   }
   async readProfile(id: string) { return this.profiles.get(id); }
+  async readSubtopicMaster() { return this.subtopicMaster; }
   async readQuestion(reference: QuestionReference) {
     this.questionReads++;
     const key = `${reference.sourceContainer}:${reference.questionId}`;
@@ -89,6 +104,65 @@ class MemoryStore implements SimilarityStore {
     return [...this.profiles.values()];
   }
 }
+
+function authorizeProvisional(store: MemoryStore, profile: StoredProfile) {
+  const verification = flagQuestionForReview(unverifiedQuestion(profile.processing.sourceContentHash), {
+    code: "SOURCE_REVIEW_PENDING", check: "explanation", reason: "Explanation still needs factual review.",
+    requiredAction: "Review later.", evidence: [],
+  });
+  store.verifications.set(profile.id, structuredClone(verification));
+  profile.verification = verification;
+  profile.provenance!.needs_review = true;
+  profile.concept_review!.decisions[0].decision = "review";
+  profile.concept_review!.decisions[0].existing_concept_id = null;
+  profile.concept_embedding_input = buildProvisionalEmbeddingInput(profileExtractionSchema.parse(profile));
+  profile.processing.embeddingInputHash = hashContent(embeddingPrefix + profile.concept_embedding_input);
+  profile.processing.provisionalEmbedding = {
+    mode: "flagged_similarity", authorizedBy: "explicit-user-approval",
+    authorizedAt: "2026-10-23T18:00:00.000Z", auditReference: "offline:authorized-cohort",
+    reason: "Provisional embedding; unresolved factual and identity review.",
+    sourceContentHash: profile.processing.sourceContentHash,
+    profileExtractionHash: hashContent(profileExtractionSchema.parse(profile)),
+    profileVerificationHash: hashContent(verification), sourceVerificationHash: hashContent(verification),
+    activeProfileHash: hashContent(profile),
+    issues: [
+      { code: "PROVISIONAL_EMBEDDING_REVIEW_PENDING", reason: "Provisional embedding; unresolved factual and identity review." },
+      { code: "SOURCE_REVIEW_PENDING", reason: "Explanation still needs factual review." },
+    ],
+  };
+}
+
+test("authorized flagged embeddings match with visible reasons but not canonical overlap claims", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  authorizeProvisional(store, profile);
+  authorizeProvisional(store, candidate);
+  assert(storedProfileSchema.safeParse(profile).success);
+  const result = await findSimilarQuestions(source, undefined, store);
+  assert.equal(result.status, "ready");
+  if (result.status !== "ready") return;
+  assert.equal(result.matches.length, 1);
+  assert.equal(result.matches[0].relation, "related_concept");
+  assert.deepEqual(result.matches[0].sharedConcepts, []);
+  assert(result.sourceWarnings!.some(issue => issue.code === "PROVISIONAL_EMBEDDING_REVIEW_PENDING"));
+  assert(result.matches[0].question.reviewWarnings!.some(issue => issue.code === "SOURCE_REVIEW_PENDING"));
+  assert.equal(store.verifications.get(profile.id)!.status, "pending_review");
+});
+
+test("flagged matching authorization is invalidated by extraction or source-review changes", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  authorizeProvisional(store, profile);
+  authorizeProvisional(store, candidate);
+  store.verifications.get(profile.id)!.reason = "New source issue after authorization.";
+  assert.equal((await findSimilarQuestions(source, undefined, store)).status, "pending");
+  store.verifications.set(profile.id, structuredClone(profile.verification!));
+  candidate.concept_profile!.underlying_principle = "Changed unreviewed meaning.";
+  const result = await findSimilarQuestions(source, undefined, store);
+  assert.deepEqual(result.matches, []);
+});
 
 test("missing and unready profiles return explicit empty matches without searching or reading questions", async () => {
   const store = new MemoryStore();
@@ -169,6 +243,37 @@ test("a blocking verification flag excludes source and candidate vectors even wi
   assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
 });
 
+test("acknowledged warnings remain visible on both sides of similarity while blocked candidates remain excluded", async () => {
+  const store = new MemoryStore();
+  const profile = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  for (const item of [profile, candidate]) {
+    const verification = questionVerificationSchema.parse({
+      ...unverifiedQuestion(item.processing.sourceContentHash), reviewedBy: "offline-reviewer",
+      warnings: [{
+        code: "CLASS_SIZE_NONINTEGER_REVIEW_FLAG", check: "question", reason: "Known inconsistent class count.",
+        requiredAction: "Retain the original wording caveat.", evidence: ["Original source reviewed."],
+        acknowledgedBy: "question-owner", acknowledgedAt: "2026-10-22T12:00:00Z",
+        authorizationEvidence: ["Explicit approval for this question."],
+      }],
+    });
+    item.verification = verification;
+    store.verifications.set(item.id, verification);
+  }
+  const result = await findSimilarQuestions(source, undefined, store);
+  assert.equal(result.status, "ready");
+  if (result.status !== "ready") throw new Error("Expected ready similarity.");
+  const expected = [{ code: "CLASS_SIZE_NONINTEGER_REVIEW_FLAG", reason: "Known inconsistent class count." }];
+  assert.deepEqual(result.sourceWarnings, expected);
+  assert.deepEqual(result.matches[0].question.reviewWarnings, expected);
+  assert.doesNotMatch(JSON.stringify(result), /question-owner|Explicit approval/);
+  store.verifications.set(candidate.id, flagQuestionForReview(candidate.verification, {
+    code: "ANSWER_REVIEW_REQUIRED", check: "answer", reason: "Another unresolved answer conflict.",
+    requiredAction: "Review the answer.", evidence: ["Conflicting source."],
+  }));
+  assert.deepEqual((await findSimilarQuestions(source, undefined, store)).matches, []);
+});
+
 test("changed source content or embedding inputs return stale empty results", async () => {
   const store = new MemoryStore();
   const profile = store.add("418", [1, 0, 0]);
@@ -231,7 +336,7 @@ test("compatible vectors rank by cosine and return source content plus profile r
   higher.processing.sourceContentHash = hashContent(store.questions.get(higher.id));
   const result = await findSimilarQuestions(source, undefined, store);
   assert.equal(result.status, "ready");
-  assert.deepEqual(result.matches.map(match => [match.questionId, match.score]), [["3", 100], ["2", 60]]);
+  assert.deepEqual(result.matches.map(match => [match.questionId, match.score]), [["3", 100], ["2", 85]]);
   assert.equal(result.matches[0].question.question, "Entirely different wording.");
   assert.equal(result.matches[0].question.sourceContainer, "state_pcs");
   assert.equal(result.matches[0].relation, "same_concept");
@@ -275,7 +380,7 @@ test("free users cannot read old source or candidate questions; stored premium r
   assert.equal((await findSimilarQuestions(source, "admin@gmail.com", store, ["admin@gmail.com"])).matches.length, 1);
 });
 
-test("partial concept overlap is explained without changing the vector ranking score", async () => {
+test("partial concept overlap is explained and adds a bonus to the cosine score", async () => {
   const store = new MemoryStore();
   store.add("418", [1, 0, 0]);
   const candidate = store.add("2", [0.8, 0.6, 0]);
@@ -290,7 +395,7 @@ test("partial concept overlap is explained without changing the vector ranking s
   refreshEmbeddingInput(candidate);
   const result = await findSimilarQuestions(source, undefined, store);
   assert.equal(result.matches[0].relation, "partial_concept_overlap");
-  assert.equal(result.matches[0].score, 80);
+  assert.equal(result.matches[0].score, 97);
 });
 
 test("highlight evidence includes important concepts even when they are not shared", async () => {
@@ -321,12 +426,60 @@ test("highlight evidence includes important concepts even when they are not shar
   assert.deepEqual(result.sourceHighlights, reference.highlight_evidence);
   assert.deepEqual(result.matches[0].highlights, candidate.highlight_evidence);
   assert.deepEqual(result.matches[0].sharedConcepts, [{ conceptId: "land_borders", canonicalName: "Land borders" }]);
-  assert.equal(result.matches[0].score, 80);
+    assert.equal(result.matches[0].score, 93);
   store.questions.get(candidate.id).question += " Changed.";
   const stale = await findSimilarQuestions(source, undefined, store);
   assert.equal(stale.matches.length, 0);
   if (stale.status !== "ready") throw new Error("Expected a ready reference without stale matches.");
   assert.deepEqual(stale.sourceHighlights, reference.highlight_evidence);
+});
+
+test("similarity results include master-approved subtopics without changing source labels", async () => {
+  for (const sourceContainer of ["questions", "mains-questions"] as const) {
+    const store = new MemoryStore();
+    const reference = store.add("418", [1, 0, 0], "2026", sourceContainer);
+    const candidate = store.add("2", [1, 0, 0], "2026", sourceContainer);
+    reference.classification.subtopics = ["Land borders"];
+    reference.classification.master = { subjectId: "S03", topicId: "S03-T01", subtopicIds: ["S03-T01-ST01"] };
+    candidate.classification.subtopics = ["Land borders", "Neighbouring countries"];
+    candidate.classification.master = { subjectId: "S03", topicId: "S03-T01", subtopicIds: ["S03-T01-ST01", "S03-T01-ST02"] };
+    refreshEmbeddingInput(reference);
+    refreshEmbeddingInput(candidate);
+    const result = await findSimilarQuestions({ ...source, sourceContainer }, undefined, store);
+    if (result.status !== "ready") throw new Error("Expected ready similarity results.");
+    assert.deepEqual(result.sourceSubtopics, ["Land borders"]);
+    assert.deepEqual(result.matches[0].question.subtopics, ["Land borders", "Neighbouring countries"]);
+    assert.equal(result.matches[0].question.subject, store.questions.get(candidate.id).subject);
+    assert.equal(result.matches[0].question.topic, store.questions.get(candidate.id).topic);
+    candidate.classification.subtopics = [];
+    candidate.classification.master.subtopicIds = [];
+    refreshEmbeddingInput(candidate);
+    const noSubtopics = await findSimilarQuestions({ ...source, sourceContainer }, undefined, store);
+    assert.deepEqual(noSubtopics.matches[0].question.subtopics, []);
+  }
+});
+
+test("similarity cards hide unbound legacy labels and stop displaying retired master subtopics", async () => {
+  const store = new MemoryStore();
+  const reference = store.add("418", [1, 0, 0]);
+  const candidate = store.add("2", [1, 0, 0]);
+  reference.classification.subtopics = ["Temple identity"];
+  candidate.classification.subtopics = ["Land borders"];
+  refreshEmbeddingInput(reference);
+  refreshEmbeddingInput(candidate);
+  const legacy = await findSimilarQuestions(source, undefined, store);
+  if (legacy.status !== "ready") throw new Error("Expected ready similarity results.");
+  assert.deepEqual(legacy.sourceSubtopics, []);
+  assert.deepEqual(legacy.matches[0].question.subtopics, []);
+  candidate.classification.master = { subjectId: "S03", topicId: "S03-T01", subtopicIds: ["S03-T01-ST01"] };
+  refreshEmbeddingInput(candidate);
+  const approved = await findSimilarQuestions(source, undefined, store);
+  assert.deepEqual(approved.matches[0].question.subtopics, ["Land borders"]);
+  store.subtopicMaster = store.subtopicMaster.filter(record => record.id !== "S03-T01-ST01");
+  const retired = await findSimilarQuestions(source, undefined, store);
+  assert.deepEqual(retired.matches[0].question.subtopics, []);
+  assert.equal(retired.matches[0].score, approved.matches[0].score);
+  assert.deepEqual(candidate.classification.subtopics, ["Land borders"]);
 });
 
 test("mains searches stay in their bank and return descriptive content", async () => {

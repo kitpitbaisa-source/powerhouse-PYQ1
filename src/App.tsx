@@ -8,11 +8,12 @@ import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { getExamCategory } from './exam-utils';
+import { withSubjectDisplay } from './features/classification';
 import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
 import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
-import { highlightSimilarityTerms, similarityHighlightPhrases } from './features/similarity/highlights';
+import { highlightSimilarityTerms, similarityHighlightPhrases, type SimilarityHighlightTone } from './features/similarity/highlights';
 import type { SimilarityMatch as ApiSimilarityMatch } from './features/similarity/types';
 import {
   Landmark,
@@ -69,7 +70,7 @@ import {
 } from 'lucide-react';
 import { fallbackQuestions } from './questions_fallback.ts';
 import { EssayQuestion, MainsQuestion, Question, SubjectColorMap, ToppersCopyQuestion } from './types.ts';
-import { cn } from './lib/utils.ts';
+import { cn, isCorrectOption } from './lib/utils.ts';
 // import { isValidCode } from './authorizedCodes';
 
 const ANDROID_APK_DOWNLOAD_URL = "/downloads/PowerhousePYQ.apk";
@@ -660,6 +661,17 @@ const dedupeQuestionsById = <T extends { id: number | string }>(list: T[]): T[] 
     out.push(item);
   }
   return out;
+};
+
+export const mergeQuestionsById = <T extends { id: number | string }>(previous: T[], incoming: T[]): T[] => {
+  const remaining = new Map(dedupeQuestionsById(incoming).map(question => [String(question.id), question]));
+  const updated = dedupeQuestionsById(previous).map(question => {
+    const id = String(question.id);
+    const latest = remaining.get(id);
+    remaining.delete(id);
+    return latest ?? question;
+  });
+  return [...updated, ...remaining.values()];
 };
 
 const notifyRemoteStateListeners = () => remoteStateListeners.forEach(listener => listener());
@@ -1593,11 +1605,15 @@ const parseMatchTable = (raw: string | undefined): MatchData | null => {
   return null;
 };
 
-const MatchQuestion: React.FC<{ data: MatchData; query: string; badge: React.ReactNode }> = ({ data, query, badge }) => (
+const MatchQuestion: React.FC<{
+  data: MatchData;
+  query: string;
+  badge?: React.ReactNode;
+} & Pick<React.ComponentProps<typeof HighlightText>, 'keywordTokens' | 'keywordPhrases' | 'keywordTone'>> = ({ data, query, badge, ...highlightProps }) => (
   <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-3.5 px-1">
     <div className="leading-[23px] mb-2 whitespace-pre-wrap">
       {badge}
-      {data.intro && <span className="align-middle"><HighlightText text={data.intro} query={query} spaceLists /></span>}
+      {data.intro && <span className="align-middle"><HighlightText text={data.intro} query={query} spaceLists {...highlightProps} /></span>}
     </div>
     <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-600/70">
       <table className="w-full text-[12.5px] border-collapse">
@@ -1610,14 +1626,14 @@ const MatchQuestion: React.FC<{ data: MatchData; query: string; badge: React.Rea
         <tbody>
           {data.rows.map((row, i) => (
             <tr key={i} className="odd:bg-white even:bg-slate-50/70 dark:odd:bg-transparent dark:even:bg-slate-700/20">
-              <td className="align-top px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.l} query={query} /></td>
-              <td className="align-top px-3 py-1.5 border-b border-l border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.r} query={query} /></td>
+              <td className="align-top px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.l} query={query} {...highlightProps} /></td>
+              <td className="align-top px-3 py-1.5 border-b border-l border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.r} query={query} {...highlightProps} /></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    {data.outro && <div className="mt-2 leading-[23px] whitespace-pre-wrap"><HighlightText text={data.outro} query={query} spaceLists /></div>}
+    {data.outro && <div className="mt-2 leading-[23px] whitespace-pre-wrap"><HighlightText text={data.outro} query={query} spaceLists {...highlightProps} /></div>}
   </div>
 );
 
@@ -1627,7 +1643,7 @@ const HighlightText: React.FC<{
   spaceLists?: boolean;
   keywordTokens?: ReadonlySet<string>;
   keywordPhrases?: readonly string[];
-  keywordTone?: 'indigo' | 'blue' | 'violet';
+  keywordTone?: SimilarityHighlightTone;
 }> = ({ text, query, spaceLists, keywordTokens, keywordPhrases, keywordTone }) => {
   if (!text) return null;
   // First convert markdown bold to HTML
@@ -1715,6 +1731,7 @@ type SimilarityMatch = {
   score: number;
   reasons: string[];
   sharedConcepts: ApiSimilarityMatch['sharedConcepts'];
+  allConcepts?: ApiSimilarityMatch['allConcepts'];
   highlights?: ApiSimilarityMatch['highlights'];
 };
 
@@ -1747,6 +1764,33 @@ const SimilarityIcon: React.FC<{ className?: string }> = ({ className = "h-4 w-4
     />
   </svg>
 );
+
+export const QuestionSimilarityActions: React.FC<{ onExplore: () => void }> = ({ onExplore }) => (
+  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+    <button
+      type="button"
+      onClick={onExplore}
+      title="Explore questions testing similar concepts"
+      className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
+    >
+      <SimilarityIcon className="h-3.5 w-3.5" /> Similar questions
+    </button>
+  </div>
+);
+
+const SourceQualityWarnings: React.FC<{ question: SimilarityQuestion }> = ({ question }) => {
+  const warnings = question.reviewWarnings ?? question.verification?.warnings;
+  if (!warnings?.length) return null;
+  return (
+    <aside aria-label="Source-quality warnings" className="my-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+      <p className="font-bold">{warnings.some(warning => warning.code === "PROVISIONAL_EMBEDDING_REVIEW_PENDING")
+        ? "Provisional similarity — advisory review flags" : "Known source issue — similarity enabled"}</p>
+      <ul className="mt-1 list-disc space-y-1 pl-4">
+        {warnings.map(warning => <li key={`${warning.code}:${warning.reason}`}>{warning.reason}</li>)}
+      </ul>
+    </aside>
+  );
+};
 
 const similarityFilledBadge3d =
   "ring-1 ring-inset ring-white/20 transition-shadow duration-200 [box-shadow:inset_0_1px_0_rgba(255,255,255,0.28),0_3px_8px_rgba(15,23,42,0.14)] hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.34),0_4px_11px_rgba(15,23,42,0.17)]";
@@ -1823,8 +1867,12 @@ const SimilarityQuestionText: React.FC<{
   badge?: React.ReactNode;
   keywordTokens?: ReadonlySet<string>;
   keywordPhrases?: readonly string[];
-  keywordTone?: 'indigo' | 'blue' | 'violet';
+  keywordTone?: SimilarityHighlightTone;
 }> = ({ text, query = "", badge, keywordTokens, keywordPhrases, keywordTone }) => {
+  const matchData = parseMatchTable(text);
+  if (matchData) return (
+    <MatchQuestion data={matchData} query={query} badge={badge} keywordTokens={keywordTokens} keywordPhrases={keywordPhrases} keywordTone={keywordTone} />
+  );
   const sections = parseSimilarityStatements(text);
   const renderText = (value: string) => (
     <HighlightText text={value} query={query} keywordTokens={keywordTokens} keywordPhrases={keywordPhrases} keywordTone={keywordTone} />
@@ -1861,33 +1909,265 @@ const SimilarityQuestionText: React.FC<{
   );
 };
 
+const similarityFeedbackReasons = [
+  { value: "not_related", label: "Not related" },
+  { value: "wrong_concept", label: "Wrong concept" },
+  { value: "should_rank_higher", label: "Should rank higher" },
+  { value: "too_broad", label: "Too broad" },
+  { value: "other", label: "Other" },
+] as const;
+
+const similarityFeedbackUserKey = (email?: string | null) => {
+  if (email?.trim()) return email.trim().toLowerCase();
+  try {
+    const stored = localStorage.getItem("similarity-feedback-anon");
+    if (stored) return stored;
+    const created = `anon-${crypto.randomUUID()}`;
+    localStorage.setItem("similarity-feedback-anon", created);
+    return created;
+  } catch {
+    return "anon";
+  }
+};
+
+const SimilarityFeedback: React.FC<{
+  sourceContainer: string;
+  questionId: string;
+  profileId: string;
+  score: number;
+  userEmail?: string | null;
+}> = ({ sourceContainer, questionId, profileId, score, userEmail }) => {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [comment, setComment] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const close = () => { setOpen(false); setStatus("idle"); setReason(""); setComment(""); };
+  const submit = async () => {
+    if (!reason) return;
+    setStatus("sending");
+    try {
+      const response = await fetch("/api/similarity/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceContainer, questionId, matchProfileId: profileId, score, reason,
+          ...(comment.trim() ? { comment: comment.trim() } : {}),
+          userKey: similarityFeedbackUserKey(userEmail),
+        }),
+      });
+      setStatus(response.ok ? "done" : "error");
+    } catch {
+      setStatus("error");
+    }
+  };
+  const fieldClass = "w-full rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-medium text-slate-900 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-800/90 dark:text-white";
+  return (
+    <>
+      <button
+        type="button"
+        onClick={event => { event.stopPropagation(); setOpen(true); }}
+        title="Give feedback on this match"
+        className={cardIconButton}
+      >
+        <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} stroke="url(#pyqIconIdle)" fill="none" />
+      </button>
+      {open && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-md animate-overlayFade sm:p-5"
+          onMouseDown={close}
+          role="presentation"
+        >
+          <div
+            className="relative flex max-h-[calc(100%-1.5rem)] w-full max-w-[30rem] flex-col overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white shadow-2xl shadow-blue-950/30 dark:border-slate-600/70 dark:bg-[#101a2f] animate-modalPop"
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 py-6 text-center">
+              <button onClick={close} className="absolute right-3 top-3 z-20 rounded-xl p-2 text-white/80 transition-colors hover:bg-white/15 hover:text-white" aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+              <div className="relative flex flex-col items-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-inset ring-white/25 backdrop-blur-sm">
+                  <MessageSquareText className="h-6 w-6 text-white" />
+                </div>
+                <h2 className="text-xl font-extrabold leading-tight text-white">Feedback on this match</h2>
+                <p className="mt-1.5 truncate text-xs font-semibold uppercase tracking-wide text-white/75">Q#{questionId} ↔ Q#{profileId.split(":").pop()} · Match {score}%</p>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6 sm:p-7">
+              {status === "done" ? (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-500/10">
+                    <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+                  </div>
+                  <h3 className="mb-1 text-lg font-bold text-slate-900 dark:text-white">Thank you!</h3>
+                  <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">Your feedback has been received.</p>
+                  <button onClick={close} className="w-full rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 active:scale-95">Done</button>
+                </div>
+              ) : (
+                <>
+                  <label className="mb-2 block text-[13px] font-bold text-slate-600 dark:text-slate-400">What's wrong with this match?</label>
+                  <select value={reason} onChange={event => setReason(event.target.value)} className={cn(fieldClass, "mb-5")}>
+                    <option value="" disabled>Select a reason</option>
+                    {similarityFeedbackReasons.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <label className="mb-2 block text-[13px] font-bold text-slate-600 dark:text-slate-400">Details <span className="font-medium text-slate-400">(optional)</span></label>
+                  <textarea
+                    value={comment}
+                    maxLength={1000}
+                    onChange={event => setComment(event.target.value)}
+                    placeholder="Tell us more…"
+                    className={cn(fieldClass, "min-h-[6rem] resize-none leading-6")}
+                  />
+                  {status === "error" && <p className="mt-2 text-xs text-rose-500">Could not send feedback. Please try again.</p>}
+                  <div className="mt-5 flex gap-3">
+                    <button onClick={close} className="flex-1 rounded-2xl bg-slate-100 py-3.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">Cancel</button>
+                    <button
+                      onClick={submit}
+                      disabled={status === "sending" || !reason}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {status === "sending" ? "Sending…" : (<><Send className="h-4 w-4" /> Send</>)}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
 const SimilarityConceptGlow: React.FC<{
   concepts: SimilarityMatch['sharedConcepts'];
-}> = ({ concepts }) => {
-  const names = [...new Set(concepts.map(concept => concept.canonicalName.trim()).filter(Boolean))];
-  if (!names.length) return null;
+  allConcepts?: SimilarityMatch['sharedConcepts'];
+  showAll?: boolean;
+}> = ({ concepts, allConcepts, showAll }) => {
+  const [expanded, setExpanded] = useState(false);
+  const clean = (list: SimilarityMatch['sharedConcepts']) => [...new Set(list.map(concept => concept.canonicalName.trim()).filter(Boolean))];
+  const sharedNames = clean(concepts);
+  const includeOthers = !!showAll && !!allConcepts?.length;
+  const otherNames = includeOthers ? clean(allConcepts).filter(name => !sharedNames.includes(name)) : [];
+  const names = sharedNames;
+  if (!names.length && !otherNames.length) return null;
+  const visible = expanded ? names : names.slice(0, 3);
+  const hiddenCount = names.length - visible.length;
   return (
-    <div className="my-4 border-t border-violet-300/50 pt-3 dark:border-violet-400/20">
-      <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-violet-900 dark:text-violet-300">
-        <Sparkles className="h-4 w-4" /> Shared concepts
-      </p>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
-        {names.map(name => (
-          <li key={name} className="max-w-full break-words bg-gradient-to-br from-[#080312] via-[#2E1065] to-[#17092E] bg-clip-text text-sm font-bold leading-6 text-transparent [text-shadow:0_0_8px_rgba(139,92,246,0.4),0_0_20px_rgba(124,58,237,0.25)] dark:from-violet-200 dark:via-violet-100 dark:to-violet-300 dark:[text-shadow:0_0_6px_rgba(196,181,253,0.5),0_0_14px_rgba(167,139,250,0.6),0_0_28px_rgba(139,92,246,0.4)]">
-            {name}
-          </li>
-        ))}
+    <div className="my-3 space-y-2">
+    {names.length > 0 && <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px]">
+      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+        <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-violet-500 dark:text-violet-400" />
+        Shared concepts
+      </span>
+      {visible.map(name => (
+        <span key={name} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-950 shadow-[0_0_12px_rgba(139,92,246,0.45)] dark:border-violet-400/50 dark:bg-violet-500/20 dark:text-violet-100 dark:shadow-[0_0_14px_rgba(167,139,250,0.5)]">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500 shadow-[0_0_6px_rgba(139,92,246,0.9)] dark:bg-violet-300" />
+          <span className="min-w-0 break-words">{name}</span>
+        </span>
+      ))}
+      {names.length > 3 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={event => { event.stopPropagation(); setExpanded(previous => !previous); }}
+          className="inline-flex items-center gap-0.5 font-bold text-violet-600 transition hover:text-violet-800 dark:text-violet-300 dark:hover:text-violet-200"
+        >
+          {expanded ? "Show less" : `+${hiddenCount}`}
+          <span aria-hidden="true" className={cn("inline-block transition-transform", expanded && "rotate-180")}>▾</span>
+        </button>
+      )}
+    </div>}
+    {otherNames.length > 0 && <div className="text-[11px]">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Concepts</span>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[11px] font-medium leading-4 text-blue-700 marker:text-blue-500 dark:text-blue-300 dark:marker:text-blue-400">
+        {otherNames.map(name => <li key={name} className="break-words">{name}</li>)}
       </ul>
+    </div>}
     </div>
   );
 };
 
-const SimilarityQuestionSummary: React.FC<{
+// Subtopics are hidden for now; flip to true to bring back the "+N" expander.
+const SHOW_SUBTOPICS = false;
+
+const SubjectTopicLine: React.FC<{
+  subject: string;
+  topic?: string;
+  subtopics?: readonly string[];
+  subjectClassName?: string;
+  onSubjectClick?: () => void;
+  onTopicClick?: () => void;
+  only?: "subject" | "topic";
+}> = ({ subject, topic, subtopics, subjectClassName, onSubjectClick, onTopicClick, only }) => {
+  const unique = SHOW_SUBTOPICS ? [...new Set(subtopics?.map(subtopic => subtopic.trim()).filter(Boolean))] : [];
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="flex min-w-0 max-w-full flex-col gap-1.5">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5 text-[11px]">
+      {only !== "topic" && <span
+        onClick={onSubjectClick}
+        title={`Subject: ${subject}`}
+        className={cn(
+          "inline-flex max-w-full shrink-0 items-center gap-1.5 truncate whitespace-nowrap rounded-full px-2.5 py-0.5 font-semibold",
+          subjectClassName ?? "border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300",
+          onSubjectClick && "cursor-pointer hover:opacity-90"
+        )}
+      >
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", subjectClassName ? "bg-white/80" : "bg-indigo-500 dark:bg-indigo-400")} />
+        {subject}
+      </span>}
+      {topic && only !== "subject" && (
+        <span
+          onClick={onTopicClick}
+          title={`Topic: ${topic}`}
+          className={cn(
+            "inline-flex min-w-0 items-center truncate rounded-full border border-blue-300 bg-gradient-to-r from-blue-50 to-blue-100 px-2.5 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm shadow-blue-500/15 dark:border-blue-400/30 dark:from-blue-500/10 dark:to-blue-500/20 dark:text-blue-300",
+            onTopicClick && "cursor-pointer hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-500/20 dark:hover:to-blue-500/30"
+          )}
+        >
+          <span className="truncate">{topic}</span>
+        </span>
+      )}
+      {unique.length > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={expanded ? "Hide subtopics" : `Show subtopics: ${unique.join(", ")}`}
+          onClick={event => { event.stopPropagation(); setExpanded(previous => !previous); }}
+          className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-blue-600 transition hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          +{unique.length}
+          <span aria-hidden="true" className={cn("inline-block transition-transform", expanded && "rotate-180")}>▾</span>
+        </button>
+      )}
+    </div>
+    {expanded && (
+      <p className="text-[11px] font-medium leading-5 text-blue-700 dark:text-blue-300">
+        {unique.join(" · ")}
+      </p>
+    )}
+    </div>
+  );
+};
+
+export const SimilarityQuestionSummary: React.FC<{
   question: SimilarityQuestion;
   sharedConcepts: SimilarityMatch['sharedConcepts'];
+  allConcepts?: SimilarityMatch['allConcepts'];
+  showAllConcepts?: boolean;
   highlights?: SimilarityMatch['highlights'];
-  highlightOptions?: boolean;
-}> = ({ question, sharedConcepts, highlights, highlightOptions }) => (
+  highlightsEnabled: boolean;
+  highlightTone: SimilarityHighlightTone;
+  isExpanded: boolean;
+  attemptedOption?: string;
+  onAttemptOption: (question: Question, option: string) => void;
+  onToggleAnswer: () => void;
+}> = ({ question: sourceQuestion, sharedConcepts, allConcepts, showAllConcepts, highlights, highlightsEnabled, highlightTone, isExpanded, attemptedOption, onAttemptOption, onToggleAnswer }) => {
+  const question = withSubjectDisplay(sourceQuestion);
+  const explanation = isObjectiveQuestion(question) ? question.explanation : getSimilarityModelAnswer(question);
+  return (
   <div className={cn("rounded-2xl border p-5", similarityMatchingCardStyle, "dark:bg-[#0B1220]")}>
     <div className="mb-4 flex flex-wrap gap-2">
       <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950 dark:text-blue-200">Q{question.id}</span>
@@ -1900,36 +2180,79 @@ const SimilarityQuestionSummary: React.FC<{
       >
         {getSimilarityExamLabel(question.exam)} · {question.year}
       </span>
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400" />
-        {question.subject}
-      </span>
-      {question.topic && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">{question.topic}</span>}
     </div>
+    <div className="mb-4"><SubjectTopicLine subject={question.subject} topic={question.topic} subtopics={question.subtopics} /></div>
+    <SourceQualityWarnings question={question} />
     <div className="text-[15px] font-medium leading-7 text-slate-900 dark:text-slate-100">
-      <SimilarityQuestionText text={question.question} keywordPhrases={similarityHighlightPhrases(highlights, sharedConcepts, "question")} keywordTone="violet" />
+      <SimilarityQuestionText text={question.question} keywordPhrases={highlightsEnabled ? similarityHighlightPhrases(highlights, sharedConcepts, "question") : []} keywordTone={highlightTone} />
     </div>
     {isObjectiveQuestion(question) && (
       <div className="mt-5 space-y-2">
         {(question.options || []).map((option, optionIndex) => (
-          <div key={option} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium leading-6 text-slate-700 dark:border-slate-800 dark:bg-[#0E1729] dark:text-slate-200">
-            <HighlightText text={option} query="" keywordPhrases={highlightOptions ? similarityHighlightPhrases(highlights, sharedConcepts, "option", optionIndex) : []} keywordTone="violet" />
-          </div>
+          <button
+            key={option}
+            type="button"
+            aria-pressed={option === attemptedOption}
+            disabled={(isExpanded && !!attemptedOption && !!question.answer) || option === attemptedOption}
+            onClick={() => onAttemptOption(question, option)}
+            className={cn(
+              "flex w-full items-center justify-between gap-2 rounded-xl border px-3.5 py-3 text-left text-sm font-medium leading-6 transition",
+              isExpanded && isCorrectOption(option, question.answer, question.options)
+                ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : isExpanded && option === attemptedOption
+                  ? "border-red-500 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-800 dark:bg-[#0E1729] dark:text-slate-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"
+            )}
+          >
+            <span><HighlightText text={option} query="" keywordPhrases={highlightsEnabled && isExpanded ? similarityHighlightPhrases(highlights, sharedConcepts, "option", optionIndex) : []} keywordTone={highlightTone} /></span>
+            {isExpanded && isCorrectOption(option, question.answer, question.options) && <CheckCircle2 aria-label="Correct answer" className="h-3.5 w-3.5 shrink-0" />}
+            {isExpanded && option === attemptedOption && !isCorrectOption(option, question.answer, question.options) &&  <XCircle aria-label="Incorrect answer" className="h-3.5 w-3.5 shrink-0" />}
+          </button>
         ))}
       </div>
     )}
     {!isObjectiveQuestion(question) && question.paper && (
       <p className="mt-4 text-xs font-semibold text-slate-600 dark:text-slate-400">{question.paper}</p>
     )}
-    <SimilarityConceptGlow concepts={sharedConcepts} />
+    <SimilarityConceptGlow concepts={sharedConcepts} allConcepts={allConcepts} showAll={showAllConcepts} />
+    {isExpanded && (
+      <div className="mt-4 space-y-3">
+        {isObjectiveQuestion(question) && (
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Answer: <HighlightText text={question.answer || "Not available yet"} query="" />
+          </div>
+        )}
+        <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-blue-50 p-3.5 dark:border-indigo-500/20 dark:from-indigo-900/20 dark:to-slate-800/40">
+          <p className="mb-1.5 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+            <Sparkles className="h-3 w-3" /> {isObjectiveQuestion(question) ? "Explanation" : "Model answer"}
+          </p>
+          <div className="whitespace-pre-wrap text-sm leading-6 text-indigo-900 dark:text-indigo-200">
+            {explanation
+              ? <HighlightText text={explanation} query="" keywordPhrases={highlightsEnabled ? similarityHighlightPhrases(highlights, sharedConcepts, "explanation") : []} keywordTone={highlightTone} />
+              : isObjectiveQuestion(question) ? "Explanation not available yet." : "Model answer not available yet."}
+          </div>
+        </div>
+      </div>
+    )}
     <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-400">{question.exam}</p>
+    <button
+      type="button"
+      onClick={onToggleAnswer}
+      aria-expanded={isExpanded}
+      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2.5 text-sm font-bold text-blue-800 transition hover:bg-blue-100 dark:border-blue-500/40 dark:bg-[#142337] dark:text-slate-200 dark:hover:bg-[#1A2E49]"
+    >
+      <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
+      {isExpanded
+        ? isObjectiveQuestion(question) ? "Hide answer & explanation" : "Hide model answer"
+        : isObjectiveQuestion(question) ? "Show answer & explanation" : "Show model answer"}
+    </button>
   </div>
-);
+  );
+};
 
 const QuestionSimilarityExplorer: React.FC<{
   source: SimilarityQuestion;
   scope: 'prelims' | 'mains' | 'csat' | 'english';
-  scopeLabel: string;
   userEmail?: string | null;
   onOptionClick?: (question: Question, option: string) => void;
   onSelect: (question: SimilarityQuestion) => void;
@@ -1937,7 +2260,6 @@ const QuestionSimilarityExplorer: React.FC<{
 }> = ({
   source,
   scope,
-  scopeLabel,
   userEmail,
   onOptionClick,
   onSelect,
@@ -1945,7 +2267,9 @@ const QuestionSimilarityExplorer: React.FC<{
 }) => {
   const [attemptedOptions, setAttemptedOptions] = useState<Record<string, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
-  const [highlightOptions, setHighlightOptions] = useState(true);
+  const [highlightsEnabled, setHighlightsEnabled] = useState(true);
+  const [highlightTone, setHighlightTone] = useState<SimilarityHighlightTone>("violet");
+  const [showAllConcepts, setShowAllConcepts] = useState(false);
   const popupBodyRef = useRef<HTMLDivElement>(null);
   const selectedPaneRef = useRef<HTMLElement>(null);
   const matchesPaneRef = useRef<HTMLElement>(null);
@@ -1957,6 +2281,9 @@ const QuestionSimilarityExplorer: React.FC<{
   const [searchState, setSearchState] = useState<{
     key: string; status: "loading" | "ready" | "error"; matches: SimilarityMatch[]; message?: string;
     sourceHighlights?: SimilarityMatch['highlights'];
+    sourceSubtopics?: string[];
+    sourceConcepts?: SimilarityMatch['sharedConcepts'];
+    sourceWarnings?: Question['reviewWarnings'];
   } | null>(null);
   const visibleState = searchState?.key === requestKey ? searchState : null;
   const isLoading = !visibleState || visibleState.status === "loading";
@@ -1969,7 +2296,7 @@ const QuestionSimilarityExplorer: React.FC<{
         const question = toDisplayQuestion(match.question);
         return {
           profileId: match.profileId, question, score: match.score, reasons: match.reasons,
-          sharedConcepts: match.sharedConcepts,
+          sharedConcepts: match.sharedConcepts, allConcepts: match.allConcepts,
           highlights: match.highlights,
         };
       });
@@ -1977,6 +2304,9 @@ const QuestionSimilarityExplorer: React.FC<{
         key: requestKey, status: "ready", matches: result,
         message: response.status === "ready" ? "No similar questions found." : response.message,
         sourceHighlights: response.status === "ready" ? response.sourceHighlights : undefined,
+        sourceSubtopics: response.status === "ready" ? response.sourceSubtopics : undefined,
+        sourceConcepts: response.status === "ready" ? response.sourceConcepts : undefined,
+        sourceWarnings: response.status === "ready" ? response.sourceWarnings : undefined,
       });
     }).catch(error => {
       console.error("Could not load similar questions:", error);
@@ -2030,49 +2360,96 @@ const QuestionSimilarityExplorer: React.FC<{
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[150] flex items-center justify-center       bg-slate-950/60 p-2 backdrop-blur-md sm:p-5"
       onMouseDown={onClose}
     >
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 24 }}
-        className="flex h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl dark:border-slate-800 dark:bg-[#070B14] sm:h-[90vh]"
+              className="flex h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-slate-50 shadow-2xl shadow-slate-950/30 ring-1 ring-slate-900/5 dark:border-slate-700/60 dark:bg-[#070B14] dark:ring-white/5 sm:h-[90vh]"
         onMouseDown={event => event.stopPropagation()}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 bg-gradient-to-r from-white via-blue-50/70 to-indigo-50/70 px-4 py-3.5 dark:border-slate-800 dark:bg-[#0A0F1D] dark:bg-none sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3         border-b border-slate-200/70 bg-white/90 px-4 py-4 backdrop-blur-xl dark:border-slate-800 dark:bg-[#0A0F1D] sm:px-7">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
                 <SimilarityIcon className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <h2 className="truncate text-base font-extrabold text-slate-900 dark:text-white sm:text-lg">Question Similarity Explorer</h2>
-                <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  {scopeLabel} · every score on the right is compared with reference question Q{source.id}.
-                </p>
-              </div>
+                        <h2 className="truncate text-lg font-bold tracking-tight text-slate-900 dark:text-white sm:text-xl">Question Similarity Explorer</h2>
+                        <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">Compare concepts across related previous-year questions</p>
+                      </div>
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {isObjectiveQuestion(source) && (
-              <button
-                type="button"
-                aria-pressed={highlightOptions}
-                onClick={() => setHighlightOptions(previous => !previous)}
-                title="Highlight important concept phrases in options. This may give hints before you attempt a question."
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition",
-                  highlightOptions
-                    ? "border-violet-300 bg-violet-100 text-violet-900 dark:border-violet-500/40 dark:bg-violet-500/20 dark:text-violet-200"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-violet-500/40"
-                )}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Highlight options
-                <span className="text-[10px] uppercase">{highlightOptions ? "On" : "Off"}</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Concepts</span>
+            <div role="radiogroup" aria-label="Concepts shown" title="Choose which concepts appear on the cards" className="flex items-center rounded-full border border-slate-200 bg-white p-0.5 text-xs font-semibold shadow-sm dark:border-slate-700 dark:bg-slate-900">
+              {([[false, "Shared only"], [true, "All"]] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={showAllConcepts === value}
+                  onClick={() => setShowAllConcepts(value)}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 transition",
+                    showAllConcepts === value
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-violet-700 dark:text-slate-300 dark:hover:text-violet-300"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            </div>
+            <div className={cn(
+              "flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 shadow-sm transition",
+              highlightsEnabled
+                ? "border-violet-300 bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/20"
+                : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+            )}>
+            <button
+              type="button"
+              aria-pressed={highlightsEnabled}
+              onClick={() => setHighlightsEnabled(previous => !previous)}
+              title="Turn all concept text highlights on or off. Options are highlighted only while the answer is expanded."
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-95",
+                highlightsEnabled ? "text-violet-900 dark:text-violet-200" : "text-slate-600 hover:text-violet-700 dark:text-slate-300"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Highlights
+              <span className="text-[10px] uppercase">{highlightsEnabled ? "On" : "Off"}</span>
+            </button>
+            <div role="radiogroup" aria-label="Highlight colour" className="flex items-center gap-1.5 border-l border-slate-300/70 pl-2.5 dark:border-slate-600">
+              {([
+                { tone: "violet", label: "Violet", swatch: "bg-violet-500" },
+                { tone: "amber", label: "Yellow", swatch: "bg-amber-400" },
+                { tone: "emerald", label: "Green", swatch: "bg-emerald-500" },
+              ] as const).map(option => (
+                <button
+                  key={option.tone}
+                  type="button"
+                  role="radio"
+                  aria-checked={highlightTone === option.tone}
+                  aria-label={`${option.label} highlights`}
+                  title={`${option.label} highlights`}
+                  onClick={() => { setHighlightTone(option.tone); setHighlightsEnabled(true); }}
+                  className={cn(
+                    "h-5 w-5 rounded-full transition hover:scale-110",
+                    option.swatch,
+                    highlightTone === option.tone && highlightsEnabled
+                      ? "ring-2 ring-offset-2 ring-slate-700 ring-offset-white dark:ring-white dark:ring-offset-slate-900"
+                      : "opacity-60"
+                  )}
+                />
+              ))}
+            </div>
+            </div>
             <motion.button
               type="button"
               onClick={onClose}
@@ -2088,10 +2465,10 @@ const QuestionSimilarityExplorer: React.FC<{
 
         <LayoutGroup id="question-similarity-explorer">
         <div ref={popupBodyRef} className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.8fr)] lg:overflow-hidden">
-          <section ref={selectedPaneRef} className="border-b border-indigo-200/70 bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-100 p-5 dark:border-slate-800 dark:bg-[#070B14] dark:bg-none lg:overflow-y-auto lg:border-b-0 lg:border-r sm:p-6">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Selected question</p>
-              <span className="rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-900 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-100">Reference</span>
+          <section ref={selectedPaneRef} className="          border-b border-slate-200/70 bg-gradient-to-b from-indigo-50/80 to-slate-50 p-5 dark:border-slate-800 dark:bg-[#0A1020] dark:bg-none lg:overflow-y-auto lg:border-b-0 lg:border-r sm:p-7">
+                      <div className="mb-4 flex items-center justify-between gap-2">
+                        <p className="text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">Selected question</p>
+                        <span className="rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm shadow-indigo-500/30">Reference</span>
             </div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
@@ -2103,25 +2480,29 @@ const QuestionSimilarityExplorer: React.FC<{
                 transition={{ type: "spring", stiffness: 280, damping: 26 }}
               >
                 <SimilarityQuestionSummary
-                  question={source}
+                  question={{
+                    ...source, subtopics: visibleState?.sourceSubtopics ?? [],
+                    reviewWarnings: visibleState?.sourceWarnings ?? source.reviewWarnings,
+                  }}
                   sharedConcepts={referenceConcepts}
+                  allConcepts={visibleState?.sourceConcepts}
+                  showAllConcepts={showAllConcepts}
                   highlights={visibleState?.sourceHighlights}
-                  highlightOptions={highlightOptions}
+                  highlightsEnabled={highlightsEnabled}
+                  highlightTone={highlightTone}
+                  isExpanded={!!revealedAnswers[source.id]}
+                  attemptedOption={attemptedOptions[source.id]}
+                  onAttemptOption={attemptQuestion}
+                  onToggleAnswer={() => togglePopupAnswer(source.id)}
                 />
               </motion.div>
             </AnimatePresence>
-            <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-[#0C1322]">
-              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">Practice tip</p>
-              <p className="mt-1.5 text-sm leading-6 text-slate-700 dark:text-slate-300">
-                Attempt each similar question before revealing its answer, then promote it to explore the next set.
-              </p>
-            </div>
           </section>
 
-          <section ref={matchesPaneRef} className="min-h-0 bg-gradient-to-br from-slate-50 via-white to-slate-100/60 px-4 pb-4 dark:bg-[#070B14] dark:bg-none sm:px-6 sm:pb-6 lg:overflow-y-auto">
-            <div className="sticky top-0 z-20 -mx-4 mb-2 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-2 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-[#070B14]/95 sm:-mx-6 sm:px-6">
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Similar questions</p>
-              <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-300">{isLoading ? "Loading..." : `${matches.length} matches`}</span>
+          <section ref={matchesPaneRef} className="min-h-0           bg-slate-50 px-4 pb-5 dark:bg-[#070B14] sm:px-7 sm:pb-7 lg:overflow-y-auto">
+                      <div className="sticky top-0 z-20 -mx-4 mb-2 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/85 px-4 py-3 backdrop-blur-xl dark:border-slate-800 dark:bg-[#070B14]/90 sm:-mx-7 sm:px-7">
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300">Similar questions</p>
+                        <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white dark:bg-white/10 dark:text-slate-100">{isLoading ? "Loading..." : `${matches.length} matches`}</span>
             </div>
 
             {isLoading ? (
@@ -2169,7 +2550,7 @@ const QuestionSimilarityExplorer: React.FC<{
                 const showResult = !!attemptedOption && isRevealed && !!objectiveQuestion?.answer;
                 const matchExamCategory = getExamCategory(match.question.exam);
                 const isSameExam = matchExamCategory === sourceExamCategory;
-                const visibleReasons = match.reasons.filter(reason => !/^Shared concepts:/i.test(reason.trimStart()));
+                const visibleReasons = match.reasons.filter(reason => !/^(Shared concepts:|Similar concept descriptions based on the stored embeddings)/i.test(reason.trimStart()));
 
                 return (
                 <motion.article
@@ -2188,10 +2569,10 @@ const QuestionSimilarityExplorer: React.FC<{
                     scale: { duration: 0.2, ease: "easeOut" },
                   }}
                   className={cn(
-                    "relative flex min-h-[300px] flex-col rounded-2xl border p-4 transition",
+                    "relative flex min-h-[300px] flex-col rounded-3xl border p-5 transition",
                     isSameExam
                       ? similarityMatchingCardStyle
-                      : "border-slate-200 bg-white shadow-sm hover:border-blue-300 dark:border-slate-800 dark:bg-[#0D1424] dark:shadow-[0_0_25px_-5px_rgba(37,99,235,0.12)] dark:hover:border-slate-600 dark:hover:bg-[#131B2E]"
+                      : "border-slate-200/80 bg-white shadow-sm shadow-slate-900/5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/10 dark:border-slate-800 dark:bg-[#0D1424] dark:hover:border-slate-600 dark:hover:bg-[#131B2E]"
                   )}
                 >
                   {isSameExam && (
@@ -2215,7 +2596,7 @@ const QuestionSimilarityExplorer: React.FC<{
                         {getSimilarityExamLabel(match.question.exam)} · {match.question.year}
                       </span>
                     </div>
-                    <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+                    <div className="ml-auto shrink-0">
                       <span aria-label={`Similarity match: ${match.score}%`} className={cn(
                         "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold",
                         match.score > 85
@@ -2226,25 +2607,27 @@ const QuestionSimilarityExplorer: React.FC<{
                       )}>
                         <SimilarityIcon className="h-3.5 w-3.5" /> Match {match.score}%
                       </span>
+                    </div>
+                  </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <SubjectTopicLine subject={match.question.subject} topic={match.question.topic} subtopics={match.question.subtopics} />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <SimilarityFeedback sourceContainer={sourceContainer} questionId={questionId} profileId={match.profileId} score={match.score} userEmail={userEmail} />
                       {objectiveQuestion && scope !== "mains" && (
                         <AttemptIndicator question={objectiveQuestion} questionType={scope} userEmail={userEmail} />
                       )}
                     </div>
                   </div>
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold tracking-wide text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-600/70">
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                      {match.question.subject}
-                    </span>
-                    {match.question.topic && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-600/70">{match.question.topic}</span>}
-                  </div>
-                  <div className="mb-5 text-[15px] font-medium leading-7 text-slate-800 dark:text-slate-100">
-                    <SimilarityQuestionText text={match.question.question} keywordPhrases={similarityHighlightPhrases(match.highlights, match.sharedConcepts, "question")} keywordTone="violet" />
+                  <SourceQualityWarnings question={match.question} />
+                  <div className="mb-5 text-[15px] font-medium leading-[1.8] tracking-[0.005em] text-slate-800 dark:text-slate-100">
+                    <SimilarityQuestionText text={match.question.question} keywordPhrases={highlightsEnabled ? similarityHighlightPhrases(match.highlights, match.sharedConcepts, "question") : []} keywordTone={highlightTone} />
                   </div>
                   {objectiveQuestion && (
                   <div className="mb-3 space-y-1.5">
                     {(objectiveQuestion.options || []).map((option, optionIndex) => {
-                      const isCorrectAnswer = option === objectiveQuestion.answer;
+                      const isCorrectAnswer = isCorrectOption(option, objectiveQuestion.answer, objectiveQuestion.options);
                       const isSelected = option === attemptedOption;
 
                       return (
@@ -2262,7 +2645,7 @@ const QuestionSimilarityExplorer: React.FC<{
                             showResult && !isCorrectAnswer && !isSelected && "border-slate-200 bg-slate-50/50 text-slate-400 opacity-60 dark:border-slate-700 dark:bg-slate-700/30 dark:text-slate-500"
                           )}
                         >
-                          <span className="pr-2"><HighlightText text={option} query="" keywordPhrases={highlightOptions ? similarityHighlightPhrases(match.highlights, match.sharedConcepts, "option", optionIndex) : []} keywordTone="violet" /></span>
+                          <span className="pr-2"><HighlightText text={option} query="" keywordPhrases={highlightsEnabled && isRevealed ? similarityHighlightPhrases(match.highlights, match.sharedConcepts, "option", optionIndex) : []} keywordTone={highlightTone} /></span>
                           {showResult && isCorrectAnswer && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
                           {showResult && isSelected && !isCorrectAnswer && <XCircle className="h-3.5 w-3.5 shrink-0" />}
                         </button>
@@ -2270,7 +2653,10 @@ const QuestionSimilarityExplorer: React.FC<{
                     })}
                   </div>
                   )}
-                  <SimilarityConceptGlow concepts={match.sharedConcepts} />
+                  {match.sharedConcepts.length === 0 && (
+                    <p className="my-3 text-[11px] font-medium text-slate-500 dark:text-slate-400">No shared concept</p>
+                  )}
+                  <SimilarityConceptGlow concepts={match.sharedConcepts} allConcepts={match.allConcepts} showAll={showAllConcepts} />
                   {isRevealed && (
                     <div className="mb-3">
                       {objectiveQuestion ? (
@@ -2285,7 +2671,7 @@ const QuestionSimilarityExplorer: React.FC<{
                                   <Sparkles className="h-3 w-3" /> Explanation
                                 </span>
                                 <span className="block whitespace-pre-wrap">
-                                  <HighlightText text={objectiveQuestion.explanation} query="" keywordPhrases={similarityHighlightPhrases(match.highlights, match.sharedConcepts, "explanation")} keywordTone="violet" />
+                                  <HighlightText text={objectiveQuestion.explanation} query="" keywordPhrases={highlightsEnabled ? similarityHighlightPhrases(match.highlights, match.sharedConcepts, "explanation") : []} keywordTone={highlightTone} />
                                 </span>
                               </p>
                             </div>
@@ -2312,6 +2698,7 @@ const QuestionSimilarityExplorer: React.FC<{
                     <button
                       type="button"
                       onClick={() => togglePopupAnswer(match.question.id)}
+                      aria-expanded={isRevealed}
                       className={cn(
                         "inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-bold transition",
                         isSameExam
@@ -2347,7 +2734,7 @@ const QuestionSimilarityExplorer: React.FC<{
 };
 
 const QuestionCard: React.FC<QuestionCardProps> = ({
-  question,
+  question: sourceQuestion,
   storageScope,
   index,
   attemptedOption,
@@ -2371,6 +2758,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onUpdateQuestion,
   onOpenSimilarity
 }) => {
+  const question = withSubjectDisplay(sourceQuestion);
   const [isEditing, setIsEditing] = useState(false);
   const [editAnswer, setEditAnswer] = useState("");
   const [editExplanation, setEditExplanation] = useState("");
@@ -2594,9 +2982,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="flex items-center justify-between gap-2">
           <span
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            className="inline-flex items-center rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm shadow-blue-600/20 cursor-pointer hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-400"
           >
-            <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
+            <FileText className="w-3 h-3 mr-1 text-blue-100" /> {question.exam}
           </span>
           <div className="flex shrink-0 items-center gap-1.5">
             {onFeedback && (
@@ -2671,40 +3059,36 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span
-              onClick={() => onSubjectClick?.(question.subject)}
-              className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-              {question.subject}
-            </span>
-            {question.topic && (
-              <span
-                onClick={() => onTopicClick?.(question.topic!)}
-                className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                {question.topic}
-              </span>
-            )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center">
+            <SubjectTopicLine
+              only="subject"
+              subject={question.subject}
+              subjectClassName={cn("ring-1 ring-inset tracking-wide transition-opacity", colorClasses)}
+              onSubjectClick={() => onSubjectClick?.(question.subject)}
+            />
           </div>
           <div className="flex shrink-0 items-center gap-1.5 pr-1">
             {onOpenSimilarity && (
-              <button
-                type="button"
-                onClick={() => onOpenSimilarity(question, storageScope)}
-                title="Open question similarity scores"
-                className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
-              >
-                <SimilarityIcon className="h-3.5 w-3.5" /> Similarity
-              </button>
+              <QuestionSimilarityActions onExplore={() => onOpenSimilarity(question, storageScope)} />
             )}
             <AttemptIndicator question={question} questionType={storageScope} userEmail={userEmail} />
           </div>
         </div>
+        {question.topic && (
+          <div className="mt-2">
+            <SubjectTopicLine
+              only="topic"
+              subject={question.subject}
+              topic={question.topic}
+              subtopics={question.subtopics}
+              onTopicClick={() => onTopicClick?.(question.topic!)}
+            />
+          </div>
+        )}
       </div>
 
+      <SourceQualityWarnings question={question} />
       {isAdmin && <QuestionReviewPanel key={`${question.sourceContainer ?? storageScope}:${question.id}:${adminReview?.sourceContentHash ?? ""}`}
         sourceContainer={question.sourceContainer ?? (storageScope === "csat" ? "csat-questions" : storageScope === "english" ? "english-questions" : "questions")}
         questionId={question.id} verification={question.verification} access={adminReview} />}
@@ -2945,7 +3329,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
       <div className="space-y-2 mb-5 px-1">
         {(question.options || []).map(opt => {
-          const isCorrectAnswer = opt === question.answer;
+          const isCorrectAnswer = isCorrectOption(opt, question.answer, question.options);
           const isSelected = opt === attemptedOption;
           const hasAttempted = !!attemptedOption;
           // Results only colour the options while the answer is on screen, so
@@ -3005,7 +3389,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {isRevealed && (
         <div className="pt-3 px-1 animate-fadeInUp">
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-full ring-1 ring-emerald-500/20 mb-2.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Answer: {question.answer}
+            <CheckCircle2 className="w-3.5 h-3.5" /> Answer: <HighlightText text={question.answer} query="" />
           </div>
           {question.explanation && (
             <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-slate-800/40 border border-indigo-100 dark:border-indigo-500/20 p-3.5 rounded-xl shadow-sm">
@@ -3419,7 +3803,7 @@ const SavedQuestionInlineNote: React.FC<{
 };
 
 const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
-  question,
+  question: sourceQuestion,
   questionType = 'mains',
   isAnswerVisible,
   onToggleAnswer,
@@ -3437,6 +3821,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onFeedback,
   onOpenSimilarity,
 }) => {
+  const question = withSubjectDisplay(sourceQuestion);
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
   const answer = question.modelAnswer || question.model_answer || "";
   const hasModelAnswer = !!answer.trim();
@@ -3467,28 +3852,13 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         <div className="flex gap-1.5 items-center flex-wrap">
           <span
             onClick={() => onExamClick?.(question.exam)}
-            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            className="inline-flex items-center rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm shadow-blue-600/20 cursor-pointer hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-400"
           >
-            <FileText className="w-3 h-3 mr-1 text-slate-400" /> {question.exam}
-          </span>
-          <span
-            onClick={() => onSubjectClick?.(question.subject)}
-            className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide ring-1 ring-inset cursor-pointer hover:opacity-90 transition-opacity", colorClasses)}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-            {question.subject}
+            <FileText className="w-3 h-3 mr-1 text-blue-100" /> {question.exam}
           </span>
           {question.paper && (
             <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70">
               {question.paper}
-            </span>
-          )}
-          {question.topic && (
-            <span
-              onClick={() => onTopicClick?.(question.topic!)}
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-600/70 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              {question.topic}
             </span>
           )}
         </div>
@@ -3520,6 +3890,18 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       </div>
 
+      <div className="mb-3 flex min-w-0">
+        <SubjectTopicLine
+          subject={question.subject}
+          topic={question.topic}
+          subtopics={question.subtopics}
+          subjectClassName={cn("ring-1 ring-inset tracking-wide transition-opacity", colorClasses)}
+          onSubjectClick={() => onSubjectClick?.(question.subject)}
+          onTopicClick={question.topic ? () => onTopicClick?.(question.topic!) : undefined}
+        />
+      </div>
+
+      <SourceQualityWarnings question={question} />
       <div className="text-[13.5px] font-medium text-slate-900 dark:text-slate-100 mb-4 leading-[23px] flex-grow">
         {isAdmin && <QuestionReviewPanel key={`${question.sourceContainer ?? questionType}:${question.id}:${adminReview?.sourceContentHash ?? ""}`}
           sourceContainer={question.sourceContainer ?? (questionType === "essay" ? "essay-questions" : "mains-questions")}
@@ -3539,7 +3921,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       )}
 
-      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between gap-2", isAnswerVisible && "mb-3")}>
+      <div className={cn("pt-3 border-t border-slate-100 dark:border-slate-700/50 flex flex-wrap items-center justify-between gap-2", isAnswerVisible && "mb-3")}>
         <div
           onClick={onToggleAnswer}
           className="flex-grow cursor-pointer flex items-center py-1 -my-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 focus:outline-none"
@@ -3550,14 +3932,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
           <span>{isAnswerVisible ? "Hide Model Answer" : "Show Model Answer"}</span>
         </div>
         {onOpenSimilarity && (
-          <button
-            type="button"
-            onClick={() => onOpenSimilarity(question)}
-            title="Open question similarity scores"
-            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200 transition hover:bg-violet-600 hover:text-white dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30 dark:hover:bg-violet-600 dark:hover:text-white"
-          >
-            <SimilarityIcon className="h-3.5 w-3.5" /> Similarity
-          </button>
+          <QuestionSimilarityActions onExplore={() => onOpenSimilarity(question)} />
         )}
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(question.question)}`}
@@ -3700,11 +4075,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'prelims' | 'mains' | 'essay' | 'toppers' | 'csat' | 'english'>('prelims');
   const [showQuestionReviews, setShowQuestionReviews] = useState(() =>
     new URLSearchParams(window.location.search).get("review") === "answer-explanation");
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [mainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
-  const [essayQuestions, setEssayQuestions] = useState<EssayQuestion[]>([]);
-  const [csatQuestions, setCSATQuestions] = useState<Question[]>([]);
-  const [englishQuestions, setEnglishQuestions] = useState<Question[]>([]);
+  const [sourceQuestions, setQuestions] = useState<Question[]>([]);
+  const [sourceMainsQuestions, setMainsQuestions] = useState<MainsQuestion[]>([]);
+  const [sourceEssayQuestions, setEssayQuestions] = useState<EssayQuestion[]>([]);
+  const [sourceCSATQuestions, setCSATQuestions] = useState<Question[]>([]);
+  const [sourceEnglishQuestions, setEnglishQuestions] = useState<Question[]>([]);
+  const questions = useMemo(() => sourceQuestions.map(withSubjectDisplay), [sourceQuestions]);
+  const mainsQuestions = useMemo(() => sourceMainsQuestions.map(withSubjectDisplay), [sourceMainsQuestions]);
+  const essayQuestions = useMemo(() => sourceEssayQuestions.map(withSubjectDisplay), [sourceEssayQuestions]);
+  const csatQuestions = useMemo(() => sourceCSATQuestions.map(withSubjectDisplay), [sourceCSATQuestions]);
+  const englishQuestions = useMemo(() => sourceEnglishQuestions.map(withSubjectDisplay), [sourceEnglishQuestions]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [hasLoadedAllQuestions, setHasLoadedAllQuestions] = useState(false);
   const [isLoadingMains, setIsLoadingMains] = useState(false);
@@ -3747,9 +4127,11 @@ export default function App() {
   const [revealedMainsAnswers, setRevealedMainsAnswers] = useState<Record<string, boolean>>({});
   const [revealedEssayAnswers, setRevealedEssayAnswers] = useState<Record<string, boolean>>({});
   const [mainsRandomMode, setMainsRandomMode] = useState(false);
-  const [mainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
+  const [sourceMainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
+  const mainsRandomizedQuestions = useMemo(() => sourceMainsRandomizedQuestions.map(withSubjectDisplay), [sourceMainsRandomizedQuestions]);
   const [mainsRandomSelectLimit, setMainsRandomSelectLimit] = useState(10);
-  const [toppersQuestions, setToppersQuestions] = useState<ToppersCopyQuestion[]>([]);
+  const [sourceToppersQuestions, setToppersQuestions] = useState<ToppersCopyQuestion[]>([]);
+  const toppersQuestions = useMemo(() => sourceToppersQuestions.map(withSubjectDisplay), [sourceToppersQuestions]);
   const [isLoadingToppers, setIsLoadingToppers] = useState(false);
   const [toppersYearFilter, setToppersYearFilter] = useState("All");
   const [toppersTopperFilter, setToppersTopperFilter] = useState("All");
@@ -3764,7 +4146,8 @@ export default function App() {
   const [csatSearchQuery, setCSATSearchQuery] = useState("");
   const [csatVisibleCount, setCSATVisibleCount] = useState(30);
   const [csatRandomMode, setCSATRandomMode] = useState(false);
-  const [csatRandomizedQuestions, setCSATRandomizedQuestions] = useState<Question[]>([]);
+  const [sourceCSATRandomizedQuestions, setCSATRandomizedQuestions] = useState<Question[]>([]);
+  const csatRandomizedQuestions = useMemo(() => sourceCSATRandomizedQuestions.map(withSubjectDisplay), [sourceCSATRandomizedQuestions]);
   const [csatRandomSelectLimit, setCSATRandomSelectLimit] = useState(10);
   const [csatBookmarkedOnly, setCSATBookmarkedOnly] = useState(false);
   const [csatNotedOnly, setCSATNotedOnly] = useState(false);
@@ -3778,7 +4161,8 @@ export default function App() {
   const [englishSearchQuery, setEnglishSearchQuery] = useState("");
   const [englishVisibleCount, setEnglishVisibleCount] = useState(30);
   const [englishRandomMode, setEnglishRandomMode] = useState(false);
-  const [englishRandomizedQuestions, setEnglishRandomizedQuestions] = useState<Question[]>([]);
+  const [sourceEnglishRandomizedQuestions, setEnglishRandomizedQuestions] = useState<Question[]>([]);
+  const englishRandomizedQuestions = useMemo(() => sourceEnglishRandomizedQuestions.map(withSubjectDisplay), [sourceEnglishRandomizedQuestions]);
   const [englishRandomSelectLimit, setEnglishRandomSelectLimit] = useState(10);
   const [englishBookmarkedOnly, setEnglishBookmarkedOnly] = useState(false);
   const [englishNotedOnly, setEnglishNotedOnly] = useState(false);
@@ -3829,8 +4213,31 @@ export default function App() {
   const [mainsVisibleCount, setMainsVisibleCount] = useState(30);
   const [essayVisibleCount, setEssayVisibleCount] = useState(30);
   const [randomMode, setRandomMode] = useState<{ active: boolean; limit: number }>({ active: false, limit: 0 });
-  const [randomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
+  const [sourceRandomizedQuestions, setRandomizedQuestions] = useState<Question[]>([]);
+  const randomizedQuestions = useMemo(() => sourceRandomizedQuestions.map(withSubjectDisplay), [sourceRandomizedQuestions]);
   const [randomSelectLimit, setRandomSelectLimit] = useState(10);
+
+  useEffect(() => {
+    if (hasLoadedAllQuestions && questions.length && subjectFilter !== "All" && !questions.some(q => q.subject === subjectFilter)) {
+      setSubjectFilter("All");
+      setTopicFilter("All");
+    }
+    if (mainsQuestions.length && mainsSubjectFilter !== "All" && !mainsQuestions.some(q => q.subject === mainsSubjectFilter)) {
+      setMainsSubjectFilter("All");
+      setMainsTopicFilter("All");
+    }
+    if (csatQuestions.length && csatSubjectFilter !== "All" && !csatQuestions.some(q => q.subject === csatSubjectFilter)) {
+      setCSATSubjectFilter("All");
+    }
+    if (englishQuestions.length && englishSubjectFilter !== "All" && !englishQuestions.some(q => q.subject === englishSubjectFilter)) {
+      setEnglishSubjectFilter("All");
+      setEnglishTopicFilter("All");
+    }
+    if (toppersQuestions.length && toppersSubjectFilter !== "All" && !toppersQuestions.some(q => q.subject === toppersSubjectFilter)) {
+      setToppersSubjectFilter("All");
+    }
+  }, [hasLoadedAllQuestions, questions, subjectFilter, mainsQuestions, mainsSubjectFilter, csatQuestions, csatSubjectFilter,
+    englishQuestions, englishSubjectFilter, toppersQuestions, toppersSubjectFilter]);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -3900,27 +4307,14 @@ export default function App() {
     if (showLoading) setIsLoadingQuestions(true);
     try {
       console.log("Fetching questions from API...");
-      const response = await fetch('/api/questions');
+      const response = await fetch('/api/questions', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
 
       if (Array.isArray(data) && data.length > 0) {
         console.log(`Loaded ${data.length} questions from API`);
-       // Keep the 100 shown locally, then append remaining questions from API.
-       // The feed itself contains repeated ids, so track ids as we go rather
-       // than only diffing against `prev` — otherwise two copies of the same id
-       // inside one batch both survive and collide on React's `key`.
-       setQuestions(prev => {
-         const seenIds = new Set(prev.map(q => String(q.id)));
-         const newQuestions: Question[] = [];
-         for (const q of data as Question[]) {
-           const id = String(q.id);
-           if (seenIds.has(id)) continue;
-           seenIds.add(id);
-           newQuestions.push(q);
-         }
-         return [...prev, ...newQuestions];
-       });
+       // Preserve initial card order, but refresh existing cards' source metadata.
+       setQuestions(prev => mergeQuestionsById(prev, data as Question[]));
       } else {
        throw new Error("Empty data from API");
       }
@@ -3938,7 +4332,7 @@ export default function App() {
     setIsLoadingMains(true);
     try {
       console.log("Fetching mains questions from API...");
-      const response = await fetch('/api/mains-questions');
+      const response = await fetch('/api/mains-questions', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       setMainsQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
@@ -3953,7 +4347,7 @@ export default function App() {
   const fetchEssayQuestions = async () => {
     setIsLoadingEssay(true);
     try {
-      const response = await fetch('/api/essay-questions');
+      const response = await fetch('/api/essay-questions', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       setEssayQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
@@ -3983,7 +4377,7 @@ export default function App() {
   const fetchCSATQuestions = async () => {
     setIsLoadingCSAT(true);
     try {
-      const response = await fetch('/api/csat-questions');
+      const response = await fetch('/api/csat-questions', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       setCSATQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
@@ -3998,7 +4392,7 @@ export default function App() {
   const fetchEnglishQuestions = async () => {
     setIsLoadingEnglish(true);
     try {
-      const response = await fetch('/api/english-questions');
+      const response = await fetch('/api/english-questions', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       setEnglishQuestions(Array.isArray(data) ? dedupeQuestionsById(data) : []);
@@ -4013,7 +4407,7 @@ export default function App() {
   // Fast initial paint: fetch the top 100 prelims (display order) from the backend.
   const fetchInitialQuestions = async () => {
     try {
-      const response = await fetch('/api/questions?limit=100');
+      const response = await fetch('/api/questions?limit=100', { cache: 'no-store' });
       if (!response.ok) throw new Error("API response not ok");
       const data = await response.json();
       if (Array.isArray(data) && data.length > 0) {
@@ -4972,13 +5366,6 @@ export default function App() {
     question: SimilarityQuestion;
     scope: 'prelims' | 'mains' | 'csat' | 'english';
   } | null>(null);
-  const similarityScopeLabel = similarityExplorer?.scope === 'csat'
-    ? 'CSAT question bank'
-    : similarityExplorer?.scope === 'english'
-      ? 'English question bank'
-      : similarityExplorer?.scope === 'mains'
-        ? 'Mains question bank'
-        : 'Prelims question bank';
   const [linkCopied, setLinkCopied] = useState(false);
   // Shareable deep-link that opens the premium plans modal directly.
   const premiumLink = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#premium` : '#premium';
@@ -6000,7 +6387,7 @@ export default function App() {
     }
     const data = await res.json();
     const applyUpdate = (items: Question[]) => items.map(q =>
-      q.id === id ? { ...q, answer: data.answer, explanation: data.explanation } : q
+      q.id === id ? { ...q, answer: data.answer, explanation: data.explanation, subjectClassification: null } : q
     );
     if (section === "english") {
       setEnglishQuestions(applyUpdate);
@@ -6029,7 +6416,7 @@ export default function App() {
     const data = await res.json();
     setMainsQuestions(items => items.map(q =>
       String(q.id) === String(id)
-        ? { ...q, modelAnswer: data.modelAnswer, model_answer: data.modelAnswer }
+        ? { ...q, modelAnswer: data.modelAnswer, model_answer: data.modelAnswer, subjectClassification: null }
         : q
     ));
   };
@@ -6344,7 +6731,7 @@ export default function App() {
           "header-3d bg-gradient-to-b from-slate-50/90 via-white/85 to-indigo-50/60 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950 backdrop-blur-xl border-b border-slate-200/70 dark:border-indigo-900/50 sticky top-0 z-50 transition-all duration-300",
           isScrolled ? "is-scrolled" : ""
         )}>
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Top row: logo, tabs, score/random, theme, login - wraps on small screens */}
           <div className={cn(
             "flex flex-wrap items-center gap-y-2 transition-all duration-300",
@@ -6693,11 +7080,11 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-grow max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
+      <main className="flex-grow max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col md:flex-row items-start gap-6 transition-colors duration-300">
         {isAppLoading ? (
           <div className="w-full flex flex-col md:flex-row items-start gap-6 animate-fadeIn">
             {/* Filter sidebar skeleton */}
-            <aside className="w-full md:w-64 lg:w-72 shrink-0 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 space-y-4">
+            <aside className="w-full md:w-64 lg:w-[clamp(16rem,19.2%,21rem)] shrink-0 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="skeleton h-4 w-24"></div>
                 <div className="skeleton h-6 w-16 rounded-lg"></div>
@@ -7654,7 +8041,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
           <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -7811,7 +8198,7 @@ export default function App() {
                         index={idx}
                         attemptedOption={userAttempts[q.id]}
                         isRevealed={revealedAnswers[q.id]}
-                        onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'prelims', q.subject, q.topic)}
+                        onOptionClick={(opt) => handleOptionClick(q.id, opt, isCorrectOption(opt, q.answer, q.options), 'prelims', q.subject, q.topic)}
                         onToggleRevealed={() => toggleAnswer(q.id)}
                         isLocked={isLocked}
                         userEmail={userEmail}
@@ -7953,7 +8340,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -8114,7 +8501,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -8237,7 +8624,7 @@ export default function App() {
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
-                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'csat', q.subject, q.topic)}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, isCorrectOption(opt, q.answer, q.options), 'csat', q.subject, q.topic)}
                           onToggleRevealed={() => toggleAnswer(q.id)}
                           isLocked={isLocked}
                           userEmail={userEmail}
@@ -8283,7 +8670,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -8430,7 +8817,7 @@ export default function App() {
                           index={idx}
                           attemptedOption={userAttempts[q.id]}
                           isRevealed={revealedAnswers[q.id]}
-                          onOptionClick={(opt) => handleOptionClick(q.id, opt, opt === q.answer, 'english', q.subject, q.topic)}
+                          onOptionClick={(opt) => handleOptionClick(q.id, opt, isCorrectOption(opt, q.answer, q.options), 'english', q.subject, q.topic)}
                           onToggleRevealed={() => toggleAnswer(q.id)}
                           isLocked={isLocked}
                           userEmail={userEmail}
@@ -8484,7 +8871,7 @@ export default function App() {
             </div>
 
             <aside className={cn(
-              "w-full md:w-60 lg:w-64 flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
+              "w-full md:w-60 lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0 md:sticky md:top-24 md:block relative z-30 md:z-auto",
               isMobileFiltersOpen ? "block" : "hidden"
             )}>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-black/20 border border-slate-200/70 dark:border-slate-700/70">
@@ -8616,7 +9003,7 @@ export default function App() {
             ) : (
               <div className="flex flex-col lg:flex-row gap-6">
                 {/* Filters sidebar */}
-                <div className="lg:w-64 flex-shrink-0">
+                <div className="lg:w-[clamp(16rem,19.2%,21rem)] flex-shrink-0">
                   <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl border border-slate-200/70 dark:border-slate-700/70 p-4 shadow-sm sticky top-4">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Filters</h3>
@@ -8825,14 +9212,13 @@ export default function App() {
         <QuestionSimilarityExplorer
           source={similarityExplorer.question}
           scope={similarityExplorer.scope}
-          scopeLabel={similarityScopeLabel}
           userEmail={userEmail}
           onOptionClick={similarityExplorer.scope === 'mains'
             ? undefined
             : (question, option) => handleOptionClick(
               question.id,
               option,
-              option === question.answer,
+              isCorrectOption(option, question.answer, question.options),
               similarityExplorer.scope,
               question.subject,
               question.topic,

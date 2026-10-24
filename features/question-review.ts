@@ -47,7 +47,7 @@ export function createQuestionReviewRouter(database: Database) {
     try {
       const pending = `c.verification.checks.answer.status = "pending_review" OR c.verification.checks.explanation.status = "pending_review"`;
       const { resources: profiles } = await database.container("question_concept_profiles").items.query(
-        `SELECT c.sourceContainer,c.questionId,c.verification,c.processing FROM c WHERE ${pending}`,
+        `SELECT c.sourceContainer,c.questionId,c.verification,c.processing FROM c         WHERE (${pending}) OR IS_DEFINED(c.processing.provisionalEmbedding)`,
       ).fetchAll();
       const { resources: drafts } = await database.container(draftContainerId).items.query(
         "SELECT c.id,c.sourceContentHash,c.revision,c.reviewedAt FROM c WHERE IS_DEFINED(c.reviewedAt)",
@@ -68,6 +68,7 @@ export function createQuestionReviewRouter(database: Database) {
         });
         return resources.filter(raw => raw.isActive !== false).flatMap(raw => {
           const profile = byId.get(String(raw.id));
+          if (profile?.processing?.provisionalEmbedding) return [];
           const source = sourceQuestionSchema.parse(raw);
           const sourceContentHash = hashContent(source);
           const issues = [...pendingContentIssues(raw.verification),

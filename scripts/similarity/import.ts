@@ -5,7 +5,8 @@ import { readEmbeddingConfig } from "../../features/similarity/config";
 import { GoogleEmbeddingAI } from "../../features/similarity/google";
 import { buildEmbeddingInput, ConceptPipeline, hashContent } from "../../features/similarity/pipeline";
 import { createRepository, ensureContainers } from "../../features/similarity/repository";
-import { classificationReviewIssue, conceptReviewIssue, extractionBatchSchema, validateExtraction } from "../../features/similarity/schema";
+import { classificationReviewIssue, conceptReviewIssue, coverageReviewIssue, extractionBatchSchema, validateExtraction } from "../../features/similarity/schema";
+import { assertConceptAdmission, ConceptReviewError, prepareBatchReview } from "../../features/similarity/concept-review";
 import { validateVerificationBinding } from "../../features/similarity/verification";
 
 async function main() {
@@ -23,13 +24,26 @@ Default: validate every source-bound extraction without AI calls or writes.
 The file must contain formatVersion "1", extractionModel, and entries with
 sourceContainer, questionId, sourceContentHash, and extraction.
 Include source-grounded concept_review decisions. Missing or unresolved reviews
-are queued as pending_review during processing; other entries continue.`);
+are queued as pending_review during processing; other entries continue.
+Reconcile every worker's proposals before importing. Supply registry_review
+binding the live registry and the full batch, plus coverage and candidate IDs.
+The final semantic review must distinguish paraphrases from different scopes.`);
     return;
   }
   if (!values.file?.trim()) throw new Error("--file is required.");
   if (values.force && !values.process) throw new Error("--force requires --process.");
   const batch = extractionBatchSchema.parse(JSON.parse(await readFile(values.file, "utf8")));
   const repository = createRepository();
+  const registry = await repository.listConcepts();
+  let batchIssue: string | undefined;
+  if (batch.registry_review) {
+    try {
+      prepareBatchReview(batch, registry, process.env.SIMILARITY_TAXONOMY_VERSION?.trim() || "v1");
+    } catch (error) {
+      if (!(error instanceof ConceptReviewError)) throw error;
+      batchIssue = error.message;
+    }
+  }
   const reviewNeeded: { id: string; reason: string }[] = [];
   for (const entry of batch.entries) {
     const question = await repository.readQuestion(entry);
@@ -40,7 +54,16 @@ are queued as pending_review during processing; other entries continue.`);
     validateVerificationBinding(entry.verification, entry.sourceContentHash, hashContent(extraction));
     const classificationIssue = classificationReviewIssue(extraction);
     const conceptIssue = conceptReviewIssue(extraction);
-    const issues = [classificationIssue, conceptIssue].filter(Boolean);
+    let admissionIssue: string | undefined;
+    if (!batch.registry_review && !conceptIssue) {
+      try {
+        assertConceptAdmission(extraction, question, registry);
+      } catch (error) {
+        if (!(error instanceof ConceptReviewError)) throw error;
+        admissionIssue = error.message;
+      }
+    }
+    const issues = [classificationIssue, conceptIssue, coverageReviewIssue(extraction, question), admissionIssue, batchIssue].filter(Boolean);
     if (issues.length) reviewNeeded.push({ id: `${entry.sourceContainer}:${entry.questionId}`, reason: issues.join(" ") });
     else buildEmbeddingInput(extraction);
   }
@@ -55,17 +78,19 @@ are queued as pending_review during processing; other entries continue.`);
   const pipeline = new ConceptPipeline(repository, new GoogleEmbeddingAI(config), config);
   const counts = { ready: 0, skipped: 0, pending_review: 0, failed: 0 };
   const pendingReview: string[] = [];
-  for (const entry of batch.entries) {
-    try {
-      const result = await pipeline.processImported(entry, values.force);
+  await pipeline.processImportedBatch(batch, values.force, outcome => {
+    const entry = outcome.reference;
+    if ("result" in outcome) {
+      const result = outcome.result;
       counts[result]++;
       if (result === "pending_review") pendingReview.push(`${entry.sourceContainer}:${entry.questionId}`);
       console.log(`${entry.sourceContainer}:${entry.questionId}: ${result}`);
-    } catch (error) {
+    } else {
+      const error = outcome.error;
       counts.failed++;
       console.error(error instanceof Error ? error.message.replaceAll(config.apiKey, "[REDACTED]") : "Imported profile processing failed.");
     }
-  }
+  });
   console.log(JSON.stringify({ ...counts, pendingReview }));
   if (counts.failed) process.exitCode = 1;
 }

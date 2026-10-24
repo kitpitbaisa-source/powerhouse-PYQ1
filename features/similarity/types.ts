@@ -1,4 +1,4 @@
-import type { ConceptReview } from "./schema.js";
+import type { ConceptReview, StoredProfile } from "./schema.js";
 import type { QuestionVerification } from "./verification.js";
 
 export type QuestionSourceContainer =
@@ -78,6 +78,7 @@ export interface QuestionClassification {
   question_intent: string;
   review?: {
     status: "supported" | "uncertain" | "conflict";
+    taxonomy_policy?: "canonical_anchor" | "independent_source";
     primary_concept_id: string;
     subject_confidence: number;
     topic_confidence: number;
@@ -121,6 +122,8 @@ export interface ProfileProcessing {
   embeddingSpaceVersion: string | null;
   updatedAt: string | null;
   error: string | null;
+  maintenance?: StoredProfile["processing"]["maintenance"];
+  subtopicMaintenance?: StoredProfile["processing"]["subtopicMaintenance"];
 }
 
 export interface QuestionConceptProfile extends QuestionReference {
@@ -157,6 +160,12 @@ export interface CanonicalConcept {
   parentConceptIds: string[];
   status: "provisional" | "active" | "retired";
   taxonomyVersion: string;
+  retirement?: {
+    replacementConceptId: string;
+    retiredAt: string;
+    reviewedBy: string;
+    auditReference: string;
+  };
 }
 
 export type SimilarityRelation =
@@ -170,14 +179,25 @@ export interface SharedConcept {
   canonicalName: string;
 }
 
+export interface SourceQualityNotice {
+  code: string;
+  reason: string;
+}
+
 export interface SimilarityMatch extends QuestionReference {
   profileId: QuestionProfileId;
   score: number;
   relation: SimilarityRelation;
   reasons: string[];
   sharedConcepts: SharedConcept[];
+  allConcepts?: SharedConcept[];
   highlights?: HighlightEvidence[];
   question: SimilarityQuestionContent;
+}
+
+export interface SubjectClassificationDisplay {
+  subjectId: string;
+  subject: string;
 }
 
 interface SimilarityQuestionFields extends QuestionReference {
@@ -186,7 +206,10 @@ interface SimilarityQuestionFields extends QuestionReference {
   exam: string;
   year: string;
   subject: string;
+  subjectClassification?: SubjectClassificationDisplay | null;
   topic: string | null;
+  subtopics?: string[];
+  reviewWarnings?: SourceQualityNotice[];
 }
 
 export type SimilarityQuestionContent = SimilarityQuestionFields & (
@@ -204,6 +227,9 @@ export type SimilarityResponse =
       source: QuestionReference;
       rankingVersion: string;
       sourceHighlights?: HighlightEvidence[];
+      sourceSubtopics?: string[];
+      sourceConcepts?: SharedConcept[];
+      sourceWarnings?: SourceQualityNotice[];
       matches: SimilarityMatch[];
     }
   | {

@@ -5,6 +5,7 @@ import { timingSafeEqual, createHmac } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
 import { createSimilarityRouter } from "./features/similarity/search";
+import { loadQuestionSubtopics } from "./features/similarity/subtopics";
 import { createQuestionReviewRouter } from "./features/question-review";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "https://pyqpowerhouse-db.documents.azure.com:443/";
@@ -475,7 +476,7 @@ async function getQuestions() {
   // appear within the Prelims list (stored separately in the state_pcs container).
   const base = resources.filter((r: any) => r.id !== "__cache_version__")
     .map((question: any) => ({ ...question, sourceContainer: "questions" }));
-  const merged = base.concat(await getStatePcsQuestions());
+  const merged = (await loadQuestionSubtopics(database, "questions", base)).concat(await getStatePcsQuestions());
   questionsCache = merged;
   cacheTimestamp = now;
   return merged;
@@ -490,9 +491,11 @@ async function getStatePcsQuestions() {
       .fetchAll();
     // `isActive === false` marks a document retired by a migration (its id was
     // moved to avoid colliding with the `questions` container) — never serve it.
-    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
+    const questions = resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
       .map((question: any) => ({ ...question, sourceContainer: "state_pcs" }));
+    return await loadQuestionSubtopics(database, "state_pcs", questions);
   } catch (e: any) {
+    console.warn("Could not load State PCS questions:", e?.message);
     return [];
   }
 }
@@ -505,7 +508,7 @@ async function getTopQuestions(limit: number) {
   const n = Math.max(1, Math.min(Math.floor(limit), 500));
   const query = `SELECT TOP ${n} * FROM c WHERE IS_DEFINED(c.question) AND c.question != "" AND NOT STARTSWITH(c.question, "Q_") ORDER BY c.year DESC, c.id DESC`;
   const { resources } = await questionsContainer.items.query(query).fetchAll();
-  return resources.map((question: any) => ({ ...question, sourceContainer: "questions" }));
+  return loadQuestionSubtopics(database, "questions", resources.map((question: any) => ({ ...question, sourceContainer: "questions" })));
 }
 
 async function getMainsQuestions() {
@@ -516,9 +519,9 @@ async function getMainsQuestions() {
   const { resources } = await mainsQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  mainsCache = resources;
+  mainsCache = await loadQuestionSubtopics(database, "mains-questions", resources);
   mainsCacheTimestamp = now;
-  return resources;
+  return mainsCache;
 }
 
 async function getEssayQuestions() {
@@ -529,9 +532,9 @@ async function getEssayQuestions() {
   const { resources } = await essayQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  essayCache = resources;
+  essayCache = await loadQuestionSubtopics(database, "essay-questions", resources);
   essayCacheTimestamp = now;
-  return resources;
+  return essayCache;
 }
 
 async function getToppersQuestions() {
@@ -555,9 +558,9 @@ async function getCSATQuestions() {
   const { resources } = await csatQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  csatCache = resources;
+  csatCache = await loadQuestionSubtopics(database, "csat-questions", resources);
   csatCacheTimestamp = now;
-  return resources;
+  return csatCache;
 }
 
 async function getEnglishQuestions() {
@@ -568,9 +571,9 @@ async function getEnglishQuestions() {
   const { resources } = await englishQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  englishCache = resources;
+  englishCache = await loadQuestionSubtopics(database, "english-questions", resources);
   englishCacheTimestamp = now;
-  return resources;
+  return englishCache;
 }
 
 // API to get all questions (cached). Supports ?limit=N to return only the

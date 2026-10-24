@@ -2,16 +2,21 @@ import express from "express";
 import { z } from "zod";
 import type { Database } from "@azure/cosmos";
 import { embeddingModel, embeddingPrefix, profileContainerId, promptVersion, schemaVersion, sourceContainers } from "./config.js";
-import { buildEmbeddingInput, hashContent, validateVector } from "./pipeline.js";
+import { buildEmbeddingInput, buildProvisionalEmbeddingInput, provisionalEmbeddingReview, hashContent, validateVector } from "./pipeline.js";
 import { CosmosPipelineRepository, statusCode } from "./repository.js";
 import { classificationReviewIssue, conceptReviewIssue, profileExtractionSchema, sourceQuestionSchema, storedProfileSchema, type SourceQuestion, type StoredProfile } from "./schema.js";
 import type {
-  QuestionReference, QuestionSourceContainer, SimilarityMatch,
+  QuestionReference, QuestionSourceContainer, SharedConcept, SimilarityMatch,
   SimilarityQuestionContent, SimilarityResponse,
 } from "./types.js";
 import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
+import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
+import type { MasterRecord } from "../taxonomy/master.js";
+import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
-const rankingVersion = "concept-cosine-v1";
+const rankingVersion = "concept-cosine-overlap-v2";
+// Embedding cosine plus up to this much for matching concept IDs (Dice overlap), capped at 100%.
+const overlapWeight = 0.25;
 const maxResults = 12;
 const candidateCount = 50;
 const requestSchema = z.object({
@@ -21,6 +26,7 @@ const requestSchema = z.object({
 });
 
 export interface SimilarityStore {
+  readSubtopicMaster(): Promise<MasterRecord[]>;
   readProfile(id: string): Promise<StoredProfile | undefined>;
   readQuestion(reference: QuestionReference): Promise<{ question: SourceQuestion; verification?: QuestionVerification } | undefined>;
   userStatus(email: string): Promise<string | undefined>;
@@ -33,26 +39,48 @@ function bankSources(source: QuestionSourceContainer): QuestionSourceContainer[]
 }
 
 function hasReadyVector(profile: StoredProfile): boolean {
-  if (profile.verification?.status === "pending_review") return false;
+  const provisional = provisionalEmbeddingReview(profile);
+  if (profile.processing.provisionalEmbedding && !provisional) return false;
+  if (profile.verification?.status === "pending_review" && !provisional) return false;
   if (profile.processing.status !== "ready" || profile.schemaVersion !== schemaVersion || !profile.embedding) return false;
   if (profile.id !== `${profile.sourceContainer}:${profile.questionId}`) throw new Error("Invalid stored profile identity.");
   const extraction = profileExtractionSchema.parse(profile);
-  if (classificationReviewIssue(extraction) || conceptReviewIssue(extraction)) return false;
+  if (!provisional && (classificationReviewIssue(extraction) || conceptReviewIssue(extraction))) return false;
   validateVector(profile.embedding, profile.processing.embeddingDimensions);
   return profile.processing.embeddingModel === embeddingModel &&
     profile.processing.promptVersion === promptVersion &&
     profile.processing.embeddingSpaceVersion === `${embeddingModel}:${profile.processing.embeddingDimensions}:sentence-similarity:normalized:v1` &&
-    profile.concept_embedding_input === buildEmbeddingInput(extraction) &&
+    profile.concept_embedding_input === (provisional ? buildProvisionalEmbeddingInput(extraction) : buildEmbeddingInput(extraction)) &&
     profile.processing.embeddingInputHash === hashContent(embeddingPrefix + profile.concept_embedding_input);
 }
 
-function questionContent(reference: QuestionReference, question: SourceQuestion): SimilarityQuestionContent {
+function allowsFlaggedSource(profile: StoredProfile, verification?: QuestionVerification): boolean {
+  const review = provisionalEmbeddingReview(profile);
+  return !!review && review.sourceVerificationHash === hashContent(verification ?? null);
+}
+
+function reviewNotices(profile: StoredProfile, verification?: QuestionVerification) {
+  const notices = [
+    ...(verification?.warnings ?? []).map(({ code, reason }) => ({ code, reason })),
+    ...(provisionalEmbeddingReview(profile)?.issues ?? []),
+  ];
+  return [...new Map(notices.map(notice => [`${notice.code}:${notice.reason}`, notice])).values()];
+}
+
+function questionContent(
+  reference: QuestionReference, question: SourceQuestion, subtopics: string[],
+  master: readonly MasterRecord[], verification?: QuestionVerification, profile?: StoredProfile,
+): SimilarityQuestionContent {
   if (question.exam === null || question.year === null || question.subject === null) {
     throw new Error(`Source metadata is incomplete for ${reference.sourceContainer}:${reference.questionId}.`);
   }
+  const notices = profile ? reviewNotices(profile, verification)
+    : (verification?.warnings ?? []).map(({ code, reason }) => ({ code, reason }));
   const common = {
     ...reference, id: question.id, question: question.question,
-    exam: question.exam, year: question.year, subject: question.subject, topic: question.topic,
+    exam: question.exam, year: question.year, subject: question.subject, topic: question.topic, subtopics,
+    subjectClassification: approvedQuestionSubject({ ...question, verification }, master),
+    ...(notices.length ? { reviewWarnings: notices } : {}),
   };
   return reference.sourceContainer === "mains-questions" || reference.sourceContainer === "essay-questions"
     ? { ...common, kind: "descriptive", paper: question.paper, modelAnswer: question.answer }
@@ -66,6 +94,11 @@ function cosineScore(source: StoredProfile, candidate: StoredProfile): number {
 }
 
 function explainMatch(source: StoredProfile, candidate: StoredProfile): Pick<SimilarityMatch, "relation" | "reasons" | "sharedConcepts"> {
+  if (provisionalEmbeddingReview(source) || provisionalEmbeddingReview(candidate)) return {
+    relation: "related_concept",
+    reasons: ["Provisional embedding similarity. Source claims and concept identities retain their review flags."],
+    sharedConcepts: [],
+  };
   const primary = new Set(source.concept_profile.primary_concepts.map(concept => concept.concept_id));
   const all = new Set([...primary, ...source.concept_profile.secondary_concepts.map(concept => concept.concept_id)]);
   const targetPrimary = candidate.concept_profile.primary_concepts;
@@ -79,6 +112,21 @@ function explainMatch(source: StoredProfile, candidate: StoredProfile): Pick<Sim
       : ["Similar concept descriptions based on the stored embeddings."],
     sharedConcepts: shared.map(concept => ({ conceptId: concept.concept_id, canonicalName: concept.canonical_name })),
   };
+}
+
+function allConcepts(profile: StoredProfile): SharedConcept[] {
+  const seen = new Set<string>();
+  return [...profile.concept_profile.primary_concepts, ...profile.concept_profile.secondary_concepts]
+    .filter(concept => !seen.has(concept.concept_id) && seen.add(concept.concept_id))
+    .map(concept => ({ conceptId: concept.concept_id, canonicalName: concept.canonical_name }));
+}
+
+function conceptOverlap(source: StoredProfile, candidate: StoredProfile, sharedCount: number): number {
+  const sourceCount = new Set([...source.concept_profile.primary_concepts, ...source.concept_profile.secondary_concepts]
+    .map(concept => concept.concept_id)).size;
+  const candidateCount = new Set([...candidate.concept_profile.primary_concepts, ...candidate.concept_profile.secondary_concepts]
+    .map(concept => concept.concept_id)).size;
+  return sourceCount + candidateCount ? (2 * sharedCount) / (sourceCount + candidateCount) : 0;
 }
 
 export async function findSimilarQuestions(
@@ -104,7 +152,8 @@ export async function findSimilarQuestions(
   if (!sourceQuestion || !sourceQuestion.isActive || hashContent(sourceQuestion) !== profile.processing.sourceContentHash) {
     return { status: "stale", source: reference, matches: [], message: "The concept profile needs updating." };
   }
-  if (sourceSnapshot.verification?.status === "pending_review") {
+  if ((profile.processing.provisionalEmbedding && !allowsFlaggedSource(profile, sourceSnapshot.verification)) ||
+      (sourceSnapshot.verification?.status === "pending_review" && !allowsFlaggedSource(profile, sourceSnapshot.verification))) {
     return { status: "pending", source: reference, matches: [], message: sourceSnapshot.verification.reason };
   }
   if (sourceSnapshot.verification?.status === "verified" &&
@@ -119,9 +168,10 @@ export async function findSimilarQuestions(
   if (years && !years.includes(sourceQuestion.year)) {
     return { status: "ready", source: reference, rankingVersion, matches: [] };
   }
+  const subtopicMaster = await store.readSubtopicMaster();
   const candidates = await store.candidates(profile, sources, years);
   const seen = new Set([profile.id]);
-  const ranked: { profile: StoredProfile; cosine: number }[] = [];
+  const ranked: { profile: StoredProfile; score: number; explanation: ReturnType<typeof explainMatch> }[] = [];
   for (const candidate of candidates) {
     if (seen.has(candidate.id)) continue;
     seen.add(candidate.id);
@@ -131,9 +181,12 @@ export async function findSimilarQuestions(
         candidate.processing.embeddingModel !== profile.processing.embeddingModel ||
         candidate.processing.embeddingDimensions !== profile.processing.embeddingDimensions) continue;
     const cosine = cosineScore(profile, candidate);
-    if (cosine > 0) ranked.push({ profile: candidate, cosine });
+    if (cosine <= 0) continue;
+    const explanation = explainMatch(profile, candidate);
+    const overlap = conceptOverlap(profile, candidate, new Set(explanation.sharedConcepts.map(concept => concept.conceptId)).size);
+    ranked.push({ profile: candidate, score: Math.min(1, cosine + overlapWeight * overlap), explanation });
   }
-  ranked.sort((a, b) => b.cosine - a.cosine || a.profile.id.localeCompare(b.profile.id));
+  ranked.sort((a, b) => b.score - a.score || a.profile.id.localeCompare(b.profile.id));
   const matches: SimilarityMatch[] = [];
   for (let offset = 0; offset < ranked.length && matches.length < maxResults; offset += maxResults) {
     const batch = await Promise.all(ranked.slice(offset, offset + maxResults).map(async candidate => ({
@@ -144,7 +197,8 @@ export async function findSimilarQuestions(
       const question = candidate.snapshot?.question;
       const verification = candidate.snapshot?.verification;
       if (!question || !question.isActive || hashContent(question) !== candidate.profile.processing.sourceContentHash ||
-          verification?.status === "pending_review" ||
+          (candidate.profile.processing.provisionalEmbedding && !allowsFlaggedSource(candidate.profile, verification)) ||
+          (verification?.status === "pending_review" && !allowsFlaggedSource(candidate.profile, verification)) ||
           (verification?.status === "verified" &&
             (verification.sourceContentHash !== candidate.profile.processing.sourceContentHash ||
               verification.extractionContentHash !== candidate.profile.processing.extractionContentHash)) ||
@@ -152,14 +206,15 @@ export async function findSimilarQuestions(
       const target: QuestionReference = {
         sourceContainer: candidate.profile.sourceContainer, questionId: candidate.profile.questionId,
       };
-      const explanation = explainMatch(profile, candidate.profile);
+      const explanation = candidate.explanation;
       matches.push({
         ...target,
         profileId: `${target.sourceContainer}:${target.questionId}`,
-        score: Math.round(candidate.cosine * 100),
+        score: Math.round(candidate.score * 100),
         ...explanation,
+        allConcepts: allConcepts(candidate.profile),
         highlights: candidate.profile.highlight_evidence,
-        question: questionContent(target, question),
+        question: questionContent(target, question, approvedMasterSubtopics(candidate.profile.classification, subtopicMaster), subtopicMaster, verification, candidate.profile),
       });
       if (matches.length === maxResults) break;
     }
@@ -167,13 +222,21 @@ export async function findSimilarQuestions(
   return {
     status: "ready", source: reference, rankingVersion, matches,
     sourceHighlights: profile.highlight_evidence,
+    sourceConcepts: allConcepts(profile),
+    sourceSubtopics: approvedMasterSubtopics(profile.classification, subtopicMaster),
+    ...(reviewNotices(profile, sourceSnapshot.verification).length ? {
+      sourceWarnings: reviewNotices(profile, sourceSnapshot.verification),
+    } : {}),
   };
 }
 
-class CosmosSimilarityStore implements SimilarityStore {
+export class CosmosSimilarityStore implements SimilarityStore {
   private readonly repository: CosmosPipelineRepository;
   constructor(private readonly database: Database) {
     this.repository = new CosmosPipelineRepository(database);
+  }
+  async readSubtopicMaster() {
+    return loadActiveSubtopicMaster(this.database);
   }
   async readProfile(id: string) {
     return (await this.repository.readProfile(id))?.document;
@@ -222,7 +285,7 @@ class CosmosSimilarityStore implements SimilarityStore {
     return [...new Set(batches.flat().filter(year => /^\d{4}$/.test(year)))].sort().reverse().slice(0, 2);
   }
   async candidates(profile: StoredProfile, sources: QuestionSourceContainer[], years?: string[]): Promise<StoredProfile[]> {
-    const { resources } = await this.database.container(profileContainerId).items.query<unknown>({
+    const query = {
       query: `SELECT TOP @count VALUE c FROM c
         WHERE c.id != @id AND c.processing.status = "ready"
         AND c.schemaVersion = @schema AND IS_ARRAY(c.embedding)
@@ -244,7 +307,8 @@ class CosmosSimilarityStore implements SimilarityStore {
         { name: "@sources", value: sources }, { name: "@vector", value: profile.embedding },
         ...(years ? [{ name: "@years", value: years }] : []),
       ],
-    }).fetchAll();
+    };
+    const { resources } = await this.database.container(profileContainerId).items.query<unknown>(query).fetchAll();
     return resources.map(resource => storedProfileSchema.parse(resource));
   }
 }
@@ -262,6 +326,17 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
     } catch (error) {
       console.error("Similarity search failed:", error instanceof Error ? error.message : error);
       return res.status(500).json({ error: "Could not load similar questions." });
+    }
+  });
+  router.post("/feedback", async (req, res) => {
+    const parsed = feedbackSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid feedback." });
+    try {
+      await saveSimilarityFeedback(database, parsed.data, rankingVersion);
+      return res.status(204).end();
+    } catch (error) {
+      console.error("Similarity feedback failed:", error instanceof Error ? error.message : error);
+      return res.status(500).json({ error: "Could not save feedback." });
     }
   });
   return router;

@@ -6,6 +6,7 @@ import { GooglePipelineAI } from "../../features/similarity/google";
 import { ConceptPipeline } from "../../features/similarity/pipeline";
 import { createRepository, ensureContainers } from "../../features/similarity/repository";
 import type { QuestionReference } from "../../features/similarity/types";
+import { masterContainerId, masterRecordSchema } from "../../features/taxonomy/master";
 
 async function main() {
   const { values } = parseArgs({
@@ -25,6 +26,7 @@ Default: read-only preview of up to 10 question references; no AI calls or write
 --process explicitly enables paid Gemini calls, Cosmos profile/concept writes and question verification metadata updates.
 --limit caps processing attempts, excluding unchanged profiles and held review flags; rerun to resume.
 Unresolved concept identities or roles are saved as pending_review; other entries continue.
+Classification uses the active master; subtopics are metadata only, excluded from embeddings.
 --force re-extracts selected questions and requires --process.`);
     return;
   }
@@ -39,7 +41,13 @@ Unresolved concept identities or roles are saved as pending_review; other entrie
   if (values.process) {
     const config = readPipelineConfig();
     await ensureContainers(repository.database, config.dimensions, false);
-    pipeline = new ConceptPipeline(repository, new GooglePipelineAI(config), config);
+    const { resources } = await repository.database.container(masterContainerId).items
+      .query<unknown>("SELECT * FROM c WHERE c.isActive = true").fetchAll();
+    const master = resources.map(record => masterRecordSchema.parse(record));
+    if (!master.some(record => record.type === "subject") || !master.some(record => record.type === "topic")) {
+      throw new Error("The active subject/topic master is empty; classification cannot proceed.");
+    }
+    pipeline = new ConceptPipeline(repository, new GooglePipelineAI(config, master), config);
   } else {
     readDimensions();
     console.log("Read-only preview. Add --process to enable AI calls and Cosmos writes.");

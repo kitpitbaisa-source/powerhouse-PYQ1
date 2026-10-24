@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { classificationConfidenceThreshold, sourceContainers } from "./config.js";
 import { questionVerificationSchema } from "./verification.js";
+import { masterClassificationSchema } from "../taxonomy/master.js";
 
 const text = z.string().trim().min(1);
 const conceptId = text.regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);
@@ -20,7 +21,76 @@ export const highlightEvidenceSchema = z.object({
   exact_text: z.string().min(1).refine(value => value.trim().length > 0, "Highlight text must not be blank."),
 });
 
+const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
+export const registryReviewSchema = z.object({
+  reviewed_by: text,
+  reviewed_at: z.iso.datetime(),
+  registry_fingerprint: fingerprint,
+  proposals_fingerprint: fingerprint,
+});
+
+export const coverageReviewSchema = z.object({
+  status: z.enum(["complete", "uncertain"]),
+  rationale: text,
+  uncovered_items: strings,
+  reviewed_fields: z.array(z.object({
+    field: highlightEvidenceSchema.shape.field,
+    option_index: z.number().int().nonnegative().optional(),
+    rationale: text,
+    highlight_gap: text.optional(),
+  })).min(1),
+  items: z.array(z.object({
+    item_id: text,
+    meaning: text,
+    concept_ids: z.array(conceptId).min(1),
+    claim_ids: strings,
+    source_evidence: z.array(highlightEvidenceSchema).min(1),
+  })).min(1),
+});
+
 export const conceptReviewSchema = z.object({
+  registry_scan: z.object({
+    registry_fingerprint: fingerprint,
+    reviewed_concept_count: z.number().int().nonnegative(),
+    chunks: z.array(z.object({
+      start_index: z.number().int().nonnegative(),
+      concept_count: z.number().int().positive(),
+      registry_fingerprint: fingerprint,
+      reviewed_by: text,
+      reviewed_at: z.iso.datetime(),
+      rationale: text,
+      decisions: z.array(z.object({
+        concept_id: conceptId,
+        equivalent_ids: z.array(conceptId),
+        related_ids: z.array(conceptId),
+        uncertain: z.boolean(),
+        rationale: text,
+      })).min(1),
+    })),
+  }).optional(),
+  highlights: z.object({
+    status: z.enum(["complete", "uncertain"]),
+    rationale: text,
+    gaps: z.array(z.object({
+      item_id: text,
+      concept_id: conceptId,
+      field: highlightEvidenceSchema.shape.field,
+      option_index: z.number().int().nonnegative().optional(),
+      reason: text,
+    })),
+    extended_excerpts: z.array(highlightEvidenceSchema.extend({ reason: text })),
+    dense_fields: z.array(z.object({
+      field: highlightEvidenceSchema.shape.field,
+      option_index: z.number().int().nonnegative().optional(),
+      reason: text,
+    })),
+  }).optional(),
+  audit: registryReviewSchema.omit({ proposals_fingerprint: true }).extend({
+    source_content_hash: fingerprint,
+    proposal_fingerprint: fingerprint,
+    batch_proposals_fingerprint: fingerprint.optional(),
+  }).optional(),
+  coverage: coverageReviewSchema.optional(),
   decisions: z.array(z.object({
     concept_id: conceptId,
     decision: z.enum(["reuse", "new", "review"]),
@@ -30,6 +100,7 @@ export const conceptReviewSchema = z.object({
     role_status: z.enum(["supported", "uncertain", "unrelated"]),
     role_rationale: text,
     source_evidence: z.array(highlightEvidenceSchema),
+    compared_concept_ids: z.array(conceptId).optional(),
   })).min(1),
 });
 
@@ -37,6 +108,7 @@ export type ConceptReview = z.infer<typeof conceptReviewSchema>;
 
 const classificationReviewSchema = z.object({
   status: z.enum(["supported", "uncertain", "conflict"]),
+  taxonomy_policy: z.enum(["canonical_anchor", "independent_source"]).optional(),
   primary_concept_id: conceptId,
   subject_confidence: confidence,
   topic_confidence: confidence,
@@ -54,11 +126,18 @@ export const canonicalConceptSchema = z.object({
   parentConceptIds: z.array(conceptId),
   status: z.enum(["provisional", "active", "retired"]),
   taxonomyVersion: text,
+  retirement: z.object({
+    replacementConceptId: conceptId,
+    retiredAt: z.iso.datetime(),
+    reviewedBy: text,
+    auditReference: text,
+  }).optional(),
 });
 
 export const profileExtractionSchema = z.object({
   classification: z.object({
     subject: text, topic: text, subtopics: strings,
+    master: masterClassificationSchema.optional(),
     question_format: text,
     polarity: z.enum(["positive_selection", "negative_selection", "mixed_or_conditional", "not_applicable"]),
     reasoning_type: strings,
@@ -118,12 +197,51 @@ export const extractionResponseSchema = profileExtractionSchema.extend({
     review: classificationReviewSchema,
   }),
   concept_definitions: z.array(canonicalConceptSchema.omit({
-    status: true, taxonomyVersion: true,
+    status: true, taxonomyVersion: true, retirement: true,
   })).min(1),
 });
 
 export type ProfileExtraction = z.infer<typeof profileExtractionSchema>;
 export type ExtractionResponse = z.infer<typeof extractionResponseSchema>;
+
+export const conceptResolutionExtractionSchema = extractionResponseSchema.extend({
+  classification: profileExtractionSchema.shape.classification.partial({
+    question_format: true, polarity: true, reasoning_type: true, question_intent: true,
+  }).optional(),
+});
+export type ConceptResolutionExtraction = z.infer<typeof conceptResolutionExtractionSchema>;
+
+export const conceptResolutionBatchEntrySchema = z.object({
+  sourceContainer: z.enum(sourceContainers),
+  questionId: text,
+  sourceContentHash: fingerprint,
+  extraction: conceptResolutionExtractionSchema,
+  approvedNewConceptIds: z.array(conceptId).min(1).optional(),
+});
+
+export const conceptResolutionBatchSchema = z.object({
+  formatVersion: z.literal("1"),
+  extractionModel: text,
+  registry_review: registryReviewSchema,
+  entries: z.array(conceptResolutionBatchEntrySchema).min(1),
+}).superRefine((batch, context) => {
+  const seen = new Set<string>();
+  batch.entries.forEach((entry, index) => {
+    const id = `${entry.sourceContainer}:${entry.questionId}`;
+    if (seen.has(id)) context.addIssue({ code: "custom", path: ["entries", index], message: `Duplicate concept-resolution profile ${id}.` });
+    seen.add(id);
+    if (entry.approvedNewConceptIds) {
+      const proposed = new Set(entry.extraction.concept_review?.decisions
+        .filter(decision => decision.decision === "new").map(decision => decision.concept_id));
+      if (new Set(entry.approvedNewConceptIds).size !== entry.approvedNewConceptIds.length ||
+          entry.approvedNewConceptIds.some(id => !proposed.has(id))) {
+        context.addIssue({ code: "custom", path: ["entries", index, "approvedNewConceptIds"],
+          message: "Approved identities must be unique new proposals assigned to this complete extraction." });
+      }
+    }
+  });
+});
+export type ConceptResolutionBatch = z.infer<typeof conceptResolutionBatchSchema>;
 
 export const importedExtractionSchema = z.object({
   sourceContainer: z.enum(sourceContainers),
@@ -141,6 +259,7 @@ export type ImportedExtraction = z.infer<typeof importedExtractionSchema>;
 export const extractionBatchSchema = z.object({
   formatVersion: z.enum(["1"]),
   extractionModel: text,
+  registry_review: registryReviewSchema.optional(),
   entries: z.array(importedExtractionSchema).min(1),
 }).superRefine((batch, context) => {
   const seen = new Set<string>();
@@ -150,6 +269,7 @@ export const extractionBatchSchema = z.object({
     seen.add(id);
   });
 });
+export type ExtractionBatch = z.infer<typeof extractionBatchSchema>;
 
 export const sourceQuestionSchema = z.object({
   id: z.union([text, z.number().int()]).transform(String),
@@ -181,7 +301,38 @@ export const sourceQuestionSchema = z.object({
 
 export type SourceQuestion = z.infer<typeof sourceQuestionSchema>;
 
+export const classificationMaintenanceSchema = z.object({
+  taxonomy_policy: z.enum(["canonical_anchor", "independent_source"]),
+  subject: text,
+  topic: text,
+  subtopics: strings.min(1),
+  master: masterClassificationSchema,
+  subject_confidence: confidence.min(classificationConfidenceThreshold),
+  topic_confidence: confidence.min(classificationConfidenceThreshold),
+  rationale: text,
+  source_evidence: z.array(highlightEvidenceSchema.omit({ concept_id: true })).min(1),
+});
+export type ClassificationMaintenance = z.infer<typeof classificationMaintenanceSchema>;
+export const classificationParentMaintenanceSchema = classificationMaintenanceSchema.extend({
+  subtopics: z.array(z.never()).length(0),
+  master: masterClassificationSchema.refine(value => value.subtopicIds.length === 0,
+    "Parent-only maintenance cannot admit a subtopic."),
+});
+export type ClassificationParentMaintenance = z.infer<typeof classificationParentMaintenanceSchema>;
+
+export const subtopicMaintenanceReviewSchema = z.object({
+  subtopics: z.array(z.object({
+    id: text.regex(/^S\d+-T\d+-ST\d+$/),
+    name: text,
+    source_evidence: z.array(highlightEvidenceSchema.omit({ concept_id: true })).min(1),
+  })).min(1),
+  rationale: text,
+});
+
 export const storedProfileSchema = profileExtractionSchema.partial().extend({
+  classification: profileExtractionSchema.shape.classification.partial({
+    question_format: true, polarity: true, reasoning_type: true, question_intent: true,
+  }).optional(),
   id: text,
   sourceContainer: z.enum(sourceContainers),
   questionId: text,
@@ -205,6 +356,91 @@ export const storedProfileSchema = profileExtractionSchema.partial().extend({
     embeddingSpaceVersion: text,
     updatedAt: text,
     error: text.nullable(),
+    provisionalEmbedding: z.object({
+      mode: z.literal("flagged_similarity"),
+      authorizedBy: text,
+      authorizedAt: z.iso.datetime(),
+      auditReference: text,
+      reason: text,
+      reviewLevel: z.literal("advisory").optional(),
+      sourceContentHash: fingerprint,
+      profileExtractionHash: fingerprint,
+      sourceVerificationHash: fingerprint,
+      profileVerificationHash: fingerprint,
+      activeProfileHash: fingerprint,
+      issues: z.array(z.object({ code: text, reason: text })).min(1),
+    }).optional(),
+    maintenance: z.object({
+      mode: z.literal("classification_embedding_only"),
+      reviewedBy: text,
+      auditReference: text,
+      updatedAt: z.iso.datetime(),
+      previousSourceContentHash: fingerprint,
+      preservedExtractionHash: fingerprint,
+      registryFingerprint: fingerprint,
+      embeddingInputChanged: z.boolean(),
+      reusedEmbedding: z.boolean(),
+      freshConceptReview: z.literal(false),
+      freshHighlightReview: z.literal(false),
+      canonicalTaxonomyMismatch: z.object({ conceptId, subject: text, topic: text }).optional(),
+    }).optional(),
+    classificationMaintenance: z.object({
+      mode: z.literal("classification_only"),
+      reviewedBy: text,
+      auditReference: text,
+      updatedAt: z.iso.datetime(),
+      previousSourceContentHash: fingerprint,
+      previousProfileHash: fingerprint,
+      createdProfile: z.boolean().optional(),
+      review: classificationMaintenanceSchema,
+      resolvedIssueCodes: strings,
+      freshConceptReview: z.literal(false),
+      freshHighlightReview: z.literal(false),
+    }).optional(),
+    subtopicMaintenance: z.object({
+      mode: z.literal("subtopics_only"),
+      reviewedBy: text,
+      auditReference: text,
+      updatedAt: z.iso.datetime(),
+      previousProfileHash: fingerprint,
+      sourceContentHash: fingerprint,
+      previousClassificationHash: fingerprint,
+      classificationHash: fingerprint,
+      registryFingerprint: fingerprint,
+      review: subtopicMaintenanceReviewSchema,
+      embeddingInputChanged: z.literal(false),
+      reusedEmbedding: z.literal(true),
+      freshConceptReview: z.literal(false),
+      freshHighlightReview: z.literal(false),
+    }).optional(),
+    conceptResolution: z.object({
+      mode: z.literal("concepts_only"),
+      reviewedBy: text,
+      auditReference: text,
+      updatedAt: z.iso.datetime(),
+      previousProfileHash: fingerprint,
+      registryFingerprint: fingerprint,
+      resolvedIssueCodes: strings,
+      retainedIssueCodes: strings,
+      proposedConceptIds: strings,
+      admittedConceptIds: strings.optional(),
+      creationBatchReview: registryReviewSchema.optional(),
+      freshConceptReview: z.literal(true),
+      freshHighlightReview: z.literal(true),
+    }).optional(),
+    classificationParentMaintenance: z.object({
+      mode: z.literal("classification_parent_only"),
+      reviewedBy: text,
+      auditReference: text,
+      updatedAt: z.iso.datetime(),
+      previousSourceContentHash: fingerprint,
+      previousProfileHash: fingerprint,
+      createdProfile: z.boolean().optional(),
+      review: classificationParentMaintenanceSchema,
+      retainedIssueCodes: strings.min(1),
+      freshConceptReview: z.literal(false),
+      freshHighlightReview: z.literal(false),
+    }).optional(),
   }),
 }).superRefine((value, context) => {
   if (!value.verification) return;
@@ -216,7 +452,9 @@ export const storedProfileSchema = profileExtractionSchema.partial().extend({
     context.addIssue({ code: "custom", path: ["verification"], message: "Verified concepts must reference the reviewed extraction hash." });
   }
   if (value.verification.status === "pending_review" &&
-      (value.embedding !== null || value.processing.status === "ready")) {
+      (value.embedding !== null || value.processing.status === "ready") &&
+      !(value.processing.provisionalEmbedding?.sourceContentHash === value.processing.sourceContentHash &&
+        value.processing.status === "ready" && value.embedding !== null && value.provenance?.needs_review)) {
     context.addIssue({ code: "custom", message: "Review-blocked questions cannot publish a ready vector." });
   }
   if (value.processing.status === "pending_review" &&
@@ -227,7 +465,9 @@ export const storedProfileSchema = profileExtractionSchema.partial().extend({
 
 export type StoredProfile = z.infer<typeof storedProfileSchema>;
 
-export function conceptReviewIssue(extraction: ProfileExtraction): string | undefined {
+export function conceptReviewIssue(
+  extraction: Pick<ProfileExtraction, "concept_profile" | "concept_review">,
+): string | undefined {
   const decisions = extraction.concept_review?.decisions;
   if (!decisions) return "Concept identity and role assignments have not been reviewed.";
   const assignments = [
@@ -257,10 +497,59 @@ export function conceptReviewIssue(extraction: ProfileExtraction): string | unde
   return undefined;
 }
 
+export function coverageReviewIssue(
+  extraction: Pick<ProfileExtraction, "concept_profile" | "concept_review" | "claims">, question: SourceQuestion,
+): string | undefined {
+  const coverage = extraction.concept_review?.coverage;
+  if (!coverage) return "A source-item and multi-concept coverage review is required.";
+  if (coverage.status !== "complete" || coverage.uncovered_items.length) {
+    return `Materially tested items remain unresolved: ${[coverage.rationale, ...coverage.uncovered_items].join(" ")}`;
+  }
+  const fieldKey = (entry: { field: string; option_index?: number }) =>
+    `${entry.field}:${entry.option_index ?? ""}`;
+  const required = ["question:", ...question.options.map((_, index) => `option:${index}`),
+    ...(question.explanation?.trim() ? ["explanation:"] : [])];
+  const reviewed = coverage.reviewed_fields.map(fieldKey);
+  if (new Set(reviewed).size !== reviewed.length || reviewed.length !== required.length ||
+      required.some(field => !reviewed.includes(field))) {
+    return "Coverage review must account for the stem, every option, and the supplied explanation exactly once.";
+  }
+  const assignments = [
+    ...extraction.concept_profile.primary_concepts, ...extraction.concept_profile.secondary_concepts,
+  ];
+  const assigned = new Set(assignments.map(concept => concept.concept_id));
+  const itemIds = coverage.items.map(item => item.item_id);
+  if (new Set(itemIds).size !== itemIds.length) return "Coverage item IDs must be unique.";
+  for (const item of coverage.items) {
+    if (new Set(item.concept_ids).size !== item.concept_ids.length ||
+        item.concept_ids.some(id => !assigned.has(id)) ||
+        item.source_evidence.some(evidence => !item.concept_ids.includes(evidence.concept_id)) ||
+        item.concept_ids.some(id => !item.source_evidence.some(evidence => evidence.concept_id === id))) {
+      return `Coverage item ${item.item_id} requires assigned concepts and source evidence for each one.`;
+    }
+    if (new Set(item.claim_ids).size !== item.claim_ids.length ||
+        item.claim_ids.some(id => !extraction.claims.some(claim => claim.item_id === id))) {
+      return `Coverage item ${item.item_id} references an unknown or duplicate claim.`;
+    }
+  }
+  if (assignments.some(concept => !coverage.items.some(item => item.concept_ids.includes(concept.concept_id)))) {
+    return "Every materially tested primary or supporting concept must be represented in the coverage inventory.";
+  }
+  for (const claim of extraction.claims) {
+    const covered = coverage.items.filter(item => item.claim_ids.includes(claim.item_id));
+    if (claim.concept_ids.some(id => !covered.some(item => item.concept_ids.includes(id)))) {
+      return `Claim ${claim.item_id} is missing its individual concept coverage.`;
+    }
+  }
+  return undefined;
+}
+
 export function classificationTaxonomyIssue(
-  classification: Pick<ProfileExtraction["classification"], "subject" | "topic">,
+  classification: Pick<ProfileExtraction["classification"], "subject" | "topic"> &
+    Partial<Pick<ProfileExtraction["classification"], "review" | "master">>,
   concept: { subject: string; topic: string },
 ): string | undefined {
+  if (classification.review?.taxonomy_policy === "independent_source" && classification.master) return undefined;
   const normalize = (label: string) => label.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
   if (normalize(classification.subject) !== normalize(concept.subject) ||
       normalize(classification.topic) !== normalize(concept.topic)) {
@@ -274,6 +563,9 @@ export function classificationReviewIssue(extraction: ProfileExtraction): string
   if (!review) return "Subject/topic classification has not been reviewed.";
   if (review.status !== "supported") {
     return `Subject/topic classification is ${review.status}: ${review.rationale}`;
+  }
+  if (review.taxonomy_policy === "independent_source" && !extraction.classification.master) {
+    return "Independent question classification requires an explicit active-master mapping.";
   }
   if (review.subject_confidence < classificationConfidenceThreshold ||
       review.topic_confidence < classificationConfidenceThreshold) {
@@ -290,6 +582,23 @@ export function classificationReviewIssue(extraction: ProfileExtraction): string
 
 export function validateExtraction(value: unknown, question: SourceQuestion): ExtractionResponse {
   const result = extractionResponseSchema.parse(value);
+  return validateExtractionContent(result, question, true);
+}
+
+export function validateConceptExtraction(value: unknown, question: SourceQuestion): ConceptResolutionExtraction {
+  return validateExtractionContent(conceptResolutionExtractionSchema.parse(value), question, false);
+}
+
+function validateExtractionContent<T extends ConceptResolutionExtraction>(
+  result: T, question: SourceQuestion, includeClassification: boolean,
+): T {
+  const classification = result.classification;
+  if (classification?.master &&
+      (classification.master.subtopicIds.length !== classification.subtopics.length ||
+       new Set(classification.subtopics.map(name => name.normalize("NFKC").trim().toLowerCase()))
+         .size !== classification.subtopics.length)) {
+    throw new Error("Master-backed subtopics require one unique name per subtopic ID, in the same order.");
+  }
   const concepts = [
     ...result.concept_profile.primary_concepts,
     ...result.concept_profile.secondary_concepts,
@@ -336,26 +645,33 @@ export function validateExtraction(value: unknown, question: SourceQuestion): Ex
     validateEvidence(decision.source_evidence, new Set([decision.concept_id]), "Concept review evidence");
     if (!ids.has(decision.concept_id)) throw new Error("Concept review references an unassigned concept.");
   }
-  validateEvidence(
-    result.classification.review.source_evidence,
-    new Set(result.concept_profile.primary_concepts.map(concept => concept.concept_id)),
-    "Classification evidence",
-  );
-  const classificationConcept = result.concept_definitions.find(concept =>
-    concept.id === result.classification.review.primary_concept_id &&
-    result.concept_profile.primary_concepts.some(primary => primary.concept_id === concept.id));
-  if (!classificationConcept) throw new Error("Classification evidence must identify an assigned primary concept.");
-  const classificationConflict = classificationTaxonomyIssue(result.classification, classificationConcept);
-  if (classificationConflict) {
-    result.classification.review.status = "conflict";
-    if (!result.classification.review.rationale.includes(classificationConflict)) {
-      result.classification.review.rationale += ` ${classificationConflict}`;
+  for (const item of result.concept_review?.coverage?.items ?? []) {
+    validateEvidence(item.source_evidence, ids, "Concept coverage evidence");
+  }
+  if (includeClassification) {
+    const review = classification?.review;
+    if (!classification || !review) throw new Error("Full extraction requires a classification review.");
+    validateEvidence(
+      review.source_evidence,
+      new Set(result.concept_profile.primary_concepts.map(concept => concept.concept_id)),
+      "Classification evidence",
+    );
+    const classificationConcept = result.concept_definitions.find(concept =>
+      concept.id === review.primary_concept_id &&
+      result.concept_profile.primary_concepts.some(primary => primary.concept_id === concept.id));
+    if (!classificationConcept) throw new Error("Classification evidence must identify an assigned primary concept.");
+    const classificationConflict = classificationTaxonomyIssue(result.classification, classificationConcept);
+    if (classificationConflict) {
+      review.status = "conflict";
+      if (!review.rationale.includes(classificationConflict)) {
+        review.rationale += ` ${classificationConflict}`;
+      }
+      result.provenance.needs_review = true;
+      result.provenance.review_notes = [...new Set([...result.provenance.review_notes, classificationConflict])];
     }
-    result.provenance.needs_review = true;
-    result.provenance.review_notes = [...new Set([...result.provenance.review_notes, classificationConflict])];
   }
   const items = new Set<string>();
-  if (/statement|matching|match_the_following|assertion|pair/.test(result.classification.question_format) &&
+  if (/statement|matching|match_the_following|assertion|pair/.test(result.classification?.question_format ?? "") &&
       result.claims.length === 0) {
     throw new Error("Statement, matching, and assertion/reason questions require individual claim analyses.");
   }

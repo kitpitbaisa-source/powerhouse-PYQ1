@@ -7,6 +7,21 @@ const check = z.object({
   reason: text.nullable().default(null),
   evidence: z.array(text),
 });
+const issue = z.object({
+  code: text.regex(/^[A-Z][A-Z0-9_]*$/),
+  check: z.enum(checkNames),
+  reason: text,
+  requiredAction: text,
+  evidence: z.array(text),
+});
+export const sourceQualityWarningSchema = issue.extend({
+  code: z.enum(["SOURCE_ROUTE_ROUNDING_REVIEW_FLAG", "CLASS_SIZE_NONINTEGER_REVIEW_FLAG"]),
+  check: z.enum(["question", "answer", "explanation"]),
+  evidence: z.array(text).min(1),
+  acknowledgedBy: text,
+  acknowledgedAt: z.string().datetime(),
+  authorizationEvidence: z.array(text).min(1),
+});
 
 export const questionVerificationSchema = z.object({
   status: z.enum(["unverified", "verified", "pending_review"]),
@@ -22,19 +37,20 @@ export const questionVerificationSchema = z.object({
   checks: z.object({
     question: check, answer: check, explanation: check, master_classification: check, concepts: check,
   }),
-  issues: z.array(z.object({
-    code: text.regex(/^[A-Z][A-Z0-9_]*$/),
-    check: z.enum(checkNames),
-    reason: text,
-    requiredAction: text,
-    evidence: z.array(text),
-  })),
+  issues: z.array(issue),
+  warnings: z.array(sourceQualityWarningSchema).optional(),
   corrections: z.array(z.object({
     field: z.enum(["question", "options", "answer", "explanation", "subject", "topic"]),
     reason: text,
     auditReference: text,
   })),
 }).superRefine((value, context) => {
+  if (value.warnings?.length && (!value.reviewedBy || value.status === "verified")) {
+    context.addIssue({ code: "custom", message: "Acknowledged source warnings require a reviewer and cannot be marked fully verified." });
+  }
+  if (value.warnings?.some(warning => value.issues.some(issue => issue.code === warning.code))) {
+    context.addIssue({ code: "custom", message: "A source warning cannot also be an unresolved blocking issue." });
+  }
   if (value.checks.master_classification.status === "passed" && !value.masterClassification) {
     context.addIssue({ code: "custom", message: "A passed subject/topic check requires master subject and topic IDs." });
   }
@@ -92,6 +108,13 @@ export type VerificationIssue = QuestionVerification["issues"][number];
 
 export class QuestionVerificationConflictError extends Error {}
 
+export function hasAcknowledgedSourceWarning(
+  verification: QuestionVerification | undefined, issue: VerificationIssue,
+): boolean {
+  return !!verification?.reviewedBy && !!verification.warnings?.some(warning =>
+    warning.code === issue.code && warning.check === issue.check);
+}
+
 export function validateVerificationBinding(
   verification: QuestionVerification | undefined,
   sourceContentHash: string,
@@ -120,7 +143,8 @@ export function flagQuestionForReview(
     status: "pending_review",
     updatedAt: new Date().toISOString(),
     checks: { ...verification.checks, [issue.check]: { status: "pending_review", evidence: issue.evidence } },
-    issues: [...verification.issues.filter(previous => previous.code !== issue.code), issue],
+    ...(verification.warnings && { warnings: verification.warnings.filter(warning => warning.code !== issue.code) }),
+    issues: [...verification.issues.filter(previous => previous.code !== issue.code || previous.check !== issue.check), issue],
   });
 }
 
@@ -151,6 +175,9 @@ export function verificationForSource(
   current.corrections = previous?.corrections ?? [];
   if (previous?.status === "pending_review") {
     for (const issue of previous.issues) current = flagQuestionForReview(current, issue);
+  }
+  for (const warning of previous?.warnings ?? []) {
+    current = flagQuestionForReview(current, warning);
   }
   return current;
 }

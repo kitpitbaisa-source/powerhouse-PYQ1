@@ -6,9 +6,21 @@ export const masterContainerId = "subject_topic_master";
 const text = z.string().trim().min(1);
 const subjectId = z.string().regex(/^S\d+$/);
 const topicId = z.string().regex(/^S\d+-T\d+$/);
+const subtopicId = z.string().regex(/^S\d+-T\d+-ST\d+$/);
+
+export const masterClassificationSchema = z.object({
+  subjectId,
+  topicId,
+  subtopicIds: z.array(subtopicId),
+}).refine(value => value.topicId.startsWith(`${value.subjectId}-T`) &&
+  value.subtopicIds.every(id => id.startsWith(`${value.topicId}-ST`)) &&
+  new Set(value.subtopicIds).size === value.subtopicIds.length,
+"Master classification IDs must be unique and belong to the selected subject/topic.");
+
 const common = {
   subjectId,
   name: text,
+  displayName: text.optional(),
   sortOrder: z.number().int().positive(),
   isActive: z.boolean(),
   schemaVersion: z.literal("1"),
@@ -16,7 +28,7 @@ const common = {
   legacyIds: z.array(text),
   retirement: z.object({
     reason: text,
-    replacementIds: z.array(topicId).min(1),
+    replacementIds: z.array(z.union([topicId, subtopicId])).min(1),
     requiresReview: z.literal(true),
   }).optional(),
 };
@@ -38,6 +50,16 @@ export const masterRecordSchema = z.discriminatedUnion("type", [
   }).refine(record =>
     record.parentId === record.subjectId && record.id.startsWith(`${record.subjectId}-T`),
   "A topic must belong to its parent subject and partition."),
+  z.object({
+    ...common,
+    id: subtopicId,
+    type: z.literal("subtopic"),
+    parentId: topicId,
+    details: z.array(text),
+  }).refine(record =>
+    record.parentId.startsWith(`${record.subjectId}-T`) &&
+    record.id.startsWith(`${record.parentId}-ST`),
+  "A subtopic must belong to its parent topic and subject partition."),
 ]).refine(record => record.isActive ? !record.retirement : !!record.retirement,
   "Inactive master records require retirement instructions; active records must not have them.");
 
@@ -46,15 +68,24 @@ const sourceSchema = z.object({
   subjects: z.array(z.object({
     id: subjectId,
     name: text,
+    displayName: text.optional(),
     boundary: text,
     sourceRevision: text.optional(),
     mergedFromSubjectIds: z.array(subjectId).optional(),
     topics: z.array(z.object({
       id: topicId,
       name: text,
+      displayName: text.optional(),
       sourceRevision: text.optional(),
       legacyTopicIds: z.array(topicId).optional(),
       subtopics: z.array(text).optional(),
+      subtopicRecords: z.array(z.object({
+        id: subtopicId,
+        name: text,
+        displayName: text.optional(),
+        sourceRevision: text.optional(),
+        details: z.array(text).optional(),
+      })).optional(),
     })).min(1),
   })).min(1),
   retiredRecords: z.array(masterRecordSchema).default([]),
@@ -86,6 +117,7 @@ export function buildMasterRecords(input: unknown): MasterRecord[] {
       subjectId: subject.id,
       parentId: null,
       name: subject.name,
+      ...(subject.displayName ? { displayName: subject.displayName } : {}),
       description: subject.boundary,
       sortOrder: index + 1,
       isActive: true,
@@ -104,6 +136,7 @@ export function buildMasterRecords(input: unknown): MasterRecord[] {
         subjectId: subject.id,
         parentId: subject.id,
         name: topic.name,
+        ...(topic.displayName ? { displayName: topic.displayName } : {}),
         sortOrder: topicIndex + 1,
         isActive: true,
         schemaVersion: "1",
@@ -111,16 +144,38 @@ export function buildMasterRecords(input: unknown): MasterRecord[] {
         legacyIds: (topic.legacyTopicIds ?? []).filter(id => id !== topic.id),
         details: topic.subtopics ?? [],
       }));
+      const subtopicNames = new Set<string>();
+      for (const [subtopicIndex, subtopic] of (topic.subtopicRecords ?? []).entries()) {
+        const subtopicName = normalized(subtopic.name);
+        if (subtopicNames.has(subtopicName)) throw new Error(`Duplicate subtopic under ${topic.id}: ${subtopic.name}`);
+        subtopicNames.add(subtopicName);
+        add(masterRecordSchema.parse({
+          id: subtopic.id,
+          type: "subtopic",
+          subjectId: subject.id,
+          parentId: topic.id,
+          name: subtopic.name,
+          ...(subtopic.displayName ? { displayName: subtopic.displayName } : {}),
+          sortOrder: subtopicIndex + 1,
+          isActive: true,
+          schemaVersion: "1",
+          sourceRevision: subtopic.sourceRevision ?? topic.sourceRevision ?? subject.sourceRevision ?? source.version,
+          legacyIds: [],
+          details: subtopic.details ?? [],
+        }));
+      }
     }
   }
   const active = new Map(records.map(record => [record.id, record]));
   for (const record of source.retiredRecords) {
-    if (record.isActive || record.type !== "topic" || !record.retirement || !active.has(record.subjectId)) {
-      throw new Error(`Retired topic ${record.id} must be inactive and retain an active parent subject.`);
+    if (record.isActive || record.type === "subject" || !record.retirement ||
+        active.get(record.subjectId)?.type !== "subject" ||
+        (record.type === "subtopic" && active.get(record.parentId)?.type !== "topic")) {
+      throw new Error(`Retired record ${record.id} must be inactive and retain an active parent subject/topic.`);
     }
     for (const replacementId of record.retirement.replacementIds) {
-      if (active.get(replacementId)?.type !== "topic") {
-        throw new Error(`Retired topic ${record.id} has an invalid replacement: ${replacementId}`);
+      if (active.get(replacementId)?.type !== record.type) {
+        throw new Error(`Retired record ${record.id} has an invalid replacement: ${replacementId}`);
       }
     }
     add(record);
@@ -165,6 +220,9 @@ export function planMasterRevision(previous: MasterRecord[], expected: MasterRec
     if (!replacement) throw new Error(`Retire ${record.id} explicitly instead of deleting it.`);
     if (replacement.subjectId !== record.subjectId || replacement.type !== record.type) {
       throw new Error(`Master record ${record.id} cannot change its type or partition.`);
+    }
+    if (replacement.parentId !== record.parentId) {
+      throw new Error(`Master record ${record.id} cannot change its parent; retire it and create a new ID.`);
     }
   }
   const stored = new Map<string, MasterRecord>();

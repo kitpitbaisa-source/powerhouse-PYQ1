@@ -2,15 +2,20 @@ import { z } from "zod";
 import { sourceContainers } from "../../../features/similarity/config";
 import { highlightEvidenceSchema } from "../../../features/similarity/schema";
 import type { MainsQuestion, Question } from "../../types";
+import { withSubjectDisplay } from "../classification";
 import type { QuestionReference, SimilarityMatch, SimilarityQuestionContent, SimilarityResponse } from "./types";
 
 const referenceSchema = z.object({
   sourceContainer: z.enum(sourceContainers),
   questionId: z.string().min(1),
 });
+const warningSchema = z.object({ code: z.string().min(1), reason: z.string().min(1) });
 const questionFields = referenceSchema.extend({
   id: z.string().min(1), question: z.string().min(1),
   exam: z.string(), year: z.string(), subject: z.string(), topic: z.string().nullable(),
+  subjectClassification: z.object({ subjectId: z.string().min(1), subject: z.string().min(1) }).nullable().optional(),
+  subtopics: z.array(z.string()).optional(),
+  reviewWarnings: z.array(warningSchema).optional(),
 });
 const questionSchema = z.discriminatedUnion("kind", [
   questionFields.extend({
@@ -27,7 +32,9 @@ const questionSchema = z.discriminatedUnion("kind", [
   const common = {
     sourceContainer: question.sourceContainer, questionId: question.questionId,
     id: question.id, question: question.question, exam: question.exam,
-    year: question.year, subject: question.subject, topic: question.topic,
+    year: question.year, subject: question.subject, topic: question.topic, subtopics: question.subtopics,
+    ...(question.subjectClassification !== undefined ? { subjectClassification: question.subjectClassification } : {}),
+    ...(question.reviewWarnings?.length ? { reviewWarnings: question.reviewWarnings } : {}),
   };
   return question.kind === "objective"
     ? { ...common, kind: "objective", options: question.options, answer: question.answer, explanation: question.explanation }
@@ -38,6 +45,7 @@ const matchSchema = referenceSchema.extend({
   relation: z.enum(["same_concept", "related_concept", "partial_concept_overlap", "similar_question_pattern"]),
   reasons: z.array(z.string()),
   sharedConcepts: z.array(z.object({ conceptId: z.string(), canonicalName: z.string() })),
+  allConcepts: z.array(z.object({ conceptId: z.string(), canonicalName: z.string() })).optional(),
   highlights: z.array(highlightEvidenceSchema).optional(),
   question: questionSchema,
 }).refine(match => match.profileId === `${match.sourceContainer}:${match.questionId}` &&
@@ -50,6 +58,9 @@ const responseSchema = z.discriminatedUnion("status", [
     status: z.literal("ready"), source: referenceSchema,
     rankingVersion: z.string().min(1), matches: z.array(matchSchema),
     sourceHighlights: z.array(highlightEvidenceSchema).optional(),
+    sourceSubtopics: z.array(z.string()).optional(),
+    sourceConcepts: z.array(z.object({ conceptId: z.string(), canonicalName: z.string() })).optional(),
+    sourceWarnings: z.array(warningSchema).optional(),
   }),
   z.object({
     status: z.enum(["pending", "stale", "failed"]), source: referenceSchema,
@@ -86,10 +97,13 @@ export function createSimilarityLoader(fetcher: typeof fetch = fetch) {
 }
 
 export function toDisplayQuestion(content: SimilarityQuestionContent): Question | MainsQuestion {
-  const common = {
+  const common = withSubjectDisplay({
     question: content.question, sourceContainer: content.sourceContainer,
     exam: content.exam, year: content.year, subject: content.subject, topic: content.topic ?? undefined,
-  };
+    subtopics: content.subtopics,
+    subjectClassification: content.subjectClassification,
+    ...(content.reviewWarnings?.length ? { reviewWarnings: content.reviewWarnings } : {}),
+  });
   if (content.kind === "descriptive") {
     return { ...common, id: content.id, paper: content.paper ?? undefined, modelAnswer: content.modelAnswer ?? undefined };
   }

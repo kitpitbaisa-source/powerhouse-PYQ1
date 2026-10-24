@@ -3,30 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { QuestionSourceContainer } from "../features/similarity/types";
+import type { QuestionSourceContainer, SourceQualityNotice } from "../features/similarity/types";
+import type { QuestionSubjectFields } from "./features/classification";
 import type { ContentVerification } from "./features/question-review";
 
-export interface Question {
+export interface Question extends QuestionSubjectFields {
   id: number;
   year: string;
   subject: string;
   topic?: string;
+  subtopics?: string[];
   exam: string;
   question: string;
   options: string[];
   answer: string;
   explanation: string;
   sourceContainer?: QuestionSourceContainer;
-  verification?: ContentVerification;
+  reviewWarnings?: SourceQualityNotice[];
+  verification?: ContentVerification & { warnings?: SourceQualityNotice[] };
 }
 
-export interface MainsQuestion {
+export interface MainsQuestion extends QuestionSubjectFields {
   id: string;
   question: string;
   year: string;
   exam: string;
   subject: string;
   topic?: string;
+  subtopics?: string[];
   paper?: string;
   modelAnswer?: string;
   model_answer?: string;
@@ -35,7 +39,8 @@ export interface MainsQuestion {
   words?: number | null;
   questionNumber?: number | string | null;
   sourceContainer?: QuestionSourceContainer;
-  verification?: ContentVerification;
+  reviewWarnings?: SourceQualityNotice[];
+  verification?: ContentVerification & { warnings?: SourceQualityNotice[] };
 }
 
 export interface EssayQuestion extends MainsQuestion {
@@ -48,7 +53,7 @@ export interface TopperAnswer {
   topperAnswerText: string;
 }
 
-export interface ToppersCopyQuestion {
+export interface ToppersCopyQuestion extends QuestionSubjectFields {
   id: string;
   year: string;
   subject: string;

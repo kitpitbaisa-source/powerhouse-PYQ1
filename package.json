@@ -13,6 +13,7 @@
     "similarity:setup": "tsx scripts/similarity/setup.ts",
     "similarity:process": "tsx scripts/similarity/process.ts",
     "similarity:import": "tsx scripts/similarity/import.ts",
+    "registry:check": "tsx scripts/similarity/registry-check.ts",
     "similarity:test": "tsx --test features/similarity/pipeline.test.ts features/similarity/search.test.ts src/features/similarity/client.test.ts",
     "cap:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android"
