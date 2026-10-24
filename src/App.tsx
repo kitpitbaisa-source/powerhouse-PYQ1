@@ -2456,7 +2456,7 @@ const QuestionSimilarityExplorer: React.FC<{
                       </div>
             </div>
           </div>
-          {scoreChip && <div className="order-1 shrink-0 mr-8 sm:order-3 sm:mr-9 lg:mr-11">{scoreChip}</div>}
+          {scoreChip && <div className="order-1 shrink-0 mr-8 sm:order-2 sm:ml-auto sm:mr-0">{scoreChip}</div>}
           <motion.button
             type="button"
             onClick={onClose}
@@ -2468,8 +2468,8 @@ const QuestionSimilarityExplorer: React.FC<{
             <X className="h-5 w-5" />
           </motion.button>
           <div ref={headerControlsRef} className={cn(
-            "order-2 flex w-full flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 transition-all duration-200 sm:ml-auto sm:w-auto sm:flex-nowrap sm:justify-start sm:gap-x-2",
-            !scoreChip && "sm:mr-9 lg:mr-11",
+            "order-2 flex w-full flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 transition-all duration-200 sm:mr-9 sm:w-auto sm:flex-nowrap sm:justify-start sm:gap-x-2 lg:mr-11",
+            scoreChip ? "sm:order-3" : "sm:ml-auto",
             controlsHidden && controlsWrapped && "pointer-events-none max-lg:max-h-0 max-lg:overflow-hidden max-lg:opacity-0 max-lg:-mt-1.5 sm:max-lg:-mt-2"
           )}>
             <div className="flex items-center gap-1.5 sm:gap-2">
