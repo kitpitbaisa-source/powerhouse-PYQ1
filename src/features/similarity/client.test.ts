@@ -195,17 +195,18 @@ test("one popup loader deduplicates repeated effects and sorts server results by
     return Response.json({ ...response(), source: { ...source, questionId } });
   };
   const load = createSimilarityLoader(fetcher);
-  const first = load(source, "TEST@gmail.com");
-  const repeatedEffect = load(source, "test@gmail.com");
+  const first = load(source, "free");
+  const repeatedEffect = load(source, "free");
   assert.equal(first, repeatedEffect);
   const result = await first;
   assert.deepEqual(result.matches.map(match => match.score), [90, 60]);
   assert.equal(requests.length, 1);
-  assert.match(requests[0], /sourceContainer=questions&questionId=418&email=test%40gmail.com/);
-  assert.equal(load(source, "test@gmail.com"), first);
+  assert.match(requests[0], /sourceContainer=questions&questionId=418&tier=free$/);
+  assert.equal(load(source, "free"), first);
+  assert.notEqual(load(source, "full"), first);
   await load({ ...source, questionId: "2" });
   await createSimilarityLoader(fetcher)(source);
-  assert.equal(requests.length, 3);
+  assert.equal(requests.length, 4);
 });
 
 test("source-quality notices survive loading and render on the reference question without hiding its answer", async () => {

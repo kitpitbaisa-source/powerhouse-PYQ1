@@ -11,6 +11,7 @@ import { getExamCategory } from './exam-utils';
 import { withSubjectDisplay } from './features/classification';
 import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
+import { SimilarityCachePurgeCard } from './features/SimilarityCachePurgeCard';
 import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
 import { highlightSimilarityTerms, similarityHighlightPhrases, type SimilarityHighlightTone } from './features/similarity/highlights';
@@ -2168,8 +2169,8 @@ export const SimilarityQuestionSummary: React.FC<{
   const question = withSubjectDisplay(sourceQuestion);
   const explanation = isObjectiveQuestion(question) ? question.explanation : getSimilarityModelAnswer(question);
   return (
-  <div className={cn("rounded-2xl border p-5", similarityMatchingCardStyle, "dark:bg-[#0B1220]")}>
-    <div className="mb-4 flex flex-wrap gap-2">
+  <div className={cn("rounded-2xl border p-3 sm:p-5", similarityMatchingCardStyle, "dark:bg-[#0B1220]")}>
+    <div className="mb-2 flex flex-wrap gap-2 sm:mb-4">
       <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950 dark:text-blue-200">Q{question.id}</span>
       <span
         title={question.exam}
@@ -2181,7 +2182,7 @@ export const SimilarityQuestionSummary: React.FC<{
         {getSimilarityExamLabel(question.exam)} · {question.year}
       </span>
     </div>
-    <div className="mb-4"><SubjectTopicLine subject={question.subject} topic={question.topic} subtopics={question.subtopics} /></div>
+    <div className="mb-2 sm:mb-4"><SubjectTopicLine subject={question.subject} topic={question.topic} subtopics={question.subtopics} /></div>
     <SourceQualityWarnings question={question} />
     <div className="text-[15px] font-medium leading-7 text-slate-900 dark:text-slate-100">
       <SimilarityQuestionText text={question.question} keywordPhrases={highlightsEnabled ? similarityHighlightPhrases(highlights, sharedConcepts, "question") : []} keywordTone={highlightTone} />
@@ -2254,6 +2255,7 @@ const QuestionSimilarityExplorer: React.FC<{
   source: SimilarityQuestion;
   scope: 'prelims' | 'mains' | 'csat' | 'english';
   userEmail?: string | null;
+  isSubscribed?: boolean;
   onOptionClick?: (question: Question, option: string) => void;
   onSelect: (question: SimilarityQuestion) => void;
   onClose: () => void;
@@ -2261,6 +2263,7 @@ const QuestionSimilarityExplorer: React.FC<{
   source,
   scope,
   userEmail,
+  isSubscribed,
   onOptionClick,
   onSelect,
   onClose,
@@ -2296,13 +2299,57 @@ const QuestionSimilarityExplorer: React.FC<{
     }).catch(() => {});
   }, [userEmail, showAllConcepts, highlightsEnabled, highlightTone]);
   const popupBodyRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const headerTitleRef = useRef<HTMLDivElement>(null);
+  const headerControlsRef = useRef<HTMLDivElement>(null);
+  const [controlsWrapped, setControlsWrapped] = useState(false);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const measure = () => {
+      const title = headerTitleRef.current;
+      const controls = headerControlsRef.current;
+      if (!title || !controls) return;
+      setControlsWrapped(controls.offsetTop >= title.offsetTop + title.offsetHeight - 2);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+  const [controlsHidden, setControlsHidden] = useState(false);
+  useEffect(() => {
+    const body = popupBodyRef.current;
+    if (!body) return;
+    let lastTop = body.scrollTop;
+    let lockedUntil = 0;
+    const onScroll = () => {
+      const top = body.scrollTop;
+      if (Date.now() < lockedUntil) { lastTop = top; return; }
+      const delta = top - lastTop;
+      let next: boolean | undefined;
+      if (top < 24) next = false;
+      else if (delta > 10) next = true;
+      else if (delta < -10) next = false;
+      if (next !== undefined) {
+        lastTop = top;
+        setControlsHidden(previous => {
+          if (previous !== next) lockedUntil = Date.now() + 300;
+          return next;
+        });
+      }
+    };
+    body.addEventListener("scroll", onScroll, { passive: true });
+    return () => body.removeEventListener("scroll", onScroll);
+  }, []);
   const selectedPaneRef = useRef<HTMLElement>(null);
   const matchesPaneRef = useRef<HTMLElement>(null);
   const [loadSimilarity] = useState(() => createSimilarityLoader());
   const sourceContainer = source.sourceContainer ?? (scope === "mains" ? "mains-questions"
     : scope === "csat" ? "csat-questions" : scope === "english" ? "english-questions" : "questions");
   const questionId = String(source.id);
-  const requestKey = similarityRequestKey({ sourceContainer, questionId }, userEmail);
+  const similarityTier = isSubscribed ? "full" : "free";
+  const requestKey = similarityRequestKey({ sourceContainer, questionId }, similarityTier);
   const [searchState, setSearchState] = useState<{
     key: string; status: "loading" | "ready" | "error"; matches: SimilarityMatch[]; message?: string;
     sourceHighlights?: SimilarityMatch['highlights'];
@@ -2316,7 +2363,7 @@ const QuestionSimilarityExplorer: React.FC<{
   useEffect(() => {
     let active = true;
     setSearchState({ key: requestKey, status: "loading", matches: [] });
-    loadSimilarity({ sourceContainer, questionId }, userEmail).then(response => {
+    loadSimilarity({ sourceContainer, questionId }, similarityTier).then(response => {
       const result: SimilarityMatch[] = response.matches.map(match => {
         const question = toDisplayQuestion(match.question);
         return {
@@ -2341,7 +2388,7 @@ const QuestionSimilarityExplorer: React.FC<{
       });
     });
     return () => { active = false; };
-  }, [loadSimilarity, requestKey, sourceContainer, questionId, source.question, userEmail]);
+  }, [loadSimilarity, requestKey, sourceContainer, questionId, source.question, similarityTier]);
   const referenceConcepts = useMemo(() => matches.flatMap(match => match.sharedConcepts), [matches]);
   const sourceMotionKey = `${source.id}:${source.exam}:${source.question}`;
   const sourceExamCategory = getExamCategory(source.exam);
@@ -2385,33 +2432,46 @@ const QuestionSimilarityExplorer: React.FC<{
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-[150] flex items-center justify-center       bg-slate-950/60 p-2 backdrop-blur-md sm:p-5"
+      className="fixed inset-0 z-[150] flex items-center justify-center       bg-slate-950/60 p-1 backdrop-blur-md sm:p-3"
       onMouseDown={onClose}
     >
       <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              className="flex h-[95vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-slate-50 shadow-2xl shadow-slate-950/30 ring-1 ring-slate-900/5 dark:border-slate-700/60 dark:bg-[#070B14] dark:ring-white/5 sm:h-[90vh]"
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 260, damping: 30 }}
+              className="flex h-[98dvh] w-full max-w-[100rem] flex-col overflow-hidden rounded-2xl border border-white/60 bg-slate-50 shadow-2xl shadow-slate-950/30 ring-1 ring-slate-900/5 dark:border-slate-700/60 dark:bg-[#070B14] dark:ring-white/5 sm:h-[94vh] sm:rounded-3xl"
         onMouseDown={event => event.stopPropagation()}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3         border-b border-slate-200/70 bg-white/90 px-4 py-4 backdrop-blur-xl dark:border-slate-800 dark:bg-[#0A0F1D] sm:px-7">
-          <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
-                <SimilarityIcon className="h-5 w-5" />
+        <div ref={headerRef} className="relative flex flex-wrap items-center justify-between         gap-1.5 border-b border-slate-200/70 bg-white/90 px-3 py-2 backdrop-blur-xl dark:border-slate-800 dark:bg-[#0A0F1D] sm:gap-2 sm:px-5 sm:py-2.5 lg:gap-3 lg:px-7 lg:py-4">
+          <div ref={headerTitleRef} className="order-1 min-w-0 flex-1 pr-9 sm:flex-none sm:pr-0">
+                            <div className="flex items-center gap-2 lg:gap-3">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30 lg:h-10 lg:w-10 lg:rounded-2xl">
+                        <SimilarityIcon className="h-4 w-4 lg:h-5 lg:w-5" />
               </span>
               <div className="min-w-0">
-                        <h2 className="truncate text-lg font-bold tracking-tight text-slate-900 dark:text-white sm:text-xl">Question Similarity Explorer</h2>
-                        <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">Compare concepts across related previous-year questions</p>
+                                <h2 className="truncate text-base font-bold leading-tight tracking-tight text-slate-900 dark:text-white lg:text-xl">Similarity Explorer</h2>
+                                <p className="truncate text-[10px] font-medium leading-tight text-slate-500 dark:text-slate-400 lg:text-xs">Compare concepts across related questions</p>
                       </div>
             </div>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Concepts</span>
-            <div role="radiogroup" aria-label="Concepts shown" title="Choose which concepts appear on the cards" className="flex items-center rounded-full border border-slate-200 bg-white p-0.5 text-xs font-semibold shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              {([[false, "Shared only"], [true, "All"]] as const).map(([value, label]) => (
+          <motion.button
+            type="button"
+            onClick={onClose}
+            whileHover={{ rotate: 90, scale: 1.08 }}
+            whileTap={{ scale: 0.9 }}
+            className="absolute right-1.5 top-1.5 z-10 rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white sm:right-3 sm:top-1.5 lg:right-5 lg:top-4 lg:p-2"
+            aria-label="Close similarity explorer"
+          >
+            <X className="h-5 w-5" />
+          </motion.button>
+          <div ref={headerControlsRef} className={cn(
+            "order-2 flex w-full flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 transition-all duration-200 sm:ml-auto sm:mr-9 sm:w-auto sm:flex-nowrap sm:justify-start sm:gap-x-2 lg:mr-11",
+            controlsHidden && controlsWrapped && "pointer-events-none max-lg:max-h-0 max-lg:overflow-hidden max-lg:opacity-0 max-lg:-mt-1.5 sm:max-lg:-mt-2"
+          )}>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 sm:text-[11px]">Concepts</span>
+            <div role="radiogroup" aria-label="Concepts shown" title="Choose which concepts appear on the cards" className="flex items-center rounded-full border border-slate-200 bg-white p-0.5 text-[11px] font-semibold shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:text-xs">
+              {([[false, "Shared only", "Shared"], [true, "All", "All"]] as const).map(([value, label, shortLabel]) => (
                 <button
                   key={label}
                   type="button"
@@ -2419,19 +2479,20 @@ const QuestionSimilarityExplorer: React.FC<{
                   aria-checked={showAllConcepts === value}
                   onClick={() => setShowAllConcepts(value)}
                   className={cn(
-                    "rounded-full px-3 py-1.5 transition",
+                    "rounded-full px-2 py-1 transition sm:px-3 sm:py-1.5",
                     showAllConcepts === value
                       ? "bg-violet-600 text-white shadow-sm"
                       : "text-slate-600 hover:text-violet-700 dark:text-slate-300 dark:hover:text-violet-300"
                   )}
                 >
-                  {label}
+                  <span className="sm:hidden">{shortLabel}</span>
+                  <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
             </div>
             <div className={cn(
-              "flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 shadow-sm transition",
+              "flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 shadow-sm transition sm:gap-2 sm:py-1 sm:pl-1 sm:pr-3",
               highlightsEnabled
                 ? "border-violet-300 bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/20"
                 : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
@@ -2442,15 +2503,15 @@ const QuestionSimilarityExplorer: React.FC<{
               onClick={() => setHighlightsEnabled(previous => !previous)}
               title="Turn all concept text highlights on or off. Options are highlighted only while the answer is expanded."
               className={cn(
-                "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-95",
+                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold transition active:scale-95 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs",
                 highlightsEnabled ? "text-violet-900 dark:text-violet-200" : "text-slate-600 hover:text-violet-700 dark:text-slate-300"
               )}
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              Highlights
-              <span className="text-[10px] uppercase">{highlightsEnabled ? "On" : "Off"}</span>
+              <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              <span className="hidden sm:inline">Highlights</span>
+              <span className="text-[9px] uppercase sm:text-[10px]">{highlightsEnabled ? "On" : "Off"}</span>
             </button>
-            <div role="radiogroup" aria-label="Highlight colour" className="flex items-center gap-1.5 border-l border-slate-300/70 pl-2.5 dark:border-slate-600">
+            <div role="radiogroup" aria-label="Highlight colour" className="flex items-center gap-1 border-l border-slate-300/70 pl-2 dark:border-slate-600 sm:gap-1.5 sm:pl-2.5">
               {([
                 { tone: "violet", label: "Violet", swatch: "bg-violet-500" },
                 { tone: "amber", label: "Yellow", swatch: "bg-amber-400" },
@@ -2465,44 +2526,33 @@ const QuestionSimilarityExplorer: React.FC<{
                   title={`${option.label} highlights`}
                   onClick={() => { setHighlightTone(option.tone); setHighlightsEnabled(true); }}
                   className={cn(
-                    "h-5 w-5 rounded-full transition hover:scale-110",
+                    "h-4 w-4 rounded-full transition hover:scale-110 sm:h-5 sm:w-5",
                     option.swatch,
                     highlightTone === option.tone && highlightsEnabled
-                      ? "ring-2 ring-offset-2 ring-slate-700 ring-offset-white dark:ring-white dark:ring-offset-slate-900"
+                      ? "ring-2 ring-offset-1 ring-slate-700 ring-offset-white dark:ring-white dark:ring-offset-slate-900 sm:ring-offset-2"
                       : "opacity-60"
                   )}
                 />
               ))}
             </div>
             </div>
-            <motion.button
-              type="button"
-              onClick={onClose}
-              whileHover={{ rotate: 90, scale: 1.08 }}
-              whileTap={{ scale: 0.9 }}
-              className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
-              aria-label="Close similarity explorer"
-            >
-              <X className="h-5 w-5" />
-            </motion.button>
           </div>
         </div>
 
         <LayoutGroup id="question-similarity-explorer">
         <div ref={popupBodyRef} className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.8fr)] lg:overflow-hidden">
-          <section ref={selectedPaneRef} className="          border-b border-slate-200/70 bg-gradient-to-b from-indigo-50/80 to-slate-50 p-5 dark:border-slate-800 dark:bg-[#0A1020] dark:bg-none lg:overflow-y-auto lg:border-b-0 lg:border-r sm:p-7">
-                      <div className="mb-4 flex items-center justify-between gap-2">
-                        <p className="text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">Selected question</p>
-                        <span className="rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm shadow-indigo-500/30">Reference</span>
+          <section ref={selectedPaneRef} className="          border-b border-slate-200/70 bg-gradient-to-b from-indigo-50/80 to-slate-50 p-5 dark:border-slate-800 dark:bg-[#0A1020] dark:bg-none lg:overflow-y-auto lg:border-b-0                     lg:border-r p-2 sm:p-7">
+                                <div className="mb-1.5 flex items-center justify-between gap-2 sm:mb-4">
+                                  <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300 sm:text-xs">Selected question</p>
+                                  <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm shadow-indigo-500/30 sm:px-3 sm:py-1 sm:text-[11px]">Reference</span>
             </div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 key={sourceMotionKey}
-                layoutId={`similarity-question-${sourceMotionKey}`}
-                initial={{ opacity: 0, x: 80, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: -45, scale: 0.96 }}
-                transition={{ type: "spring", stiffness: 280, damping: 26 }}
+                initial={{ opacity: 0, x: 80 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -45 }}
+                transition={{ type: "tween", duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               >
                 <SimilarityQuestionSummary
                   question={{
@@ -2524,10 +2574,13 @@ const QuestionSimilarityExplorer: React.FC<{
             </AnimatePresence>
           </section>
 
-          <section ref={matchesPaneRef} className="min-h-0           bg-slate-50 px-4 pb-5 dark:bg-[#070B14] sm:px-7 sm:pb-7 lg:overflow-y-auto">
-                      <div className="sticky top-0 z-20 -mx-4 mb-2 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/85 px-4 py-3 backdrop-blur-xl dark:border-slate-800 dark:bg-[#070B14]/90 sm:-mx-7 sm:px-7">
-                        <p className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300">Similar questions</p>
-                        <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white dark:bg-white/10 dark:text-slate-100">{isLoading ? "Loading..." : `${matches.length} matches`}</span>
+          <section ref={matchesPaneRef} className="min-h-0                               bg-slate-50 px-2 pb-4 dark:bg-[#070B14] sm:px-7 sm:pb-7 lg:overflow-y-auto">
+                                <div className="sticky top-0 z-20 -mx-2 mb-1 flex items-center justify-between gap-3                                                                 border-b border-slate-200/70 bg-gradient-to-r from-sky-50/95 via-violet-50/95 to-fuchsia-50/95 px-2 py-2.5 shadow-sm shadow-violet-500/10 backdrop-blur-xl dark:border-slate-800 dark:from-sky-950/80 dark:via-violet-950/80 dark:to-fuchsia-950/80 sm:-mx-7 sm:mb-2 sm:px-7 sm:py-3 lg:bg-none lg:bg-slate-50/85 lg:shadow-none dark:lg:bg-[#070B14]/90">
+                                                                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-400 via-violet-500 to-fuchsia-500 lg:hidden" />
+                                                                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-violet-800 dark:text-violet-100 lg:text-slate-600 dark:lg:text-slate-300">
+                                                                    <SimilarityIcon className="h-4 w-4 text-violet-600 dark:text-violet-300 lg:hidden" />Similar questions
+                                                                  </p>
+                                                                  <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 ring-1 ring-inset ring-violet-300/70 dark:bg-white/10 dark:text-violet-100 dark:ring-violet-400/30 sm:px-3 sm:py-1 sm:text-xs lg:bg-slate-900 lg:text-white lg:ring-0 dark:lg:text-slate-100">{isLoading ? "Loading..." : `${matches.length} matches`}</span>
             </div>
 
             {isLoading ? (
@@ -2565,7 +2618,7 @@ const QuestionSimilarityExplorer: React.FC<{
               <p role="status" className="px-2 py-8 text-sm text-slate-500 dark:text-slate-400">{visibleState.message}</p>
             ) : null}
 
-            <motion.div layout className="grid grid-cols-1 gap-x-4 gap-y-6 pt-3 xl:grid-cols-2">
+            <motion.div className="grid grid-cols-1 gap-x-4 gap-y-6 pt-3 xl:grid-cols-2">
               <AnimatePresence mode="popLayout" initial={false}>
               {matches.map((match, index) => {
                 const questionKey = String(match.question.id);
@@ -2580,18 +2633,13 @@ const QuestionSimilarityExplorer: React.FC<{
                 return (
                 <motion.article
                   key={match.profileId}
-                  layout
-                  layoutId={`similarity-question-${match.question.id}:${match.question.exam}:${match.question.question}`}
-                  initial={{ opacity: 0, x: 24, y: 6, scale: 0.985 }}
-                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: -16, scale: 0.985 }}
-                  whileHover={{ y: -2, scale: 1.004 }}
+                  initial={{ opacity: 0, x: 24, y: 6 }}
+                  animate={{ opacity: 1, x: 0, y: 0 }}
+                  exit={{ opacity: 0, x: -16 }}
                   transition={{
-                    layout: { type: "tween", duration: 0.28, ease: [0.22, 1, 0.36, 1] },
                     opacity: { duration: 0.16, delay: Math.min(index * 0.02, 0.12) },
                     x: { type: "tween", duration: 0.26, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.02, 0.12) },
                     y: { type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] },
-                    scale: { duration: 0.2, ease: "easeOut" },
                   }}
                   className={cn(
                     "relative flex min-h-[300px] flex-col rounded-3xl border p-5 transition",
@@ -7218,7 +7266,7 @@ export default function App() {
               </div>
               {/* Admin tools below require a verified key */}
               {adminUnlocked && (<>
-              {/* Add New User */}
+              <SimilarityCachePurgeCard adminKey={adminKey} />
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
@@ -9238,6 +9286,7 @@ export default function App() {
           source={similarityExplorer.question}
           scope={similarityExplorer.scope}
           userEmail={userEmail}
+          isSubscribed={isSubscribed}
           onOptionClick={similarityExplorer.scope === 'mains'
             ? undefined
             : (question, option) => handleOptionClick(

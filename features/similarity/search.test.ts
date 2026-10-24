@@ -336,7 +336,7 @@ test("compatible vectors rank by cosine and return source content plus profile r
   higher.processing.sourceContentHash = hashContent(store.questions.get(higher.id));
   const result = await findSimilarQuestions(source, undefined, store);
   assert.equal(result.status, "ready");
-  assert.deepEqual(result.matches.map(match => [match.questionId, match.score]), [["3", 100], ["2", 60]]);
+  assert.deepEqual(result.matches.map(match => [match.questionId, match.score]), [["3", 100], ["2", 64]]);
   assert.equal(result.matches[0].question.question, "Entirely different wording.");
   assert.equal(result.matches[0].question.sourceContainer, "state_pcs");
   assert.equal(result.matches[0].relation, "same_concept");
@@ -380,7 +380,7 @@ test("free users cannot read old source or candidate questions; stored premium r
   assert.equal((await findSimilarQuestions(source, "admin@gmail.com", store, ["admin@gmail.com"])).matches.length, 1);
 });
 
-test("partial concept overlap is explained but does not change the cosine score", async () => {
+test("partial concept overlap is explained and adds the shared-concept bonus to the weighted cosine score", async () => {
   const store = new MemoryStore();
   store.add("418", [1, 0, 0]);
   const candidate = store.add("2", [0.8, 0.6, 0]);
@@ -395,7 +395,7 @@ test("partial concept overlap is explained but does not change the cosine score"
   refreshEmbeddingInput(candidate);
   const result = await findSimilarQuestions(source, undefined, store);
   assert.equal(result.matches[0].relation, "partial_concept_overlap");
-    assert.equal(result.matches[0].score, 80);
+    assert.equal(result.matches[0].score, 82);
 });
 
 test("highlight evidence includes important concepts even when they are not shared", async () => {
@@ -426,7 +426,7 @@ test("highlight evidence includes important concepts even when they are not shar
   assert.deepEqual(result.sourceHighlights, reference.highlight_evidence);
   assert.deepEqual(result.matches[0].highlights, candidate.highlight_evidence);
   assert.deepEqual(result.matches[0].sharedConcepts, [{ conceptId: "land_borders", canonicalName: "Land borders" }]);
-    assert.equal(result.matches[0].score, 80);
+    assert.equal(result.matches[0].score, 82);
   store.questions.get(candidate.id).question += " Changed.";
   const stale = await findSimilarQuestions(source, undefined, store);
   assert.equal(stale.matches.length, 0);

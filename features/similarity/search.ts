@@ -11,16 +11,21 @@ import type {
 } from "./types.js";
 import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
 import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
+import { similarityCacheTags, similarityCdnCacheControl } from "./cache-tags.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
-const rankingVersion = "concept-cosine-v3";
+const rankingVersion = "concept-cosine-overlap-v7";
+// Score = 0.9 * embedding cosine + a bonus by shared concept IDs (1+ = 0.10, none = 0.075), so 100% needs a perfect cosine.
+const cosineWeight = 0.9;
+const sharedConceptBonus = (sharedCount: number) => sharedCount >= 1 ? 0.1 : 0.075;
 const maxResults = 12;
 const candidateCount = 50;
 const requestSchema = z.object({
   sourceContainer: z.enum(sourceContainers),
   questionId: z.string().trim().min(1).max(128).regex(/^[^/\\?#]+$/),
   email: z.string().trim().toLowerCase().max(254).regex(/^[^\s@]+@gmail\.com$/).optional(),
+  tier: z.enum(["free", "full"]).optional(),
 });
 
 export interface SimilarityStore {
@@ -119,12 +124,16 @@ function allConcepts(profile: StoredProfile): SharedConcept[] {
     .map(concept => ({ conceptId: concept.concept_id, canonicalName: concept.canonical_name }));
 }
 
+export const similarityPurgeWindow = 30;
+
 export async function findSimilarQuestions(
   reference: QuestionReference,
   email: string | undefined,
   store: SimilarityStore,
   permanentAdmins: readonly string[] = [],
+  options: { tier?: "free" | "full"; limit?: number } = {},
 ): Promise<SimilarityResponse> {
+  const limit = Math.min(options.limit ?? maxResults, candidateCount);
   const profile = await store.readProfile(`${reference.sourceContainer}:${reference.questionId}`);
   if (!profile || !hasReadyVector(profile)) {
     const pendingReview = profile?.verification?.status === "pending_review" || profile?.processing.status === "pending_review";
@@ -151,7 +160,7 @@ export async function findSimilarQuestions(
         sourceSnapshot.verification.extractionContentHash !== profile.processing.extractionContentHash)) {
     return { status: "stale", source: reference, matches: [], message: "The concept profile does not match the question's reviewed version." };
   }
-  const subscribed = email && (permanentAdmins.includes(email) ||
+  const subscribed = options.tier ? options.tier === "full" : email && (permanentAdmins.includes(email) ||
     ["subscribed", "admin", "editor"].includes(await store.userStatus(email) ?? ""));
   const sources = bankSources(reference.sourceContainer);
   const years = subscribed ? undefined : await store.latestYears(sources);
@@ -173,12 +182,13 @@ export async function findSimilarQuestions(
     const cosine = cosineScore(profile, candidate);
     if (cosine <= 0) continue;
     const explanation = explainMatch(profile, candidate);
-    ranked.push({ profile: candidate, score: cosine, explanation });
+    const shared = new Set(explanation.sharedConcepts.map(concept => concept.conceptId)).size;
+    ranked.push({ profile: candidate, score: cosineWeight * cosine + sharedConceptBonus(shared), explanation });
   }
   ranked.sort((a, b) => b.score - a.score || a.profile.id.localeCompare(b.profile.id));
   const matches: SimilarityMatch[] = [];
-  for (let offset = 0; offset < ranked.length && matches.length < maxResults; offset += maxResults) {
-    const batch = await Promise.all(ranked.slice(offset, offset + maxResults).map(async candidate => ({
+  for (let offset = 0; offset < ranked.length && matches.length < limit; offset += limit) {
+    const batch = await Promise.all(ranked.slice(offset, offset + limit).map(async candidate => ({
       ...candidate,
       snapshot: await store.readQuestion(candidate.profile),
     })));
@@ -205,7 +215,7 @@ export async function findSimilarQuestions(
         highlights: candidate.profile.highlight_evidence,
         question: questionContent(target, question, approvedMasterSubtopics(candidate.profile.classification, subtopicMaster), subtopicMaster, verification, candidate.profile),
       });
-      if (matches.length === maxResults) break;
+      if (matches.length === limit) break;
     }
   }
   return {
@@ -310,8 +320,14 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
     const parsed = requestSchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer, questionId, and optional Gmail email are required." });
     try {
-      const { sourceContainer, questionId, email } = parsed.data;
-      return res.json(await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins));
+      const { sourceContainer, questionId, email, tier } = parsed.data;
+      const result = await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins, { tier });
+      if (tier && result.status === "ready") {
+        res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+        res.setHeader("Vercel-CDN-Cache-Control", similarityCdnCacheControl);
+        res.setHeader("Vercel-Cache-Tag", similarityCacheTags(result.source, result.matches).join(","));
+      }
+      return res.json(result);
     } catch (error) {
       console.error("Similarity search failed:", error instanceof Error ? error.message : error);
       return res.status(500).json({ error: "Could not load similar questions." });
