@@ -2256,6 +2256,7 @@ const QuestionSimilarityExplorer: React.FC<{
   scope: 'prelims' | 'mains' | 'csat' | 'english';
   userEmail?: string | null;
   isSubscribed?: boolean;
+  scoreChip?: React.ReactNode;
   onOptionClick?: (question: Question, option: string) => void;
   onSelect: (question: SimilarityQuestion) => void;
   onClose: () => void;
@@ -2264,6 +2265,7 @@ const QuestionSimilarityExplorer: React.FC<{
   scope,
   userEmail,
   isSubscribed,
+  scoreChip,
   onOptionClick,
   onSelect,
   onClose,
@@ -2452,6 +2454,7 @@ const QuestionSimilarityExplorer: React.FC<{
                                 <h2 className="truncate text-base font-bold leading-tight tracking-tight text-slate-900 dark:text-white lg:text-xl">Similarity Explorer</h2>
                                 <p className="truncate text-[10px] font-medium leading-tight text-slate-500 dark:text-slate-400 lg:text-xs">Compare concepts across related questions</p>
                       </div>
+              {scoreChip && <div className="ml-1 shrink-0 sm:ml-2">{scoreChip}</div>}
             </div>
           </div>
           <motion.button
@@ -9287,6 +9290,7 @@ export default function App() {
           scope={similarityExplorer.scope}
           userEmail={userEmail}
           isSubscribed={isSubscribed}
+          scoreChip={similarityExplorer.scope === 'mains' ? undefined : renderScoreChip(sectionScores[similarityExplorer.scope] || { correct: 0, total: 0 })}
           onOptionClick={similarityExplorer.scope === 'mains'
             ? undefined
             : (question, option) => handleOptionClick(
