@@ -6,6 +6,7 @@ import Razorpay from "razorpay";
 import crypto from "crypto";
 // Vercel loads emitted JavaScript as native ESM, without tsx's extension resolution.
 import { createSimilarityRouter } from "../features/similarity/search.js";
+import { loadQuestionSubtopics } from "../features/similarity/subtopics.js";
 import { createQuestionReviewRouter } from "../features/question-review.js";
 
 // Keep this in sync with src/exam-utils.ts. Vercel executes api/index.ts as a
@@ -559,7 +560,7 @@ async function getQuestions() {
   // appear within the Prelims list (stored separately in the state_pcs container).
   const base = resources.filter((r: any) => r.id !== "__cache_version__")
     .map((question: any) => ({ ...question, sourceContainer: "questions" }));
-  questionsCache = base.concat(await getStatePcsQuestions());
+  questionsCache = (await loadQuestionSubtopics(database, "questions", base)).concat(await getStatePcsQuestions());
   cacheTimestamp = now;
   return questionsCache;
 }
@@ -573,8 +574,9 @@ async function getStatePcsQuestions() {
       .fetchAll();
     // `isActive === false` marks a document retired by a migration (its id was
     // moved to avoid colliding with the `questions` container) — never serve it.
-    return resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
+    const questions = resources.filter((r: any) => r.id !== "__cache_version__" && r.isActive !== false)
       .map((question: any) => ({ ...question, sourceContainer: "state_pcs" }));
+    return await loadQuestionSubtopics(database, "state_pcs", questions);
   } catch (e: any) {
     return [];
   }
@@ -588,8 +590,8 @@ async function getTopQuestions(limit: number) {
   const n = Math.max(1, Math.min(Math.floor(limit), 500));
   const query = `SELECT TOP ${n} * FROM c WHERE IS_DEFINED(c.question) AND c.question != "" AND NOT STARTSWITH(c.question, "Q_") ORDER BY c.year DESC, c.id DESC`;
   const { resources } = await questionsContainer.items.query(query).fetchAll();
-  return resources.filter((r: any) => r.id !== "__cache_version__")
-    .map((question: any) => ({ ...question, sourceContainer: "questions" }));
+  return loadQuestionSubtopics(database, "questions", resources.filter((r: any) => r.id !== "__cache_version__")
+    .map((question: any) => ({ ...question, sourceContainer: "questions" })));
 }
 
 async function getMainsQuestions() {
@@ -600,18 +602,18 @@ async function getMainsQuestions() {
   const { resources } = await mainsQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  mainsCache = resources;
+  mainsCache = await loadQuestionSubtopics(database, "mains-questions", resources);
   mainsCacheTimestamp = now;
-  return resources;
+  return mainsCache;
 }
 
 async function getEssayQuestions() {
   const now = Date.now();
   if (essayCache && (now - essayCacheTimestamp) < CACHE_TTL) return essayCache;
   const { resources } = await essayQuestionsContainer.items.readAll({ maxItemCount: -1 }).fetchAll();
-  essayCache = resources;
+  essayCache = await loadQuestionSubtopics(database, "essay-questions", resources);
   essayCacheTimestamp = now;
-  return resources;
+  return essayCache;
 }
 
 async function getToppersQuestions() {
@@ -708,7 +710,7 @@ serverApp.get("/api/csat-questions", async (req, res) => {
     const now = Date.now();
     if (!csatCache || now - csatCacheTimestamp > 300000) {
       const { resources } = await csatQuestionsContainer.items.readAll().fetchAll();
-      csatCache = resources;
+      csatCache = await loadQuestionSubtopics(database, "csat-questions", resources);
       csatCacheTimestamp = now;
     }
     res.setHeader("Cache-Control", PUBLIC_CACHE);
@@ -727,7 +729,7 @@ serverApp.get("/api/english-questions", async (req, res) => {
     const now = Date.now();
     if (!englishCache || now - englishCacheTimestamp > 300000) {
       const { resources } = await englishQuestionsContainer.items.readAll().fetchAll();
-      englishCache = resources;
+      englishCache = await loadQuestionSubtopics(database, "english-questions", resources);
       englishCacheTimestamp = now;
     }
     res.setHeader("Cache-Control", PUBLIC_CACHE);
@@ -757,8 +759,8 @@ serverApp.post("/api/admin/refresh-questions", async (req, res) => {
     await bumpCacheVersion();
     const [questions, mainsQuestions, essayQuestions, toppersQuestions, csatQuestions, englishQuestions] = await Promise.all([
       getQuestions(), getMainsQuestions(), getEssayQuestions(), getToppersQuestions(),
-      csatQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
-      englishQuestionsContainer.items.readAll().fetchAll().then(r => r.resources),
+      csatQuestionsContainer.items.readAll().fetchAll().then(r => loadQuestionSubtopics(database, "csat-questions", r.resources)),
+      englishQuestionsContainer.items.readAll().fetchAll().then(r => loadQuestionSubtopics(database, "english-questions", r.resources)),
     ]);
     csatCache = csatQuestions;
     csatCacheTimestamp = Date.now();
