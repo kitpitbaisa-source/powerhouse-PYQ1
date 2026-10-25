@@ -12,7 +12,7 @@ import type {
 import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
 import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
 import { similarityCacheTags, similarityCdnCacheControl } from "./cache-tags.js";
-import { readRuntimeSimilarity, similarityRuntimeKey, writeRuntimeSimilarity } from "./runtime-cache.js";
+import { createSimilarityResultStore, runAfterResponse } from "./result-store.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
@@ -316,18 +316,23 @@ export class CosmosSimilarityStore implements SimilarityStore {
 export function createSimilarityRouter(database: Database, permanentAdmins: readonly string[]) {
   const router = express.Router();
   const store = new CosmosSimilarityStore(database);
+  const resultStore = createSimilarityResultStore(database);
   router.get("/", async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     const parsed = requestSchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer, questionId, and optional Gmail email are required." });
     try {
       const { sourceContainer, questionId, email, tier } = parsed.data;
-      const runtimeKey = tier ? similarityRuntimeKey(sourceContainer, questionId, tier) : undefined;
-      const stored = runtimeKey ? await readRuntimeSimilarity(runtimeKey) : undefined;
+      const resultId = tier ? `${sourceContainer}:${questionId}:${tier}` : undefined;
+      const stored = resultId ? await resultStore.read(resultId, rankingVersion) : undefined;
       const result = stored ?? await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins, { tier });
       if (tier && result.status === "ready") {
         const tags = similarityCacheTags(result.source, result.matches);
-        if (runtimeKey && !stored) await writeRuntimeSimilarity(runtimeKey, result, tags);
+        if (resultId && !stored) {
+          await runAfterResponse(resultStore.write({
+            id: resultId, tier, rankingVersion, tags, createdAt: new Date().toISOString(), result,
+          }));
+        }
         res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
         res.setHeader("Vercel-CDN-Cache-Control", similarityCdnCacheControl);
         res.setHeader("Vercel-Cache-Tag", tags.join(","));

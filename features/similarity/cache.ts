@@ -4,7 +4,7 @@ import type { Database } from "@azure/cosmos";
 import { sourceContainers } from "./config.js";
 import { CosmosSimilarityStore, findSimilarQuestions, similarityPurgeWindow, type SimilarityStore } from "./search.js";
 import { similarityAllTag, similarityPurgeTags } from "./cache-tags.js";
-import { expireRuntimeTags } from "./runtime-cache.js";
+import { createSimilarityResultStore } from "./result-store.js";
 import type { QuestionReference } from "./types.js";
 
 export type TagInvalidator = (tags: string[]) => Promise<boolean>;
@@ -14,7 +14,6 @@ export const invalidateVercelTags: TagInvalidator = async tags => {
   if (!process.env.VERCEL) return false;
   const { invalidateByTag } = await import("@vercel/functions");
   await invalidateByTag(tags);
-  await expireRuntimeTags(tags);
   return true;
 };
 
@@ -39,9 +38,16 @@ const purgeSchema = z.union([
   }),
 ]);
 
-export function createSimilarityCacheAdminRouter(database: Database, invalidate: TagInvalidator = invalidateVercelTags) {
+export function createSimilarityCacheAdminRouter(database: Database, invalidateCdn: TagInvalidator = invalidateVercelTags) {
   const router = express.Router();
   const store = new CosmosSimilarityStore(database);
+  const resultStore = createSimilarityResultStore(database);
+  // Stored results go first so the CDN cannot refill itself from a stale copy.
+  const invalidate: TagInvalidator = async tags => {
+    const removed = await resultStore.purge(tags);
+    const cdn = await invalidateCdn(tags);
+    return cdn || removed > 0;
+  };
   router.post("/purge", async (req, res) => {
     const parsed = purgeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Provide a question (sourceContainer and questionId) or all: true." });
