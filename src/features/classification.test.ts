@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { NEEDS_CLASSIFICATION, withSubjectDisplay } from "./classification";
+import { NEEDS_CLASSIFICATION, withOriginalSubjectFallback, withSubjectDisplay } from "./classification";
+
+test("sections without classification can show the stored subject while approved subjects still win", () => {
+  const approved = { subject: "Polity", subjectClassification: { subjectId: "S04", subject: "Polity & Constitution" } };
+  assert.equal(withOriginalSubjectFallback(approved).subject, "Polity & Constitution");
+  assert.equal(withOriginalSubjectFallback({ subject: "Reading Comprehension" }).subject, "Reading Comprehension");
+  const display = withOriginalSubjectFallback({ subject: "Reading Comprehension" });
+  assert.equal(withOriginalSubjectFallback(display).subject, "Reading Comprehension");
+});
 
 test("cards, subject filters and counts share canonical display labels without losing unresolved questions", () => {
   const source = [

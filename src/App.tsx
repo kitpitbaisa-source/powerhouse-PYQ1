@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { getExamCategory } from './exam-utils';
-import { withSubjectDisplay } from './features/classification';
+import { withOriginalSubjectFallback, withSubjectDisplay } from './features/classification';
 import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
 import { SimilarityCachePurgeCard } from './features/SimilarityCachePurgeCard';
@@ -2251,12 +2251,12 @@ export const SimilarityQuestionSummary: React.FC<{
   );
 };
 
-// Free users see 1 match for 60% of questions, 2 for 30% and 3 for 10%; the bucket is fixed per question.
+// Free users see 1 match for 50% of questions, 2 for 40% and 3 for 10%; the bucket is fixed per question.
 function freeSimilarUnlockCount(key: string): 1 | 2 | 3 {
   let hash = 0;
   for (let index = 0; index < key.length; index++) hash = (Math.imul(hash, 31) + key.charCodeAt(index)) >>> 0;
   const bucket = hash % 10;
-  return bucket < 6 ? 1 : bucket < 9 ? 2 : 3;
+  return bucket < 5 ? 1 : bucket < 9 ? 2 : 3;
 }
 
 const QuestionSimilarityExplorer: React.FC<{
@@ -2813,36 +2813,42 @@ const QuestionSimilarityExplorer: React.FC<{
                 );
               })}
               </AnimatePresence>
-              {lockedMatches.length > 0 && (
-                <div className="relative flex min-h-[220px] flex-col items-center justify-center overflow-hidden rounded-3xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6 text-center shadow-sm dark:border-indigo-500/20 dark:from-indigo-950/40 dark:via-[#0D1424] dark:to-violet-950/30 xl:col-span-2">
-                  <div className="pointer-events-none absolute inset-0 space-y-4 p-6 opacity-30 blur-[3px]" aria-hidden="true">
-                    <div className="h-3 w-2/3 rounded-full bg-slate-300 dark:bg-slate-600" />
-                    <div className="h-3 w-full rounded-full bg-slate-300 dark:bg-slate-600" />
-                    <div className="h-3 w-5/6 rounded-full bg-slate-300 dark:bg-slate-600" />
-                    <div className="h-3 w-1/2 rounded-full bg-slate-300 dark:bg-slate-600" />
+              {lockedMatches.map((match, lockedIndex) => (
+                <div key={match.profileId} className="relative flex min-h-[300px] flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-900/5 dark:border-slate-800 dark:bg-[#0D1424]">
+                  <div className="mb-3 flex items-center justify-between gap-2" aria-hidden="true">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-extrabold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{unlockedMatches.length + lockedIndex + 1}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-extrabold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                      <SimilarityIcon className="h-3.5 w-3.5" /> Match {match.score}%
+                    </span>
                   </div>
-                  <div className="relative z-10 flex flex-col items-center">
+                  <div className="pointer-events-none select-none space-y-3 opacity-40 blur-[3px]" aria-hidden="true">
+                    <div className="h-3 w-full rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="h-3 w-11/12 rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="h-3 w-4/5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="mt-5 h-9 w-full rounded-xl bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-9 w-full rounded-xl bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-9 w-full rounded-xl bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/40 p-6 text-center backdrop-blur-[2px] dark:bg-slate-900/40">
                     <div className="mb-3 rounded-full bg-indigo-600 p-2.5 shadow-lg shadow-indigo-500/30">
                       <Lock className="h-4 w-4 text-white" />
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {lockedMatches.length} more similar question{lockedMatches.length === 1 ? "" : "s"} for subscribed members
-                    </h4>
-                    <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-                      Unlock every match, the shared concepts and highlights with Premium.
+                    <h4 className="mb-1 text-[13px] font-bold text-slate-900 dark:text-white">Premium Question</h4>
+                    <p className="mb-4 max-w-[16rem] text-[11px] text-slate-600 dark:text-slate-300">
+                      This similar question, its shared concepts and highlights are for subscribed members.
                     </p>
                     {onOpenPremium && (
                       <button
                         type="button"
                         onClick={onOpenPremium}
-                        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md transition-colors hover:bg-blue-500"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md transition-colors hover:bg-blue-500"
                       >
                         <Crown className="h-3.5 w-3.5" /> View Premium Plans
                       </button>
                     )}
                   </div>
                 </div>
-              )}
+              ))}
             </motion.div>
           </section>
         </div>
@@ -2878,7 +2884,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onUpdateQuestion,
   onOpenSimilarity
 }) => {
-  const question = withSubjectDisplay(sourceQuestion);
+  const question = storageScope === 'prelims' ? withSubjectDisplay(sourceQuestion) : withOriginalSubjectFallback(sourceQuestion);
   const [isEditing, setIsEditing] = useState(false);
   const [editAnswer, setEditAnswer] = useState("");
   const [editExplanation, setEditExplanation] = useState("");
@@ -3941,7 +3947,7 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
   onFeedback,
   onOpenSimilarity,
 }) => {
-  const question = withSubjectDisplay(sourceQuestion);
+  const question = withOriginalSubjectFallback(sourceQuestion);
   const colorClasses = subjectColors[question.subject] || subjectColors["Default"];
   const answer = question.modelAnswer || question.model_answer || "";
   const hasModelAnswer = !!answer.trim();
@@ -4201,10 +4207,10 @@ export default function App() {
   const [sourceCSATQuestions, setCSATQuestions] = useState<Question[]>([]);
   const [sourceEnglishQuestions, setEnglishQuestions] = useState<Question[]>([]);
   const questions = useMemo(() => sourceQuestions.map(withSubjectDisplay), [sourceQuestions]);
-  const mainsQuestions = useMemo(() => sourceMainsQuestions.map(withSubjectDisplay), [sourceMainsQuestions]);
+  const mainsQuestions = useMemo(() => sourceMainsQuestions.map(question => withOriginalSubjectFallback(question)), [sourceMainsQuestions]);
   const essayQuestions = useMemo(() => sourceEssayQuestions.map(withSubjectDisplay), [sourceEssayQuestions]);
-  const csatQuestions = useMemo(() => sourceCSATQuestions.map(withSubjectDisplay), [sourceCSATQuestions]);
-  const englishQuestions = useMemo(() => sourceEnglishQuestions.map(withSubjectDisplay), [sourceEnglishQuestions]);
+  const csatQuestions = useMemo(() => sourceCSATQuestions.map(question => withOriginalSubjectFallback(question)), [sourceCSATQuestions]);
+  const englishQuestions = useMemo(() => sourceEnglishQuestions.map(question => withOriginalSubjectFallback(question)), [sourceEnglishQuestions]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [hasLoadedAllQuestions, setHasLoadedAllQuestions] = useState(false);
   const [isLoadingMains, setIsLoadingMains] = useState(false);
@@ -4248,7 +4254,7 @@ export default function App() {
   const [revealedEssayAnswers, setRevealedEssayAnswers] = useState<Record<string, boolean>>({});
   const [mainsRandomMode, setMainsRandomMode] = useState(false);
   const [sourceMainsRandomizedQuestions, setMainsRandomizedQuestions] = useState<MainsQuestion[]>([]);
-  const mainsRandomizedQuestions = useMemo(() => sourceMainsRandomizedQuestions.map(withSubjectDisplay), [sourceMainsRandomizedQuestions]);
+  const mainsRandomizedQuestions = useMemo(() => sourceMainsRandomizedQuestions.map(question => withOriginalSubjectFallback(question)), [sourceMainsRandomizedQuestions]);
   const [mainsRandomSelectLimit, setMainsRandomSelectLimit] = useState(10);
   const [sourceToppersQuestions, setToppersQuestions] = useState<ToppersCopyQuestion[]>([]);
   const toppersQuestions = useMemo(() => sourceToppersQuestions.map(withSubjectDisplay), [sourceToppersQuestions]);
@@ -4267,7 +4273,7 @@ export default function App() {
   const [csatVisibleCount, setCSATVisibleCount] = useState(30);
   const [csatRandomMode, setCSATRandomMode] = useState(false);
   const [sourceCSATRandomizedQuestions, setCSATRandomizedQuestions] = useState<Question[]>([]);
-  const csatRandomizedQuestions = useMemo(() => sourceCSATRandomizedQuestions.map(withSubjectDisplay), [sourceCSATRandomizedQuestions]);
+  const csatRandomizedQuestions = useMemo(() => sourceCSATRandomizedQuestions.map(question => withOriginalSubjectFallback(question)), [sourceCSATRandomizedQuestions]);
   const [csatRandomSelectLimit, setCSATRandomSelectLimit] = useState(10);
   const [csatBookmarkedOnly, setCSATBookmarkedOnly] = useState(false);
   const [csatNotedOnly, setCSATNotedOnly] = useState(false);
@@ -4282,7 +4288,7 @@ export default function App() {
   const [englishVisibleCount, setEnglishVisibleCount] = useState(30);
   const [englishRandomMode, setEnglishRandomMode] = useState(false);
   const [sourceEnglishRandomizedQuestions, setEnglishRandomizedQuestions] = useState<Question[]>([]);
-  const englishRandomizedQuestions = useMemo(() => sourceEnglishRandomizedQuestions.map(withSubjectDisplay), [sourceEnglishRandomizedQuestions]);
+  const englishRandomizedQuestions = useMemo(() => sourceEnglishRandomizedQuestions.map(question => withOriginalSubjectFallback(question)), [sourceEnglishRandomizedQuestions]);
   const [englishRandomSelectLimit, setEnglishRandomSelectLimit] = useState(10);
   const [englishBookmarkedOnly, setEnglishBookmarkedOnly] = useState(false);
   const [englishNotedOnly, setEnglishNotedOnly] = useState(false);
@@ -8577,7 +8583,6 @@ export default function App() {
                       onUpdateModelAnswer={updateMainsModelAnswer}
                       searchQuery={mainsSearchQuery}
                       onFeedback={() => openFeedback(q.id, 'mains')}
-                      onOpenSimilarity={question => setSimilarityExplorer({ question, scope: 'mains' })}
                       onSubjectClick={(subject) => {
                         setMainsSubjectFilter(subject);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -8752,7 +8757,6 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'csat')}
                           showNoteInline={csatNotedOnly}
-                          onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
                           onSubjectClick={(subject) => {
                             setCSATSubjectFilter(subject);
                             setCSATRandomMode(false);
@@ -8949,7 +8953,6 @@ export default function App() {
                           onOpenPremium={() => setShowPremiumModal(true)}
                           onFeedback={() => openFeedback(q.id, 'english')}
                           showNoteInline={englishNotedOnly}
-                          onOpenSimilarity={(question, scope) => setSimilarityExplorer({ question, scope })}
                           onSubjectClick={(subject) => {
                             setEnglishSubjectFilter(subject);
                             setEnglishRandomMode(false);
