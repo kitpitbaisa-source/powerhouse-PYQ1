@@ -2251,11 +2251,20 @@ export const SimilarityQuestionSummary: React.FC<{
   );
 };
 
+// Free users see 1 match for 60% of questions, 2 for 30% and 3 for 10%; the bucket is fixed per question.
+function freeSimilarUnlockCount(key: string): 1 | 2 | 3 {
+  let hash = 0;
+  for (let index = 0; index < key.length; index++) hash = (Math.imul(hash, 31) + key.charCodeAt(index)) >>> 0;
+  const bucket = hash % 10;
+  return bucket < 6 ? 1 : bucket < 9 ? 2 : 3;
+}
+
 const QuestionSimilarityExplorer: React.FC<{
   source: SimilarityQuestion;
   scope: 'prelims' | 'mains' | 'csat' | 'english';
   userEmail?: string | null;
   isSubscribed?: boolean;
+  onOpenPremium?: () => void;
   scoreChip?: React.ReactNode;
   onOptionClick?: (question: Question, option: string) => void;
   onSelect: (question: SimilarityQuestion) => void;
@@ -2265,6 +2274,7 @@ const QuestionSimilarityExplorer: React.FC<{
   scope,
   userEmail,
   isSubscribed,
+  onOpenPremium,
   scoreChip,
   onOptionClick,
   onSelect,
@@ -2350,7 +2360,7 @@ const QuestionSimilarityExplorer: React.FC<{
   const sourceContainer = source.sourceContainer ?? (scope === "mains" ? "mains-questions"
     : scope === "csat" ? "csat-questions" : scope === "english" ? "english-questions" : "questions");
   const questionId = String(source.id);
-  const similarityTier = isSubscribed ? "full" : "free";
+  const similarityTier = "full";
   const requestKey = similarityRequestKey({ sourceContainer, questionId }, similarityTier);
   const [searchState, setSearchState] = useState<{
     key: string; status: "loading" | "ready" | "error"; matches: SimilarityMatch[]; message?: string;
@@ -2362,6 +2372,9 @@ const QuestionSimilarityExplorer: React.FC<{
   const visibleState = searchState?.key === requestKey ? searchState : null;
   const isLoading = !visibleState || visibleState.status === "loading";
   const matches = useMemo(() => visibleState?.matches ?? [], [visibleState]);
+  const unlockLimit = isSubscribed ? matches.length : freeSimilarUnlockCount(`${sourceContainer}:${questionId}`);
+  const unlockedMatches = useMemo(() => matches.slice(0, unlockLimit), [matches, unlockLimit]);
+  const lockedMatches = useMemo(() => matches.slice(unlockLimit), [matches, unlockLimit]);
   useEffect(() => {
     let active = true;
     setSearchState({ key: requestKey, status: "loading", matches: [] });
@@ -2624,7 +2637,7 @@ const QuestionSimilarityExplorer: React.FC<{
 
             <motion.div className="grid grid-cols-1 gap-x-4 gap-y-6 pt-3 xl:grid-cols-2">
               <AnimatePresence mode="popLayout" initial={false}>
-              {matches.map((match, index) => {
+              {unlockedMatches.map((match, index) => {
                 const questionKey = String(match.question.id);
                 const objectiveQuestion = isObjectiveQuestion(match.question) ? match.question : null;
                 const attemptedOption = attemptedOptions[questionKey];
@@ -2800,6 +2813,36 @@ const QuestionSimilarityExplorer: React.FC<{
                 );
               })}
               </AnimatePresence>
+              {lockedMatches.length > 0 && (
+                <div className="relative flex min-h-[220px] flex-col items-center justify-center overflow-hidden rounded-3xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6 text-center shadow-sm dark:border-indigo-500/20 dark:from-indigo-950/40 dark:via-[#0D1424] dark:to-violet-950/30 xl:col-span-2">
+                  <div className="pointer-events-none absolute inset-0 space-y-4 p-6 opacity-30 blur-[3px]" aria-hidden="true">
+                    <div className="h-3 w-2/3 rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="h-3 w-full rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="h-3 w-5/6 rounded-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="h-3 w-1/2 rounded-full bg-slate-300 dark:bg-slate-600" />
+                  </div>
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="mb-3 rounded-full bg-indigo-600 p-2.5 shadow-lg shadow-indigo-500/30">
+                      <Lock className="h-4 w-4 text-white" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {lockedMatches.length} more similar question{lockedMatches.length === 1 ? "" : "s"} for subscribed members
+                    </h4>
+                    <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+                      Unlock every match, the shared concepts and highlights with Premium.
+                    </p>
+                    {onOpenPremium && (
+                      <button
+                        type="button"
+                        onClick={onOpenPremium}
+                        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md transition-colors hover:bg-blue-500"
+                      >
+                        <Crown className="h-3.5 w-3.5" /> View Premium Plans
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </motion.div>
           </section>
         </div>
@@ -4725,9 +4768,9 @@ export default function App() {
     }
   }, [isUserMenuOpen]);
 
-  const latestTwoYears = useMemo(() => {
+  const latestFreeYears = useMemo(() => {
     const years = [...new Set(questions.map(q => q.year))].sort((a, b) => (b as string).localeCompare(a as string));
-    return years.slice(0, 2);
+    return years.slice(0, 1);
   }, [questions]);
 
   const csatLatestTwoYears = useMemo(() => {
@@ -6745,8 +6788,8 @@ export default function App() {
 
   const startRandomPractice = (limit: number) => {
     const baseList = questions.filter(q => {
-      // If not subscribed, only random from latest 2 years
-      if (!isSubscribed && !latestTwoYears.includes(q.year)) return false;
+      // If not subscribed, only random from the latest free year
+      if (!isSubscribed && !latestFreeYears.includes(q.year)) return false;
 
       const marchesYear = yearFilter === "All" || q.year === yearFilter;
       const matchesExam = examFilter === "All" || getExamCategory(q.exam) === examFilter;
@@ -6873,7 +6916,7 @@ export default function App() {
                   <QuestionCountToggle value={randomSelectLimit} onChange={setRandomSelectLimit} />
                   <button
                     onClick={() => startRandomPractice(randomSelectLimit)}
-                    title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest 2 Years)"}
+                    title={isSubscribed ? "Start Random Practice" : "Random Practice (Limited to Latest Year)"}
                     className="px-2.5 py-1 rounded-md transition-all text-[11px] font-bold flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white active:scale-95 shadow-md shadow-blue-600/25"
                   >
                     <span className="hidden sm:inline">Random PYQ</span>
@@ -8265,7 +8308,7 @@ export default function App() {
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {filteredQuestions.map((q, idx) => {
-                    const isLocked = !isSubscribed && !latestTwoYears.includes(q.year);
+                    const isLocked = !isSubscribed && !latestFreeYears.includes(q.year);
 
                     return (
                       <QuestionCard
@@ -9291,6 +9334,7 @@ export default function App() {
           scope={similarityExplorer.scope}
           userEmail={userEmail}
           isSubscribed={isSubscribed}
+          onOpenPremium={() => { setSimilarityExplorer(null); setShowPremiumModal(true); }}
           scoreChip={similarityExplorer.scope === 'mains' ? undefined : renderScoreChip(sectionScores[similarityExplorer.scope] || { correct: 0, total: 0 })}
           onOptionClick={similarityExplorer.scope === 'mains'
             ? undefined
