@@ -16,7 +16,7 @@ export async function purgeQuestionSimilarity(
 ) {
   // Purging the question's own tag clears every stored result that already lists it; its nearest
   // neighbours are purged too because their results may now include it.
-  const result = await findSimilarQuestions(reference, undefined, store, [], { tier: "full", limit: similarityPurgeWindow });
+  const result = await findSimilarQuestions(reference, undefined, store, [], { unrestricted: true, limit: similarityPurgeWindow });
   const tags = similarityPurgeTags(reference, result.matches);
   const purged = await invalidate(tags);
   return { purged, tags: tags.length, neighbours: result.matches.length };

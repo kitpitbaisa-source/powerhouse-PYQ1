@@ -6,7 +6,6 @@ export const similarityResultsContainerId = "similarity_results";
 
 export interface StoredSimilarityResult {
   id: string;
-  tier: "free" | "full";
   rankingVersion: string;
   tags: string[];
   createdAt: string;

@@ -26,7 +26,6 @@ const requestSchema = z.object({
   sourceContainer: z.enum(sourceContainers),
   questionId: z.string().trim().min(1).max(128).regex(/^[^/\\?#]+$/),
   email: z.string().trim().toLowerCase().max(254).regex(/^[^\s@]+@gmail\.com$/).optional(),
-  tier: z.enum(["free", "full"]).optional(),
 });
 
 export interface SimilarityStore {
@@ -132,7 +131,7 @@ export async function findSimilarQuestions(
   email: string | undefined,
   store: SimilarityStore,
   permanentAdmins: readonly string[] = [],
-  options: { tier?: "free" | "full"; limit?: number } = {},
+  options: { unrestricted?: boolean; limit?: number } = {},
 ): Promise<SimilarityResponse> {
   const limit = Math.min(options.limit ?? maxResults, candidateCount);
   const profile = await store.readProfile(`${reference.sourceContainer}:${reference.questionId}`);
@@ -161,8 +160,8 @@ export async function findSimilarQuestions(
         sourceSnapshot.verification.extractionContentHash !== profile.processing.extractionContentHash)) {
     return { status: "stale", source: reference, matches: [], message: "The concept profile does not match the question's reviewed version." };
   }
-  const subscribed = options.tier ? options.tier === "full" : email && (permanentAdmins.includes(email) ||
-    ["subscribed", "admin", "editor"].includes(await store.userStatus(email) ?? ""));
+  const subscribed = options.unrestricted ?? (email && (permanentAdmins.includes(email) ||
+    ["subscribed", "admin", "editor"].includes(await store.userStatus(email) ?? "")));
   const sources = bankSources(reference.sourceContainer);
   const years = subscribed ? undefined : await store.latestYears(sources);
   if (years && !years.includes(sourceQuestion.year)) {
@@ -320,19 +319,17 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
   router.get("/", async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     const parsed = requestSchema.safeParse(req.query);
-    if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer, questionId, and optional Gmail email are required." });
+    if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer and questionId are required." });
     try {
-      const { sourceContainer, questionId, email, tier } = parsed.data;
-      const resultId = tier ? `${sourceContainer}:${questionId}:${tier}` : undefined;
-      const stored = resultId ? await resultStore.read(resultId, rankingVersion) : undefined;
-      const result = stored ?? await findSimilarQuestions({ sourceContainer, questionId }, email, store, permanentAdmins, { tier });
-      if (tier && result.status === "ready") {
-        const tags = similarityCacheTags(result.source, result.matches);
-        if (resultId && !stored) {
-          await runAfterResponse(resultStore.write({
-            id: resultId, tier, rankingVersion, tags, createdAt: new Date().toISOString(), result,
-          }));
-        }
+      const { sourceContainer, questionId } = parsed.data;
+      const resultId = `${sourceContainer}:${questionId}`;
+      const stored = await resultStore.read(resultId, rankingVersion);
+      const result = stored ?? await findSimilarQuestions({ sourceContainer, questionId }, undefined, store, permanentAdmins, { unrestricted: true });
+      if (!stored && result.status === "ready") {
+        await runAfterResponse(resultStore.write({
+          id: resultId, rankingVersion, tags: similarityCacheTags(result.source, result.matches),
+          createdAt: new Date().toISOString(), result,
+        }));
       }
       return res.json(result);
     } catch (error) {

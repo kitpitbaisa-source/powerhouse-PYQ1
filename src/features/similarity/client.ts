@@ -68,22 +68,18 @@ const responseSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-export type SimilarityTier = "free" | "full";
-
-export function similarityRequestKey(reference: QuestionReference, tier?: SimilarityTier | null): string {
-  return JSON.stringify([reference.sourceContainer, reference.questionId, tier ?? null]);
+export function similarityRequestKey(reference: QuestionReference): string {
+  return JSON.stringify([reference.sourceContainer, reference.questionId]);
 }
 
 export function createSimilarityLoader(fetcher: typeof fetch = fetch) {
   const requests = new Map<string, Promise<SimilarityResponse>>();
-  return (reference: QuestionReference, tier?: SimilarityTier | null): Promise<SimilarityResponse> => {
-    const key = similarityRequestKey(reference, tier);
+  return (reference: QuestionReference): Promise<SimilarityResponse> => {
+    const key = similarityRequestKey(reference);
     const existing = requests.get(key);
     if (existing) return existing;
     const request = (async (): Promise<SimilarityResponse> => {
-      // The same URL for every user lets one stored result be shared per question and tier.
       const params = new URLSearchParams({ sourceContainer: reference.sourceContainer, questionId: reference.questionId });
-      if (tier) params.set("tier", tier);
       const response = await fetcher(`/api/similarity?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Could not load similar questions (HTTP ${response.status}).`);
       const result = responseSchema.parse(await response.json());

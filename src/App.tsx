@@ -2360,8 +2360,7 @@ const QuestionSimilarityExplorer: React.FC<{
   const sourceContainer = source.sourceContainer ?? (scope === "mains" ? "mains-questions"
     : scope === "csat" ? "csat-questions" : scope === "english" ? "english-questions" : "questions");
   const questionId = String(source.id);
-  const similarityTier = "full";
-  const requestKey = similarityRequestKey({ sourceContainer, questionId }, similarityTier);
+  const requestKey = similarityRequestKey({ sourceContainer, questionId });
   const [searchState, setSearchState] = useState<{
     key: string; status: "loading" | "ready" | "error"; matches: SimilarityMatch[]; message?: string;
     sourceHighlights?: SimilarityMatch['highlights'];
@@ -2378,7 +2377,7 @@ const QuestionSimilarityExplorer: React.FC<{
   useEffect(() => {
     let active = true;
     setSearchState({ key: requestKey, status: "loading", matches: [] });
-    loadSimilarity({ sourceContainer, questionId }, similarityTier).then(response => {
+    loadSimilarity({ sourceContainer, questionId }).then(response => {
       const result: SimilarityMatch[] = response.matches.map(match => {
         const question = toDisplayQuestion(match.question);
         return {
@@ -2403,7 +2402,7 @@ const QuestionSimilarityExplorer: React.FC<{
       });
     });
     return () => { active = false; };
-  }, [loadSimilarity, requestKey, sourceContainer, questionId, source.question, similarityTier]);
+  }, [loadSimilarity, requestKey, sourceContainer, questionId, source.question]);
   const referenceConcepts = useMemo(() => matches.flatMap(match => match.sharedConcepts), [matches]);
   const sourceMotionKey = `${source.id}:${source.exam}:${source.question}`;
   const sourceExamCategory = getExamCategory(source.exam);
