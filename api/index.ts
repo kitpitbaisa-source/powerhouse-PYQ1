@@ -7,6 +7,7 @@ import crypto from "crypto";
 // Vercel loads emitted JavaScript as native ESM, without tsx's extension resolution.
 import { createSimilarityRouter } from "../features/similarity/search.js";
 import { createSimilarityCacheAdminRouter } from "../features/similarity/cache.js";
+import { createSimilarityUsageAdminRouter } from "../features/similarity/usage.js";
 import { loadQuestionSubtopics } from "../features/similarity/subtopics.js";
 import { createQuestionReviewRouter } from "../features/question-review.js";
 
@@ -100,6 +101,7 @@ function requireAdmin(
 serverApp.use("/api/admin", requireAdmin);
 serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 serverApp.use("/api/admin/similarity-cache", createSimilarityCacheAdminRouter(database));
+serverApp.use("/api/admin/similarity-usage", createSimilarityUsageAdminRouter(database));
 const PAYMENT_PLANS: Record<string, { amount: number; durationDays: number; label: string }> = {
   pyq1: { amount: 89900, durationDays: 365, label: "Powerhouse PYQ Premium - 1 Year" },
   pyq2: { amount: 129900, durationDays: 730, label: "Powerhouse PYQ Premium - 2 Years" },

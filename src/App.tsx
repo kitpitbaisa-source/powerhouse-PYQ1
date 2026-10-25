@@ -12,6 +12,7 @@ import { withOriginalSubjectFallback, withSubjectDisplay } from './features/clas
 import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
 import { SimilarityCachePurgeCard } from './features/SimilarityCachePurgeCard';
+import { SimilarityUsageCard } from './features/SimilarityUsageCard';
 import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
 import { highlightSimilarityTerms, similarityHighlightPhrases, type SimilarityHighlightTone } from './features/similarity/highlights';
@@ -2377,7 +2378,7 @@ const QuestionSimilarityExplorer: React.FC<{
   useEffect(() => {
     let active = true;
     setSearchState({ key: requestKey, status: "loading", matches: [] });
-    loadSimilarity({ sourceContainer, questionId }).then(response => {
+    loadSimilarity({ sourceContainer, questionId }, userEmail ?? undefined).then(response => {
       const result: SimilarityMatch[] = response.matches.map(match => {
         const question = toDisplayQuestion(match.question);
         return {
@@ -2416,6 +2417,18 @@ const QuestionSimilarityExplorer: React.FC<{
 
   const togglePopupAnswer = (questionId: number | string) => {
     setRevealedAnswers(previous => ({ ...previous, [questionId]: !previous[questionId] }));
+  };
+
+  const trackMatchClick = (match: SimilarityMatch, index: number) => {
+    void fetch("/api/similarity/usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        sourceContainer, questionId, email: userEmail ?? undefined,
+        matchProfileId: match.profileId, rank: index + 1, score: match.score,
+      }),
+    }).catch(() => undefined);
   };
 
   const exploreSimilarQuestion = (question: SimilarityQuestion) => {
@@ -2802,7 +2815,7 @@ const QuestionSimilarityExplorer: React.FC<{
                     </button>
                     <button
                       type="button"
-                      onClick={() => exploreSimilarQuestion(match.question)}
+                      onClick={() => { trackMatchClick(match, index); exploreSimilarQuestion(match.question); }}
                       className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-400/30 bg-gradient-to-r from-blue-600 to-indigo-600 px-2 py-2.5 text-sm font-bold text-white shadow-sm shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
                     >
                       <SimilarityIcon className="h-3.5 w-3.5" /> Explore similar
@@ -7319,6 +7332,7 @@ export default function App() {
               {/* Admin tools below require a verified key */}
               {adminUnlocked && (<>
               <SimilarityCachePurgeCard adminKey={adminKey} />
+              <SimilarityUsageCard adminKey={adminKey} />
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User

@@ -74,12 +74,13 @@ export function similarityRequestKey(reference: QuestionReference): string {
 
 export function createSimilarityLoader(fetcher: typeof fetch = fetch) {
   const requests = new Map<string, Promise<SimilarityResponse>>();
-  return (reference: QuestionReference): Promise<SimilarityResponse> => {
+  return (reference: QuestionReference, email?: string): Promise<SimilarityResponse> => {
     const key = similarityRequestKey(reference);
     const existing = requests.get(key);
     if (existing) return existing;
     const request = (async (): Promise<SimilarityResponse> => {
       const params = new URLSearchParams({ sourceContainer: reference.sourceContainer, questionId: reference.questionId });
+      if (email) params.set("email", email);
       const response = await fetcher(`/api/similarity?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Could not load similar questions (HTTP ${response.status}).`);
       const result = responseSchema.parse(await response.json());

@@ -13,6 +13,7 @@ import { questionVerificationSchema, type QuestionVerification } from "./verific
 import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
 import { similarityCacheTags } from "./cache-tags.js";
 import { createSimilarityResultStore, runAfterResponse } from "./result-store.js";
+import { createSimilarityUsageStore, matchClickSchema } from "./usage.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
 
@@ -25,7 +26,7 @@ const candidateCount = 50;
 const requestSchema = z.object({
   sourceContainer: z.enum(sourceContainers),
   questionId: z.string().trim().min(1).max(128).regex(/^[^/\\?#]+$/),
-  email: z.string().trim().toLowerCase().max(254).regex(/^[^\s@]+@gmail\.com$/).optional(),
+  email: z.string().trim().toLowerCase().max(254).regex(/^[^\s@]+@[^\s@]+$/).optional().catch(undefined),
 });
 
 export interface SimilarityStore {
@@ -316,13 +317,21 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
   const router = express.Router();
   const store = new CosmosSimilarityStore(database);
   const resultStore = createSimilarityResultStore(database);
+  const usageStore = createSimilarityUsageStore(database);
+  router.post("/usage", async (req, res) => {
+    const parsed = matchClickSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid usage event." });
+    await runAfterResponse(usageStore.record({ type: "match_click", ...parsed.data }));
+    return res.status(204).end();
+  });
   router.get("/", async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     const parsed = requestSchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "A valid sourceContainer and questionId are required." });
     try {
-      const { sourceContainer, questionId } = parsed.data;
+      const { sourceContainer, questionId, email } = parsed.data;
       const resultId = `${sourceContainer}:${questionId}`;
+      const startedAt = Date.now();
       const stored = await resultStore.read(resultId, rankingVersion);
       const result = stored ?? await findSimilarQuestions({ sourceContainer, questionId }, undefined, store, permanentAdmins, { unrestricted: true });
       if (!stored && result.status === "ready") {
@@ -331,6 +340,10 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
           createdAt: new Date().toISOString(), result,
         }));
       }
+      await runAfterResponse(usageStore.record({
+        type: "open", email, sourceContainer, questionId, status: result.status,
+        resultSource: stored ? "stored" : "computed", durationMs: Date.now() - startedAt,
+      }));
       return res.json(result);
     } catch (error) {
       console.error("Similarity search failed:", error instanceof Error ? error.message : error);
