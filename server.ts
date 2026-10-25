@@ -6,6 +6,8 @@ import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
 import { createSimilarityRouter } from "./features/similarity/search";
 import { createSimilarityCacheAdminRouter } from "./features/similarity/cache";
+import { similarityAttemptFields } from "./features/similarity/attempt";
+import { createSimilarityAttemptsAdminRouter } from "./features/similarity/attempt-admin";
 import { loadQuestionSubtopics } from "./features/similarity/subtopics";
 import { createQuestionReviewRouter } from "./features/question-review";
 
@@ -156,7 +158,7 @@ async function appendAttempt(
   userId: string,
   questionType: string,
   questionId: any,
-  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string },
+  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string } & Record<string, unknown>,
   meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
 ) {
   const id = `${questionType}:${questionId}`;
@@ -201,6 +203,7 @@ async function appendAttempt(
       lastIsCorrect: attempt.isCorrect,
       lastAttemptId: attempt.attemptId,
       lastAttemptAt: attempt.ts,
+      ...(attempt.via === "similarity" ? { similarityAttemptCount: (existing?.similarityAttemptCount ?? 0) + 1, lastSimilarityAt: attempt.ts } : {}),
 
       isActive: existing?.isActive ?? true,
       deletedAt: existing?.deletedAt ?? null,
@@ -447,6 +450,7 @@ function requireAdmin(
 serverApp.use("/api/admin", requireAdmin);
 serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 serverApp.use("/api/admin/similarity-cache", createSimilarityCacheAdminRouter(database));
+serverApp.use("/api/admin/similarity-attempts", createSimilarityAttemptsAdminRouter(database.container("user-questions")));
 
 // Export for Vercel
 export default serverApp;
@@ -2059,7 +2063,7 @@ serverApp.get("/api/admin/payments", async (_req, res) => {
 // ── Per-user attempts: append one attempt so the score and history persist ──
 serverApp.post("/api/attempts", async (req, res) => {
   try {
-    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs } = req.body || {};
+    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs, similarity } = req.body || {};
     const userEmail = String(email || "").toLowerCase().trim();
     if (!userEmail || questionId === undefined || questionId === null) {
       return res.status(400).json({ error: "email and questionId are required" });
@@ -2076,6 +2080,7 @@ serverApp.post("/api/attempts", async (req, res) => {
         isCorrect: !!isCorrect,
         timeSpentMs: Number.isFinite(timeSpentMs) ? Number(timeSpentMs) : null,
         ts: new Date().toISOString(),
+        ...similarityAttemptFields(similarity),
       },
       {
         subject: (subject && String(subject).trim()) || null,

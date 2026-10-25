@@ -7,6 +7,8 @@ import crypto from "crypto";
 // Vercel loads emitted JavaScript as native ESM, without tsx's extension resolution.
 import { createSimilarityRouter } from "../features/similarity/search.js";
 import { createSimilarityCacheAdminRouter } from "../features/similarity/cache.js";
+import { similarityAttemptFields } from "../features/similarity/attempt.js";
+import { createSimilarityAttemptsAdminRouter } from "../features/similarity/attempt-admin.js";
 import { loadQuestionSubtopics } from "../features/similarity/subtopics.js";
 import { createQuestionReviewRouter } from "../features/question-review.js";
 
@@ -100,6 +102,7 @@ function requireAdmin(
 serverApp.use("/api/admin", requireAdmin);
 serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 serverApp.use("/api/admin/similarity-cache", createSimilarityCacheAdminRouter(database));
+serverApp.use("/api/admin/similarity-attempts", createSimilarityAttemptsAdminRouter(database.container("user-questions")));
 const PAYMENT_PLANS: Record<string, { amount: number; durationDays: number; label: string }> = {
   pyq1: { amount: 89900, durationDays: 365, label: "Powerhouse PYQ Premium - 1 Year" },
   pyq2: { amount: 129900, durationDays: 730, label: "Powerhouse PYQ Premium - 2 Years" },
@@ -256,7 +259,7 @@ async function appendAttempt(
   userId: string,
   questionType: string,
   questionId: any,
-  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string },
+  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string } & Record<string, unknown>,
   meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
 ) {
   const id = `${questionType}:${questionId}`;
@@ -301,6 +304,7 @@ async function appendAttempt(
       lastIsCorrect: attempt.isCorrect,
       lastAttemptId: attempt.attemptId,
       lastAttemptAt: attempt.ts,
+      ...(attempt.via === "similarity" ? { similarityAttemptCount: (existing?.similarityAttemptCount ?? 0) + 1, lastSimilarityAt: attempt.ts } : {}),
 
       isActive: existing?.isActive ?? true,
       deletedAt: existing?.deletedAt ?? null,
@@ -2130,7 +2134,7 @@ serverApp.post("/api/payment/webhook", async (req, res) => {
 // ── Per-user attempts: append one answered question, grouped by attemptId ──
 serverApp.post("/api/attempts", async (req, res) => {
   try {
-    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs } = req.body || {};
+    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs, similarity } = req.body || {};
     const userEmail = String(email || "").toLowerCase().trim();
     if (!userEmail || questionId === undefined || questionId === null) {
       return res.status(400).json({ error: "email and questionId are required" });
@@ -2147,6 +2151,7 @@ serverApp.post("/api/attempts", async (req, res) => {
         isCorrect: !!isCorrect,
         timeSpentMs: Number.isFinite(timeSpentMs) ? Number(timeSpentMs) : null,
         ts: new Date().toISOString(),
+        ...similarityAttemptFields(similarity),
       },
       {
         subject: (subject && String(subject).trim()) || null,

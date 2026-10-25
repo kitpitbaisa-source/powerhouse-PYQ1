@@ -12,6 +12,7 @@ import { withOriginalSubjectFallback, withSubjectDisplay } from './features/clas
 import { QuestionReviewPanel, type AdminReviewAccess } from './features/QuestionReviewPanel';
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
 import { SimilarityCachePurgeCard } from './features/SimilarityCachePurgeCard';
+import { SimilarityAttemptsCard } from './features/SimilarityAttemptsCard';
 import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
 import { highlightSimilarityTerms, similarityHighlightPhrases, type SimilarityHighlightTone } from './features/similarity/highlights';
@@ -2252,6 +2253,13 @@ export const SimilarityQuestionSummary: React.FC<{
 };
 
 // Free users see 1 match for 50% of questions, 2 for 40% and 3 for 10%; the bucket is fixed per question.
+type SimilarityAttemptInfo = {
+  role: "origin" | "match";
+  source: { sourceContainer: string; questionId: string };
+  matchScore?: number;
+  matchRank?: number;
+};
+
 function freeSimilarUnlockCount(key: string): 1 | 2 | 3 {
   let hash = 0;
   for (let index = 0; index < key.length; index++) hash = (Math.imul(hash, 31) + key.charCodeAt(index)) >>> 0;
@@ -2266,7 +2274,7 @@ const QuestionSimilarityExplorer: React.FC<{
   isSubscribed?: boolean;
   onOpenPremium?: () => void;
   scoreChip?: React.ReactNode;
-  onOptionClick?: (question: Question, option: string) => void;
+  onOptionClick?: (question: Question, option: string, similarity?: SimilarityAttemptInfo) => void;
   onSelect: (question: SimilarityQuestion) => void;
   onClose: () => void;
 }> = ({
@@ -2411,7 +2419,16 @@ const QuestionSimilarityExplorer: React.FC<{
     if (attemptedOptions[question.id] === option) return;
     setAttemptedOptions(previous => ({ ...previous, [question.id]: option }));
     setRevealedAnswers(previous => ({ ...previous, [question.id]: true }));
-    if (question.answer) onOptionClick?.(question, option);
+    if (question.answer) {
+      const matchIndex = matches.findIndex(match => String(match.question.id) === String(question.id));
+      const similaritySource = { sourceContainer, questionId };
+      const similarity: SimilarityAttemptInfo | undefined = String(question.id) === questionId
+        ? { role: "origin", source: similaritySource }
+        : matchIndex >= 0
+          ? { role: "match", source: similaritySource, matchScore: matches[matchIndex].score, matchRank: matchIndex + 1 }
+          : undefined;
+      onOptionClick?.(question, option, similarity);
+    }
   };
 
   const togglePopupAnswer = (questionId: number | string) => {
@@ -6452,9 +6469,9 @@ export default function App() {
     questionType: string = 'prelims',
     subject?: string,
     topic?: string,
-    behavior: { syncSelection?: boolean; allowRepeatedOption?: boolean } = {}
+    behavior: { syncSelection?: boolean; allowRepeatedOption?: boolean; similarity?: SimilarityAttemptInfo } = {}
   ) => {
-    const { syncSelection = true, allowRepeatedOption = false } = behavior;
+    const { syncSelection = true, allowRepeatedOption = false, similarity } = behavior;
     // Re-attempting is allowed, but picking the same option again would only
     // inflate the counters without saying anything new about recall.
     if (!allowRepeatedOption && userAttempts[qid] === option) return;
@@ -6477,7 +6494,7 @@ export default function App() {
       fetch('/api/attempts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail, questionId: qid, questionType, option, isCorrect, attemptId, subject, topic }),
+        body: JSON.stringify({ email: userEmail, questionId: qid, questionType, option, isCorrect, attemptId, subject, topic, similarity }),
       }).catch(() => {});
     }
   };
@@ -7319,6 +7336,7 @@ export default function App() {
               {/* Admin tools below require a verified key */}
               {adminUnlocked && (<>
               <SimilarityCachePurgeCard adminKey={adminKey} />
+              <SimilarityAttemptsCard adminKey={adminKey} />
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-blue-500" /> Add New User
@@ -9340,14 +9358,14 @@ export default function App() {
           scoreChip={similarityExplorer.scope === 'mains' ? undefined : renderScoreChip(sectionScores[similarityExplorer.scope] || { correct: 0, total: 0 })}
           onOptionClick={similarityExplorer.scope === 'mains'
             ? undefined
-            : (question, option) => handleOptionClick(
+            : (question, option, similarity) => handleOptionClick(
               question.id,
               option,
               isCorrectOption(option, question.answer, question.options),
               similarityExplorer.scope,
               question.subject,
               question.topic,
-              { syncSelection: false, allowRepeatedOption: true }
+              { syncSelection: false, allowRepeatedOption: true, similarity }
             )}
           onSelect={question => setSimilarityExplorer(current => current ? { ...current, question } : current)}
           onClose={() => setSimilarityExplorer(null)}
