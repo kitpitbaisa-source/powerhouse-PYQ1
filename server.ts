@@ -6,7 +6,6 @@ import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
 import { createSimilarityRouter } from "./features/similarity/search";
 import { createSimilarityCacheAdminRouter } from "./features/similarity/cache";
-import { createSimilarityUsageAdminRouter } from "./features/similarity/usage";
 import { loadQuestionSubtopics } from "./features/similarity/subtopics";
 import { createQuestionReviewRouter } from "./features/question-review";
 
@@ -448,7 +447,6 @@ function requireAdmin(
 serverApp.use("/api/admin", requireAdmin);
 serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 serverApp.use("/api/admin/similarity-cache", createSimilarityCacheAdminRouter(database));
-serverApp.use("/api/admin/similarity-usage", createSimilarityUsageAdminRouter(database));
 
 // Export for Vercel
 export default serverApp;
