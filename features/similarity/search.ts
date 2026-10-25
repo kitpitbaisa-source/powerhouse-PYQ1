@@ -11,7 +11,7 @@ import type {
 } from "./types.js";
 import { questionVerificationSchema, type QuestionVerification } from "./verification.js";
 import { feedbackSchema, saveSimilarityFeedback } from "./feedback.js";
-import { similarityCacheTags, similarityCdnCacheControl } from "./cache-tags.js";
+import { similarityCacheTags } from "./cache-tags.js";
 import { createSimilarityResultStore, runAfterResponse } from "./result-store.js";
 import type { MasterRecord } from "../taxonomy/master.js";
 import { approvedMasterSubtopics, approvedQuestionSubject, loadActiveSubtopicMaster } from "./subtopics.js";
@@ -333,9 +333,6 @@ export function createSimilarityRouter(database: Database, permanentAdmins: read
             id: resultId, tier, rankingVersion, tags, createdAt: new Date().toISOString(), result,
           }));
         }
-        res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
-        res.setHeader("Vercel-CDN-Cache-Control", similarityCdnCacheControl);
-        res.setHeader("Vercel-Cache-Tag", tags.join(","));
       }
       return res.json(result);
     } catch (error) {

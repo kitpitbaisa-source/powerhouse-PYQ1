@@ -30,7 +30,7 @@ export const SimilarityCachePurgeCard: React.FC<{ adminKey: string }> = ({ admin
       setResult({
         type: "success",
         text: !data.purged
-          ? "Nothing to purge here (no CDN cache outside Vercel)."
+          ? "Nothing to purge (no stored results matched)."
           : data.scope === "all"
             ? "Purged the whole similarity cache."
             : `Purged ${data.tags} cached question${data.tags === 1 ? "" : "s"} (the question and ${data.neighbours} similar).`,

@@ -9,20 +9,12 @@ import type { QuestionReference } from "./types.js";
 
 export type TagInvalidator = (tags: string[]) => Promise<boolean>;
 
-// Returns false when not running on Vercel (for example local dev), where there is no CDN cache to purge.
-export const invalidateVercelTags: TagInvalidator = async tags => {
-  if (!process.env.VERCEL) return false;
-  const { invalidateByTag } = await import("@vercel/functions");
-  await invalidateByTag(tags);
-  return true;
-};
-
 export async function purgeQuestionSimilarity(
   reference: QuestionReference,
   store: SimilarityStore,
   invalidate: TagInvalidator,
 ) {
-  // Purging the question's own tag clears every cached result that already lists it; its nearest
+  // Purging the question's own tag clears every stored result that already lists it; its nearest
   // neighbours are purged too because their results may now include it.
   const result = await findSimilarQuestions(reference, undefined, store, [], { tier: "full", limit: similarityPurgeWindow });
   const tags = similarityPurgeTags(reference, result.matches);
@@ -38,16 +30,11 @@ const purgeSchema = z.union([
   }),
 ]);
 
-export function createSimilarityCacheAdminRouter(database: Database, invalidateCdn: TagInvalidator = invalidateVercelTags) {
+export function createSimilarityCacheAdminRouter(database: Database) {
   const router = express.Router();
   const store = new CosmosSimilarityStore(database);
   const resultStore = createSimilarityResultStore(database);
-  // Stored results go first so the CDN cannot refill itself from a stale copy.
-  const invalidate: TagInvalidator = async tags => {
-    const removed = await resultStore.purge(tags);
-    const cdn = await invalidateCdn(tags);
-    return cdn || removed > 0;
-  };
+  const invalidate: TagInvalidator = async tags => (await resultStore.purge(tags)) > 0;
   router.post("/purge", async (req, res) => {
     const parsed = purgeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Provide a question (sourceContainer and questionId) or all: true." });

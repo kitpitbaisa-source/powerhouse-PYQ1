@@ -81,7 +81,7 @@ export function createSimilarityLoader(fetcher: typeof fetch = fetch) {
     const existing = requests.get(key);
     if (existing) return existing;
     const request = (async (): Promise<SimilarityResponse> => {
-      // The same URL for every user lets the CDN share one cached result per question and tier.
+      // The same URL for every user lets one stored result be shared per question and tier.
       const params = new URLSearchParams({ sourceContainer: reference.sourceContainer, questionId: reference.questionId });
       if (tier) params.set("tier", tier);
       const response = await fetcher(`/api/similarity?${params}`, { cache: "no-store" });

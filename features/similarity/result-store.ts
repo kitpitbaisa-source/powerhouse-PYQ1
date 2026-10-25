@@ -13,7 +13,7 @@ export interface StoredSimilarityResult {
   result: SimilarityResponse;
 }
 
-// Durable second cache behind the CDN. Failures degrade to a cache miss so a search never breaks.
+// Durable store of finished similarity results. Failures degrade to a miss so a search never breaks.
 export function createSimilarityResultStore(database: Database) {
   const container = () => database.container(similarityResultsContainerId);
   return {
