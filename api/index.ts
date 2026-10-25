@@ -1712,7 +1712,7 @@ serverApp.get("/api/admin/user-usage", async (_req, res) => {
   try {
     const { resources } = await userQuestionsContainer.items
       .query(
-        "SELECT c.userId, c.questionId, c.questionType, c.exam, c.isBookmarked, c.hasNote, c.attemptCount, c.correctCount, c.wrongCount FROM c WHERE c.isActive = true"
+        "SELECT c.userId, c.questionId, c.questionType, c.exam, c.isBookmarked, c.hasNote, c.similarityAttemptCount, c.attemptCount, c.correctCount, c.wrongCount FROM c WHERE c.isActive = true"
       )
       .fetchAll();
 
@@ -1736,6 +1736,7 @@ serverApp.get("/api/admin/user-usage", async (_req, res) => {
     const usageByEmail: Record<string, {
       bookmarks: number;
       notes: number;
+      similarity: number;
       attempts: number;
       correct: number;
       wrong: number;
@@ -1749,8 +1750,9 @@ serverApp.get("/api/admin/user-usage", async (_req, res) => {
     for (const item of resources) {
       const email = String(item.userId || "").toLowerCase().trim();
       if (!email) continue;
-      const totals = usageByEmail[email] ||= { bookmarks: 0, notes: 0, attempts: 0, correct: 0, wrong: 0, topExam: null, topExamAttempts: 0, examBreakdown: [] };
+      const totals = usageByEmail[email] ||=       { bookmarks: 0, notes: 0, similarity: 0, attempts: 0, correct: 0, wrong: 0, topExam: null, topExamAttempts: 0, examBreakdown: [] };
       const attempts = Number(item.attemptCount) || 0;
+            if (Number(item.similarityAttemptCount) > 0) totals.similarity += 1;
       if (item.isBookmarked === true) totals.bookmarks += 1;
       if (item.hasNote === true) totals.notes += 1;
       totals.attempts += attempts;

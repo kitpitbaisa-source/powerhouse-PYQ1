@@ -5929,6 +5929,7 @@ export default function App() {
   type AdminUserUsage = {
     bookmarks: number;
     notes: number;
+    similarity?: number;
     attempts: number;
     correct: number;
     wrong: number;
@@ -7672,6 +7673,9 @@ export default function App() {
                             </span>
                             <span className="inline-flex items-center gap-1 text-violet-600 dark:text-violet-300" title="Notes">
                               <StickyNote className="h-3 w-3" />{usage.notes}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-fuchsia-600 dark:text-fuchsia-300" title="Questions attempted via Similarity">
+                              <Sparkles className="h-3 w-3" />{usage.similarity ?? 0}
                             </span>
                           </div>
                         </div>
