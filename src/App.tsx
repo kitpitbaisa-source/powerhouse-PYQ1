@@ -33,6 +33,7 @@ import {
   XCircle,
   FolderOpen,
   Download,
+  Share,
   Smartphone,
   Lock,
   QrCode,
@@ -144,6 +145,52 @@ const AndroidDownloadModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
   );
 };
 
+const IosInstallModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return createPortal(
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="ios-install-title"
+      onCancel={event => { event.preventDefault(); onClose(); }}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
+      }}
+      className="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/70 backdrop:backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+    >
+      <div className="relative bg-gradient-to-br from-slate-800 to-slate-950 px-6 py-7 text-center text-white">
+        <button type="button" autoFocus onClick={onClose} aria-label="Close iPhone install steps" className="absolute right-3 top-3 rounded-full bg-white/10 p-2 transition hover:bg-white/20">
+          <X className="h-4 w-4" />
+        </button>
+        <img src="/icon-192.png" alt="" className="mx-auto mb-3 h-14 w-14 rounded-2xl ring-1 ring-white/20" />
+        <h2 id="ios-install-title" className="text-lg font-bold">Add to iPhone home screen</h2>
+        <p className="mt-1 text-sm text-slate-300">Opens full screen, like an app.</p>
+      </div>
+      <div className="p-6">
+        <ol className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
+          <li className="flex items-start gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-white dark:text-slate-900">1</span><span>Open this site in <b>Safari</b>.</span></li>
+          <li className="flex items-start gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-white dark:text-slate-900">2</span><span>Tap the <b>Share</b> button <Share className="mx-0.5 inline h-4 w-4 text-sky-500" /> at the bottom.</span></li>
+          <li className="flex items-start gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-white dark:text-slate-900">3</span><span>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</span></li>
+        </ol>
+      </div>
+    </dialog>,
+    document.body
+  );
+};
 const subjectColors: SubjectColorMap = {
   "Polity": "bg-gradient-to-r from-indigo-500 to-violet-500 text-white ring-white/15 shadow-sm shadow-indigo-500/20",
   "History": "bg-gradient-to-r from-blue-500 to-indigo-500 text-white ring-white/15 shadow-sm shadow-blue-500/20",
@@ -5504,6 +5551,7 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showAndroidDownloadModal, setShowAndroidDownloadModal] = useState(false);
+  const [showIosInstallModal, setShowIosInstallModal] = useState(false);
   const [similarityExplorer, setSimilarityExplorer] = useState<{
     question: SimilarityQuestion;
     scope: 'prelims' | 'mains' | 'csat' | 'english';
@@ -7212,6 +7260,17 @@ export default function App() {
                           <rect x="8" y="17" width="3" height="6.5" rx="1.5" fill="currentColor" />
                           <rect x="13" y="17" width="3" height="6.5" rx="1.5" fill="currentColor" />
                         </svg>
+                      </button>
+                    )}
+                    {!isNativeApp && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowIosInstallModal(true); setIsUserMenuOpen(false); }}
+                        title="Add to iPhone home screen"
+                        aria-label="Add to iPhone home screen"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-800 transition hover:bg-slate-200 dark:bg-slate-500/10 dark:text-slate-200 dark:hover:bg-slate-500/20"
+                      >
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714                         1.338.104 2.715-.688 3.559-1.701" /></svg>
                       </button>
                     )}
                   </div>
@@ -9349,6 +9408,9 @@ export default function App() {
 
       {showAndroidDownloadModal && !isNativeApp && (
         <AndroidDownloadModal onClose={() => setShowAndroidDownloadModal(false)} />
+      )}
+      {showIosInstallModal && !isNativeApp && (
+        <IosInstallModal onClose={() => setShowIosInstallModal(false)} />
       )}
 
       {/* Login Modal */}
