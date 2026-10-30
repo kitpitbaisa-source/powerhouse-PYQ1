@@ -108,6 +108,7 @@ export function LeaderboardPodiums({ highlights, exam, metric }: { highlights: L
             <div className="min-w-0">
               <h3 id={`podium-${section.key}`} className="text-sm font-black sm:text-base">{section.title}</h3>
               <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400" title={section.subtitle}>{section.subtitle}</p>
+              {section.key === "accuracy" && <p className="mt-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Only learners with 100+ attempts qualify for accuracy ranking.</p>}
               {section.key === "maxStreak" && <p className="mt-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Streak: number of consecutive correct answers.</p>}
             </div>
             <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">Top 3</span>
@@ -124,7 +125,7 @@ export function LeaderboardPodiums({ highlights, exam, metric }: { highlights: L
                     <span className={`absolute -bottom-2 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border-2 border-white text-[11px] font-black dark:border-slate-900 ${index === 0 ? "bg-amber-400 text-amber-950" : index === 1 ? "bg-slate-300 text-slate-800" : "bg-orange-200 text-orange-900"}`}>{entry.rank}</span>
                   </div>
                   <span className="w-full truncate text-xs font-bold sm:text-sm" title={entry.alias}>{entry.alias}</span>
-                  <span className="h-5 text-[10px] font-bold text-indigo-500">{entry.isYou ? "You" : entry.isSample ? "Sample" : ""}</span>
+                  <span className="h-5 text-[10px] font-bold text-indigo-500">{entry.isYou ? "You" : ""}</span>
                   <strong className="text-xl font-black tracking-tight tabular-nums sm:text-2xl">{section.value(entry)}</strong>
                   <span className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{section.unit}</span>
                   <div aria-hidden="true" className={`mt-3 h-1 w-10 rounded-full bg-gradient-to-r ${section.theme} ${index === 0 ? "opacity-100" : "opacity-40"}`} />
@@ -192,7 +193,7 @@ export function LeaderboardTable({ entries, overall, metric = "attempts" }: { en
                   {entry.avatarUrl
                     ? <img src={entry.avatarUrl} alt="" loading="lazy" decoding="async" className="h-10 w-10 rounded-2xl bg-indigo-50 object-cover ring-1 ring-slate-200/70 dark:ring-slate-700" />
                     : <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">{entry.alias[0]?.toUpperCase()}</span>}
-                  <span className="font-semibold">{entry.alias}{entry.isSample && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">Sample</span>}{entry.isYou && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">(You)</span>}</span>
+                  <span className="font-semibold">{entry.alias}{entry.isYou && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">(You)</span>}</span>
                   {metric === "accuracy" && !entry.accuracyQualified && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">Under 100 attempts</span>}
                 </div>
               </td>

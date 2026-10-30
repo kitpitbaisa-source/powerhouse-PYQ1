@@ -481,6 +481,54 @@ test("accuracy ranks 100-attempt learners first, retains smaller histories last,
   assert.equal(nda[2].accuracyQualified, false);
 });
 
+test("leaderboard includes all 400 samples in every environment without enabling a flag", async t => {
+  const keys = ["NODE_ENV", "VERCEL", "SAMPLE_LEARNERS"] as const;
+  const original = keys.map(key => process.env[key]);
+  t.after(() => keys.forEach((key, index) => {
+    if (original[index] === undefined) delete process.env[key];
+    else process.env[key] = original[index];
+  }));
+  const f = fixture();
+  await f.service.append(f.attempt(true));
+  await f.service.drain("learner@gmail.com");
+  const app = express();
+  app.use("/api/leaderboard", createLeaderboardRouter(f.service.database, f.service));
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  for (const [environment, vercel, flag] of [
+    ["development", undefined, undefined],
+    ["production", undefined, "0"],
+    ["development", "1", "0"],
+  ]) {
+    await t.test(`${environment}, VERCEL=${vercel}, SAMPLE_LEARNERS=${flag}`, async () => {
+      for (const [index, value] of [environment, vercel, flag].entries()) {
+        if (value === undefined) delete process.env[keys[index]];
+        else process.env[keys[index]] = value;
+      }
+      const entries: { id: string; isSample: boolean; rank: number }[] = [];
+      for (let page = 1; page <= 17; page++) {
+        const response = await fetch(`${origin}/api/leaderboard?page=${page}&email=learner%40gmail.com`);
+        assert.equal(response.status, 200);
+        const data = await response.json();
+        assert.equal(data.total, 401);
+        assert.equal(data.realTotal, 1);
+        assert.equal(data.pageSize, 25);
+        assert.equal(data.entries.length, page === 17 ? 1 : 25);
+        assert.equal(data.me.isYou, true);
+        entries.push(...data.entries);
+      }
+      assert.equal(new Set(entries.map(entry => entry.id)).size, 401);
+      assert.deepEqual(entries.map(entry => entry.rank), Array.from({ length: 401 }, (_, index) => index + 1));
+      assert.equal(entries.filter(entry => entry.isSample).length, 400);
+      assert.equal(f.container("user_statistics").records.size, 1);
+    });
+  }
+});
+
 test("the current-streak endpoint reads saved overall streaks and returns zero for a new learner", async t => {
   const f = fixture();
   await f.service.append(f.attempt(true));

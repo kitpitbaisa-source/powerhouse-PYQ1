@@ -55,6 +55,21 @@ test("leaderboard shows aliases, accuracy and overall streaks but no exam streak
   assert.doesNotMatch(exam, /Current streak|Best streak/);
 });
 
+test("sample entries have no sample label in tables or podiums and retain the viewer marker", () => {
+  for (const isYou of [false, true]) {
+    const sample = { ...entry, alias: "Bright Learner", isSample: true, isYou, accuracyQualified: true };
+    for (const metric of ["attempts", "accuracy", "maxStreak"] as const) {
+      const table = renderToStaticMarkup(<LeaderboardTable entries={[sample]} overall metric={metric} />);
+      const podium = renderToStaticMarkup(<LeaderboardPodiums highlights={{ attempts: [sample], accuracy: [sample], maxStreak: [sample] }} exam="all" metric={metric} />);
+      for (const markup of [table, podium]) {
+        assert.match(markup, /Bright Learner/);
+        assert.doesNotMatch(markup, /Sample/);
+        assert.equal(markup.includes("You"), isYou);
+      }
+    }
+  }
+});
+
 test("exam breakdown shows every exam and count directly without a disclosure and escapes exam labels", () => {
   const markup = renderToStaticMarkup(<LearnerExamBreakdown breakdown={[{ exam: "NDA <test>", attempts: 120 }, { exam: "CDS", attempts: 30 }]} />);
   assert.doesNotMatch(markup, /<details|<summary|<button/);
@@ -136,6 +151,8 @@ test("each ranking category shows only its own podium and keeps streaks overall"
   assert.match(accuracy, /Accuracy winner/);
   assert.match(accuracy, /98\.5%/);
   assert.match(accuracy, /100\+ attempts/);
+  assert.match(accuracy, /Only learners with 100\+ attempts qualify for accuracy ranking\./);
+  assert.doesNotMatch(attempts, /qualify for accuracy ranking/);
   assert.doesNotMatch(accuracy, /Attempts winner|Streak winner/);
   const streak = renderToStaticMarkup(<LeaderboardPodiums highlights={highlights} exam="NDA" metric="maxStreak" />);
   assert.match(streak, /Best-ever streak/);

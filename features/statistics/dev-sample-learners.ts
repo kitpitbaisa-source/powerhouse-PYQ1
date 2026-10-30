@@ -1,15 +1,13 @@
 import { ALIAS_ADJECTIVES, ALIAS_NOUNS } from "./alias-names.js";
 import { emptyStatistics, type UserStatistics } from "./model.js";
 
-// Development-only sample learners for layout testing. Never stored in the database.
-export const SAMPLE_LEARNER_COUNT = 120;
+// Sample learners are included in every environment and never stored in the database.
+export const SAMPLE_LEARNER_COUNT = 400;
 const MAX_ATTEMPTS = 60;
 const MAX_STREAK = 6;
 
 export const SAMPLE_EMAIL_DOMAIN = "@sample.invalid";
 export const isSampleUser = (userId: string) => userId.endsWith(SAMPLE_EMAIL_DOMAIN);
-// Entries are always tagged "Sample" in the UI and excluded from the real learner count.
-export const devSamplesEnabled = () => process.env.SAMPLE_LEARNERS === "1";
 
 function random(seed: number) {
   let state = seed >>> 0;

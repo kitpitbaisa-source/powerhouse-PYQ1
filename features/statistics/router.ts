@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Database } from "@azure/cosmos";
 import { publicUserId, type Totals, type UserStatistics } from "./model.js";
 import { StatisticsService } from "./service.js";
-import { devSamplesEnabled, isSampleUser, sampleLearners } from "./dev-sample-learners.js";
+import { isSampleUser, sampleLearners } from "./dev-sample-learners.js";
 
 type Metric = "correct" | "attempts" | "accuracy" | "maxStreak" | "currentStreak";
 interface Profile { email: string; alias?: string; isActive?: boolean; avatarHash?: string }
@@ -112,12 +112,9 @@ export function createLeaderboardRouter(database: Database, service: StatisticsS
       ).fetchAll();
       const exams = [...new Set(resources.flatMap(summary => Object.values(summary.exams).map(item => item.exam)))].sort();
       const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : undefined;
-      let directory = await profiles();
-      if (devSamplesEnabled()) {
-        const samples = sampleLearners(exams);
-        resources.push(...samples.summaries);
-        directory = [...directory, ...samples.profiles];
-      }
+      const samples = sampleLearners(exams);
+      resources.push(...samples.summaries);
+      const directory = [...await profiles(), ...samples.profiles];
       const ranked = rankLeaderboard(resources, directory, exam, metric, email);
       const pageSize = 25;
       return res.json({
