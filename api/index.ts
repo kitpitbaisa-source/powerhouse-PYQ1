@@ -11,6 +11,9 @@ import { similarityAttemptFields } from "../features/similarity/attempt.js";
 import { createSimilarityAttemptsAdminRouter } from "../features/similarity/attempt-admin.js";
 import { loadQuestionSubtopics } from "../features/similarity/subtopics.js";
 import { createQuestionReviewRouter } from "../features/question-review.js";
+import { StatisticsService } from "../features/statistics/service.js";
+import { createLeaderboardRouter } from "../features/statistics/router.js";
+import { ensureLoginProfile, managedUsersQuery } from "../features/statistics/login-profile.js";
 
 // Keep this in sync with src/exam-utils.ts. Vercel executes api/index.ts as a
 // standalone function, so importing a source-only helper breaks at runtime.
@@ -40,6 +43,7 @@ const databaseId = "pyqpowerhouse";
 
 const client = new CosmosClient({ endpoint, key });
 const database = client.database(databaseId);
+const statistics = new StatisticsService(database);
 const questionsContainer = database.container("questions");
 // State PCS questions live in their own container but are displayed inside Prelims.
 const statePcsContainer = database.container("state_pcs");
@@ -103,6 +107,11 @@ serverApp.use("/api/admin", requireAdmin);
 serverApp.use("/api/admin/question-review", createQuestionReviewRouter(database));
 serverApp.use("/api/admin/similarity-cache", createSimilarityCacheAdminRouter(database));
 serverApp.use("/api/admin/similarity-attempts", createSimilarityAttemptsAdminRouter(database.container("user-questions")));
+serverApp.use("/api/leaderboard", createLeaderboardRouter(database, statistics));
+serverApp.post("/api/admin/statistics/retry", async (_req, res) => {
+  try { res.json(await statistics.repair(25)); }
+  catch { res.status(503).json({ error: "Statistics retry failed" }); }
+});
 const PAYMENT_PLANS: Record<string, { amount: number; durationDays: number; label: string }> = {
   pyq1: { amount: 89900, durationDays: 365, label: "Powerhouse PYQ Premium - 1 Year" },
   pyq2: { amount: 129900, durationDays: 730, label: "Powerhouse PYQ Premium - 2 Years" },
@@ -146,6 +155,7 @@ async function grantSubscription(email: string, durationDays: number) {
   const expiryDate = new Date(base.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
   await usersContainer.items.upsert({
+    ...existing,
     id: userEmail,
     email: userEmail,
     status: "subscribed",
@@ -250,81 +260,6 @@ async function ensureUserQuestionsContainer() {
     },
   });
   userQuestionsContainerReady = true;
-}
-
-// Append one attempt to a user's question document, creating it if needed.
-// Uses an ETag pre-condition so two devices answering at once cannot drop an
-// attempt or corrupt the running counters.
-async function appendAttempt(
-  userId: string,
-  questionType: string,
-  questionId: any,
-  attempt: { attemptId: string; option: string | null; isCorrect: boolean; timeSpentMs: number | null; ts: string } & Record<string, unknown>,
-  meta: { subject: string | null; topic: string | null; exam: string | null; year: string | null }
-) {
-  const id = `${questionType}:${questionId}`;
-
-  for (let tries = 0; tries < 5; tries++) {
-    let existing: any = null;
-    try {
-      const { resource } = await userQuestionsContainer.item(id, userId).read();
-      existing = resource;
-    } catch (error: any) {
-      if (error.code !== 404) throw error;
-    }
-
-    const attempts = [...(existing?.attempts || []), attempt];
-    const correctCount = (existing?.correctCount ?? 0) + (attempt.isCorrect ? 1 : 0);
-    const wrongCount = (existing?.wrongCount ?? 0) + (attempt.isCorrect ? 0 : 1);
-    const notes = existing?.notes ?? "";
-
-    const doc = {
-      ...(existing || {}),
-      id,
-      userId,
-      schemaVersion: 1,
-
-      questionId,
-      questionType,
-      exam: meta.exam ?? existing?.exam ?? null,
-      year: meta.year ?? existing?.year ?? null,
-      subject: meta.subject ?? existing?.subject ?? null,
-      topic: meta.topic ?? existing?.topic ?? null,
-
-      isBookmarked: existing?.isBookmarked ?? false,
-      isMarkedForRevision: existing?.isMarkedForRevision ?? false,
-      notes,
-      hasNote: !!String(notes).trim(),
-
-      attempts,
-      attemptCount: attempts.length,
-      correctCount,
-      wrongCount,
-      lastOption: attempt.option,
-      lastIsCorrect: attempt.isCorrect,
-      lastAttemptId: attempt.attemptId,
-      lastAttemptAt: attempt.ts,
-      ...(attempt.via === "similarity" ? { similarityAttemptCount: (existing?.similarityAttemptCount ?? 0) + 1, lastSimilarityAt: attempt.ts } : {}),
-
-      isActive: existing?.isActive ?? true,
-      deletedAt: existing?.deletedAt ?? null,
-
-      createdAt: existing?.createdAt || attempt.ts,
-      updatedAt: attempt.ts,
-    };
-
-    try {
-      await userQuestionsContainer.items.upsert(
-        doc,
-        existing?._etag ? { accessCondition: { type: "IfMatch", condition: existing._etag } } : undefined
-      );
-      return;
-    } catch (error: any) {
-      // 412 = another write landed first; re-read and replay the append.
-      if (error.code !== 412) throw error;
-    }
-  }
-  throw new Error("Could not save attempt after repeated write conflicts");
 }
 
 // Create or update the bookmark / note / revision flags on a user's question
@@ -1355,6 +1290,7 @@ serverApp.post("/api/payment/verify", async (req, res) => {
     const expiryDate = new Date(Date.now() + p.days * 24 * 60 * 60 * 1000).toISOString();
     const newStatus = plan === "ebooks" ? "none" : "subscribed";
     await usersContainer.items.upsert({
+      ...existing,
       id: userEmail,
       email: userEmail,
       status: newStatus,
@@ -1654,6 +1590,7 @@ serverApp.post("/api/admin/update-status", async (req, res) => {
     );
 
     await usersContainer.items.upsert({
+      ...existing,
       id: userEmail,
       email: userEmail,
       status,
@@ -1698,7 +1635,7 @@ serverApp.delete("/api/admin/users/:email", async (req, res) => {
 serverApp.get("/api/admin/users", async (req, res) => {
   try {
     const { resources } = await usersContainer.items
-      .query("SELECT c.id, c.email, c.status, c.expiryDate, c.createdAt, c.isActive FROM c WHERE NOT IS_DEFINED(c.isActive) OR c.isActive = true")
+      .query(managedUsersQuery)
       .fetchAll();
     res.json(resources);
   } catch (error: any) {
@@ -1836,6 +1773,7 @@ serverApp.post("/api/auth/track-login", async (req, res) => {
   const sessionId = `${userEmail}-${Date.now()}`;
 
   try {
+    await ensureLoginProfile(database, userEmail);
     await loginHistoryContainer.items.create({
       id: sessionId,
       email: userEmail,
@@ -2136,18 +2074,16 @@ serverApp.post("/api/payment/webhook", async (req, res) => {
 // ── Per-user attempts: append one answered question, grouped by attemptId ──
 serverApp.post("/api/attempts", async (req, res) => {
   try {
-    const { email, questionId, questionType, option, isCorrect, attemptId, subject, topic, exam, year, timeSpentMs, similarity } = req.body || {};
+    const { email, questionId, questionType, option, isCorrect, attemptId, submissionId, subject, topic, exam, year, timeSpentMs, similarity } = req.body || {};
     const userEmail = String(email || "").toLowerCase().trim();
     if (!userEmail || questionId === undefined || questionId === null) {
       return res.status(400).json({ error: "email and questionId are required" });
     }
     const type = (questionType && String(questionType).trim()) || "prelims";
     await ensureUserQuestionsContainer();
-    await appendAttempt(
-      userEmail,
-      type,
-      questionId,
-      {
+    const saved = await statistics.append({
+      userId: userEmail, questionType: type, questionId, submissionId,
+      attempt: {
         attemptId: (attemptId && String(attemptId)) || "legacy",
         option: option ?? null,
         isCorrect: !!isCorrect,
@@ -2155,17 +2091,20 @@ serverApp.post("/api/attempts", async (req, res) => {
         ts: new Date().toISOString(),
         ...similarityAttemptFields(similarity),
       },
-      {
+      meta: {
         subject: (subject && String(subject).trim()) || null,
         topic: (topic && String(topic).trim()) || null,
         exam: (exam && String(exam).trim()) || null,
         year: (year && String(year).trim()) || null,
-      }
-    );
-    res.json({ success: true });
+      },
+    });
+    let statisticsPending = true;
+    try { statisticsPending = !await statistics.drain(userEmail); }
+    catch (error) { console.error("Saved answer awaiting statistics retry:", error instanceof Error ? error.message : error); }
+    res.status(statisticsPending ? 202 : 200).json({ success: true, ...saved, statisticsPending });
   } catch (error: any) {
     console.error("Error saving attempt:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
+    res.status([400, 409, 422].includes(error.code) ? error.code : 500).json({ error: "Could not save answer", details: error.message });
   }
 });
 

@@ -13,6 +13,8 @@ import { QuestionReviewPanel, type AdminReviewAccess } from './features/Question
 import { QuestionReviewQueue } from './features/QuestionReviewQueue';
 import { SimilarityCachePurgeCard } from './features/SimilarityCachePurgeCard';
 import { SimilarityAttemptsCard } from './features/SimilarityAttemptsCard';
+import { CurrentStreakBadge, Leaderboard } from './features/Leaderboard';
+import { saveAttempt } from './features/statistics-client';
 import { reviewStateForDraft, type CorrectionDraft, type ReviewQuestion } from './features/question-review';
 import { createSimilarityLoader, similarityRequestKey, toDisplayQuestion } from './features/similarity/client';
 import { highlightSimilarityTerms, similarityHighlightPhrases, type SimilarityHighlightTone } from './features/similarity/highlights';
@@ -2317,6 +2319,7 @@ function freeSimilarUnlockCount(key: string): 1 | 2 | 3 {
 const QuestionSimilarityExplorer: React.FC<{
   source: SimilarityQuestion;
   scope: 'prelims' | 'mains' | 'csat' | 'english';
+  attemptId: string;
   userEmail?: string | null;
   isSubscribed?: boolean;
   onOpenPremium?: () => void;
@@ -2327,6 +2330,7 @@ const QuestionSimilarityExplorer: React.FC<{
 }> = ({
   source,
   scope,
+  attemptId,
   userEmail,
   isSubscribed,
   onOpenPremium,
@@ -2337,6 +2341,10 @@ const QuestionSimilarityExplorer: React.FC<{
 }) => {
   const [attemptedOptions, setAttemptedOptions] = useState<Record<string, string>>({});
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setAttemptedOptions({});
+    setRevealedAnswers({});
+  }, [attemptId]);
   const [highlightsEnabled, setHighlightsEnabled] = useState(true);
   const [highlightTone, setHighlightTone] = useState<SimilarityHighlightTone>("violet");
   const [showAllConcepts, setShowAllConcepts] = useState(false);
@@ -4464,6 +4472,7 @@ export default function App() {
   const [isEditor, setIsEditor] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -4485,6 +4494,34 @@ export default function App() {
     }
   });
   const loadedDefaultFiltersForEmailRef = useRef<string | null>(null);
+  const [streakSnapshot, setStreakSnapshot] = useState<{ email: string; value: number } | null>(null);
+  const [streakRevision, setStreakRevision] = useState(0);
+  const streakMutationVersion = useRef(0);
+  const streakSavesPending = useRef(0);
+  const [guestStreak, setGuestStreak] = useState(0);
+  const currentStreak = userEmail
+    ? streakSnapshot?.email === userEmail ? streakSnapshot.value : null
+    : guestStreak;
+
+  useEffect(() => {
+    if (!userEmail) {
+      setStreakSnapshot(null);
+      return;
+    }
+    const controller = new AbortController();
+    const version = streakMutationVersion.current;
+    const canApply = () => !controller.signal.aborted &&
+      version === streakMutationVersion.current && streakSavesPending.current === 0;
+    fetch(`/api/leaderboard/me?email=${encodeURIComponent(userEmail)}`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('Could not load current streak');
+        const data = await response.json();
+        if (!Number.isInteger(data.currentStreak) || data.currentStreak < 0) throw new Error('Invalid current streak');
+        if (canApply()) setStreakSnapshot({ email: userEmail, value: data.currentStreak });
+      })
+      .catch(() => { if (canApply()) setStreakSnapshot(null); });
+    return () => controller.abort();
+  }, [userEmail, streakRevision]);
 
   // Pull the user's saved bookmarks and notes once per login so they appear on
   // every device. Clears the cache on logout.
@@ -6195,35 +6232,30 @@ export default function App() {
     setIsLoggingIn(true);
     setLoginEmailError("");
 
-    // Store session
-    const session = {
-      email,
-      loginTime: Date.now()
-    };
-    localStorage.setItem('user_session', JSON.stringify(session));
-    setUserEmail(email);
-
-    // Track login device info
     try {
       const ua = navigator.userAgent;
       const screenWidth = window.innerWidth;
       const device = screenWidth < 768 ? "Mobile" : screenWidth < 1024 ? "Tablet" : "Desktop";
       const browser = ua.includes("Edg") ? "Edge" : ua.includes("Chrome") ? "Chrome" : ua.includes("Safari") ? "Safari" : ua.includes("Firefox") ? "Firefox" : "Other";
       const os = ua.includes("Android") ? "Android" : ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : ua.includes("Win") ? "Windows" : ua.includes("Mac") ? "macOS" : ua.includes("Linux") ? "Linux" : "Other";
-      fetch("/api/auth/track-login", {
+      const response = await fetch("/api/auth/track-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, device, browser, os, screenWidth })
-      }).then(r => r.json()).then(data => {
-        if (data.sessionId) localStorage.setItem('login_session_id', data.sessionId);
-      }).catch(() => {});
-    } catch {}
-
-    // Check status
-    await checkUserStatus(email);
-
-    setIsLoggingIn(false);
-    setShowLoginModal(false);
+      });
+      if (!response.ok) throw new Error("Could not complete sign-in. Please try again.");
+      const data = await response.json();
+      const session = { email, loginTime: Date.now() };
+      localStorage.setItem('user_session', JSON.stringify(session));
+      setUserEmail(email);
+      if (data.sessionId) localStorage.setItem('login_session_id', data.sessionId);
+      await checkUserStatus(email);
+      setShowLoginModal(false);
+    } catch {
+      setLoginEmailError("Could not complete sign-in. Please try again.");
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleLogout = () => {
@@ -6540,11 +6572,19 @@ export default function App() {
     // work signed out; only a logged-in attempt is persisted server-side.
     recordRemoteAttempt(userEmail, questionType, qid, option, isCorrect, attemptId);
     if (userEmail) {
-      fetch('/api/attempts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail, questionId: qid, questionType, option, isCorrect, attemptId, subject, topic, similarity }),
-      }).catch(() => {});
+      streakMutationVersion.current++;
+      streakSavesPending.current++;
+      setStreakSnapshot(previous => previous?.email === userEmail
+        ? { email: userEmail, value: isCorrect ? previous.value + 1 : 0 }
+        : previous);
+      void saveAttempt({ email: userEmail, questionId: qid, questionType, option, isCorrect, attemptId, subject, topic, similarity })
+        .catch(error => console.error("Could not save answer:", error))
+        .finally(() => {
+          streakSavesPending.current--;
+          if (streakSavesPending.current === 0) setStreakRevision(value => value + 1);
+        });
+    } else {
+      setGuestStreak(value => isCorrect ? value + 1 : 0);
     }
   };
 
@@ -7142,6 +7182,16 @@ export default function App() {
                       <LayoutDashboard className="w-4 h-4 text-white" />
                     </span>
                     <span>My workspace</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowLeaderboard(true); setIsUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center shrink-0">
+                      <Trophy className="w-4 h-4 text-amber-500" />
+                    </span>
+                    <span>Leaderboard</span>
                   </button>
 
                   {/* Appearance */}
@@ -8269,6 +8319,7 @@ export default function App() {
                   onToggleNoted={() => setNotedOnly(v => !v)}
                   notedCount={notedPrelimsCount}
                 />
+                <CurrentStreakBadge currentStreak={currentStreak} signedIn={!!userEmail} onClick={() => setShowLeaderboard(true)} />
                 <button
                   type="button"
                   onClick={togglePrelimsFilterDefault}
@@ -8563,6 +8614,7 @@ export default function App() {
                       onToggleNoted={() => setMainsNotedOnly(value => !value)}
                       notedCount={notedMainsCount}
                     />
+                    <CurrentStreakBadge currentStreak={currentStreak} signedIn={!!userEmail} onClick={() => setShowLeaderboard(true)} />
                     <button
                       onClick={resetMainsFilters}
                       className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25 flex items-center gap-1"
@@ -8728,6 +8780,7 @@ export default function App() {
                       onToggleNoted={() => { setCSATNotedOnly(v => !v); setCSATVisibleCount(30); }}
                       notedCount={notedCSATCount}
                     />
+                    <CurrentStreakBadge currentStreak={currentStreak} signedIn={!!userEmail} onClick={() => setShowLeaderboard(true)} />
                     <button
                       type="button"
                       onClick={toggleCSATFilterDefault}
@@ -8896,6 +8949,7 @@ export default function App() {
                       onToggleNoted={() => { setEnglishNotedOnly(v => !v); setEnglishVisibleCount(30); }}
                       notedCount={notedEnglishCount}
                     />
+                    <CurrentStreakBadge currentStreak={currentStreak} signedIn={!!userEmail} onClick={() => setShowLeaderboard(true)} />
                     <button
                       type="button"
                       onClick={toggleEnglishFilterDefault}
@@ -9091,6 +9145,7 @@ export default function App() {
                       onToggleNoted={() => setEssayNotedOnly(value => !value)}
                       notedCount={notedEssayCount}
                     />
+                    <CurrentStreakBadge currentStreak={currentStreak} signedIn={!!userEmail} onClick={() => setShowLeaderboard(true)} />
                     <button
                       onClick={resetEssayFilters}
                       className="text-[11px] font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-1 px-2.5 rounded-lg transition-all active:scale-95 shadow-md shadow-blue-600/25"
@@ -9406,6 +9461,7 @@ export default function App() {
         </div>
       </footer>
 
+      {showLeaderboard && <Leaderboard userEmail={userEmail} onClose={() => setShowLeaderboard(false)} />}
       {showAndroidDownloadModal && !isNativeApp && (
         <AndroidDownloadModal onClose={() => setShowAndroidDownloadModal(false)} />
       )}
@@ -9418,6 +9474,7 @@ export default function App() {
         <QuestionSimilarityExplorer
           source={similarityExplorer.question}
           scope={similarityExplorer.scope}
+          attemptId={attemptId}
           userEmail={userEmail}
           isSubscribed={isSubscribed}
           onOpenPremium={() => { setSimilarityExplorer(null); setShowPremiumModal(true); }}
