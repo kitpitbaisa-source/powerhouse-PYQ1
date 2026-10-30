@@ -200,7 +200,7 @@ export function LeaderboardTable({ entries, overall, metric = "attempts" }: { en
               <td className={`px-4 pt-3 pb-1 text-right tabular-nums ${metric === "attempts" ? columnHighlight : ""}`}><span className={metric === "attempts" ? "rounded-lg bg-indigo-50 px-2 py-1 font-black text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300" : ""}>{entry.totalAttempts.toLocaleString()}</span></td>
               <td className="px-4 pt-3 pb-1 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{entry.correctAttempts.toLocaleString()}</td>
               <td className="px-4 pt-3 pb-1 text-right tabular-nums">{entry.wrongAttempts.toLocaleString()}</td>
-              <td className={`px-4 pt-3 pb-1 text-right tabular-nums ${metric === "accuracy" ? columnHighlight : ""}`}><span className={`rounded-lg px-2 py-1 ${metric === "accuracy" ? "bg-emerald-50 font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-slate-100/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>{entry.accuracy.toFixed(1)}%</span></td>
+              <td className={`px-4 pt-3 pb-1 text-right tabular-nums ${metric === "accuracy" ? columnHighlight : ""}`}><span className={`rounded-lg px-2 py-1 ${entry.accuracy < 50 ? "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"} ${metric === "accuracy" ? "font-black" : "font-semibold"}`}>{entry.accuracy.toFixed(1)}%</span></td>
               {overall && <><td className="px-4 pt-3 pb-1 text-right tabular-nums">{entry.currentStreak}</td><td className={`px-4 pt-3 pb-1 text-right font-bold tabular-nums ${metric === "maxStreak" ? columnHighlight : ""}`}><span className={metric === "maxStreak" ? "rounded-lg bg-orange-50 px-2 py-1 font-black text-orange-700 dark:bg-orange-500/10 dark:text-orange-300" : ""}>{entry.maxStreak}</span></td></>}
             </tr>
             <tr>
@@ -292,7 +292,6 @@ export function Leaderboard({ userEmail, onClose }: { userEmail: string | null; 
         <LeaderboardPodiums highlights={data.highlights} exam={effectiveExam} metric={sort} />
         <div className="flex flex-wrap justify-between gap-2 px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{(data.realTotal ?? data.total)} learners</span>
             {data.me && <span className="rounded-full bg-indigo-50 px-3 py-1 font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">Your rank: #{data.me.rank}</span>}
           </div>
           <span>{data.pendingUpdates ? "Some saved answers are still being processed." : sort === "accuracy" ? "Accuracy is ranked for learners with 100+ attempts; others are listed below them." : ""}</span>
