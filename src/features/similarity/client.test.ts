@@ -109,6 +109,75 @@ test("ordinary numbered statements retain their list layout rather than becoming
   assert.doesNotMatch(html, /<table /);
 });
 
+test("2024 labelled matching rows render three columns without losing cells or the prompt", () => {
+  const cases = [
+    { headers: ["Waterfall", "Region", "River"], rows: [
+      ["Dhuandhar", "Malwa", "Narmada"], ["Hundru", "Chota Nagpur", "Subarnarekha"], ["Gersoppa", "Western Ghats", "Netravati"],
+    ] },
+    { headers: ["Region", "Name of mountain range", "Type of mountain"], rows: [
+      ["Central Asia", "Vosges", "Fold mountain"], ["Europe", "Alps", "Block mountain"],
+      ["North America", "Appalachians", "Fold mountain"], ["South America", "Andes", "Fold mountain"],
+    ] },
+    { headers: ["Archaeological Site", "State", "Description"], rows: [
+      ["Chandraketugarh", "Odisha", "Trading Port town"], ["Inamgaon", "Maharashtra", "Chalcolithic site"],
+      ["Mangadu", "Kerala", "Megalithic site"], ["Salihundam", "Andhra Pradesh", "Rock-cut cave shrines"],
+    ] },
+    { headers: ["Army", "Airforce", "Navy"], rows: [
+      ["Brigadier", "Air Commodore", "Commander"], ["Major General", "Air Vice Marshal", "Vice Admiral"],
+      ["Major", "Squadron Leader", "Lieutenant Commander"], ["Lieutenant Colonel", "Group Captain", "Captain"],
+    ] },
+  ];
+  for (const { headers, rows } of cases) {
+    for (const separator of ["\n", "<br/>"]) {
+      const question = [
+        "Consider the following information:",
+        ...rows.map((cells, index) => `${index + 1}. ${cells.map((cell, column) => `${headers[column]}: ${cell}`).join(" | ")}`),
+        "How many rows are correctly matched?",
+      ].join(separator);
+      const html = renderToStaticMarkup(React.createElement(SimilarityQuestionSummary, {
+        question: { id: 24009, year: "2024", subject: "Geography", exam: "Prelims", question, options: [], answer: "", explanation: "" },
+        highlights: [], sharedConcepts: [], isExpanded: false, highlightsEnabled: false,
+        onAttemptOption: () => {}, onToggleAnswer: () => {},
+      }));
+      assert.equal((html.match(/<th /g) || []).length, 3);
+      assert.equal((html.match(/<td /g) || []).length, rows.length * 3);
+      headers.forEach(header => assert.ok(html.includes(`>${header}</th>`)));
+      rows.flat().forEach(cell => assert.ok(html.includes(cell)));
+      assert.ok(html.includes("How many rows are correctly matched?"));
+      assert.doesNotMatch(html, />List-I<\/th>|>List-II<\/th>/);
+    }
+  }
+});
+
+test("labelled tables preserve literal highlights across cells and reject inconsistent rows", () => {
+  const first = "1. Waterfall: Dhuandhar | Region: Malwa | River: Narmada";
+  const render = (second: string, highlightsEnabled: boolean) => renderToStaticMarkup(React.createElement(SimilarityQuestionSummary, {
+    question: {
+      id: 24009, year: "2024", subject: "Geography", exam: "Prelims",
+      question: `Consider the following information:<br/>${first}<br/>${second}<br/>How many rows are correctly matched?`,
+      options: [], answer: "", explanation: "",
+    },
+    highlights: ["Dhuandhar | Region: Malwa", "River: Narmada"].map(exact_text => ({
+      concept_id: "waterfall", field: "question" as const, exact_text,
+    })),
+    sharedConcepts: [], isExpanded: false, highlightsEnabled,
+    onAttemptOption: () => {}, onToggleAnswer: () => {},
+  }));
+  const second = "2. Waterfall: Hundru | Region: Chota Nagpur | River: Subarnarekha";
+  const highlighted = render(second, true);
+  for (const phrase of ["Dhuandhar", "Malwa", "Narmada"]) assert.ok(highlighted.includes(`>${phrase}</mark>`));
+  assert.doesNotMatch(render(second, false), /<mark /);
+  for (const inconsistent of [
+    "2. Waterfall: Hundru | River: Subarnarekha | Region: Chota Nagpur",
+    "2. Waterfall: Hundru | Region: Chota Nagpur | River:",
+  ]) {
+    const html = render(inconsistent, false);
+    assert.doesNotMatch(html, /<table /);
+    assert.ok(html.includes("Hundru"));
+    assert.ok(html.includes("Chota Nagpur"));
+  }
+});
+
 test("reference answer expansion gates option highlights and the global toggle gates every text field", () => {
   const question = {
     id: 418, year: "2026", subject: "Polity", exam: "Prelims",

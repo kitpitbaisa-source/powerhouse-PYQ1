@@ -1477,14 +1477,41 @@ const spaceNumberedList = (html: string) => {
 // Many PYQs cram List-I / List-II into one text blob with mixed delimiters
 // (":", "|", " - ", <br/>, or separate "List-I:" / "List-II:" blocks). This
 // parses the common shapes into { intro, headers, rows, outro } so we can show
-// them as a clean two-column table. Returns null when it can't confidently parse
+// them as a clean matching table. Returns null when it can't confidently parse
 // (caller then falls back to the normal text renderer).
-type MatchData = { intro: string; headers: [string, string]; rows: { l: string; r: string }[]; outro: string };
+type MatchData = { intro: string; headers: string[]; rows: { l: string; r: string; cells?: string[]; source?: string }[]; outro: string };
 
 const parseMatchTable = (raw: string | undefined): MatchData | null => {
   if (!raw || !/match|pair/i.test(raw)) return null;
   const lines = raw.replace(/<br\s*\/?>/gi, '\n').split('\n').map(s => s.trim()).filter(Boolean);
   if (lines.length < 3) return null;
+
+  const labelledIdxs = lines.flatMap((line, index) =>
+    /^\d+[.)]\s*/.test(line) && line.split('|').length >= 3 ? [index] : []);
+  if (labelledIdxs.length >= 2) {
+    const parsed = labelledIdxs.map(index => {
+      const number = lines[index].match(/^(\d+)[.)]\s*/)!;
+      const fields = lines[index].slice(number[0].length).split('|').map(part =>
+        part.trim().match(/^([^:]+):\s*(.+)$/));
+      return { number: number[1], fields };
+    });
+    const headers = parsed[0].fields.map(field => field?.[1].trim() ?? '');
+    if (headers.some(header => !header) || new Set(headers).size !== headers.length ||
+        labelledIdxs.some((index, position) => index !== labelledIdxs[0] + position) ||
+        parsed.some((row, index) => Number(row.number) !== index + 1 ||
+          row.fields.length !== headers.length ||
+          row.fields.some((field, column) => !field || field[1].trim() !== headers[column]))) return null;
+    return {
+      intro: lines.slice(0, labelledIdxs[0]).join('\n'),
+      headers,
+      rows: parsed.map((row, index) => {
+        const cells = row.fields.map(field => field![2].trim());
+        cells[0] = `${row.number}. ${cells[0]}`;
+        return { l: cells[0], r: cells[1], cells, source: lines[labelledIdxs[index]] };
+      }),
+      outro: lines.slice(labelledIdxs[labelledIdxs.length - 1] + 1).join('\n'),
+    };
+  }
 
   const PAIR = /^([A-Za-z])[.)]\s*(.+?)(?:\s*[:|]\s*|\s+[-–]\s+)(\d+)[.)]?\s*(.+)$/;
   const headerRe = /list[\s.\-–]*i\b.*list[\s.\-–]*ii\b/i;
@@ -1670,17 +1697,29 @@ const MatchQuestion: React.FC<{
       <table className="w-full text-[12.5px] border-collapse">
         <thead>
           <tr className="bg-slate-100 dark:bg-slate-700/60">
-            <th className="text-left font-bold text-slate-700 dark:text-slate-200 px-3 py-2 border-b border-slate-200 dark:border-slate-600/70 w-1/2">{data.headers[0]}</th>
-            <th className="text-left font-bold text-slate-700 dark:text-slate-200 px-3 py-2 border-b border-l border-slate-200 dark:border-slate-600/70 w-1/2">{data.headers[1]}</th>
+            {data.headers.map((header, index) => (
+              <th key={index} style={{ width: `${100 / data.headers.length}%` }} className={cn("text-left font-bold text-slate-700 dark:text-slate-200 px-3 py-2 border-b border-slate-200 dark:border-slate-600/70", index > 0 && "border-l")}>{header}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {data.rows.map((row, i) => (
-            <tr key={i} className="odd:bg-white even:bg-slate-50/70 dark:odd:bg-transparent dark:even:bg-slate-700/20">
-              <td className="align-top px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.l} query={query} {...highlightProps} /></td>
-              <td className="align-top px-3 py-1.5 border-b border-l border-slate-100 dark:border-slate-700/60 leading-[19px]"><HighlightText text={row.r} query={query} {...highlightProps} /></td>
-            </tr>
-          ))}
+          {data.rows.map((row, i) => {
+            const phrases = row.source ? highlightProps.keywordPhrases?.flatMap(phrase => {
+              if (!row.source!.includes(phrase)) return [phrase];
+              return phrase.split('|').map(part => {
+                const trimmed = part.trim();
+                const header = data.headers.find(label => trimmed.startsWith(`${label}:`));
+                return header ? trimmed.slice(header.length + 1).trim() : trimmed;
+              });
+            }) : highlightProps.keywordPhrases;
+            return (
+              <tr key={i} className="odd:bg-white even:bg-slate-50/70 dark:odd:bg-transparent dark:even:bg-slate-700/20">
+                {(row.cells ?? [row.l, row.r]).map((cell, column) => (
+                  <td key={column} className={cn("align-top px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/60 leading-[19px]", column > 0 && "border-l")}><HighlightText text={cell} query={query} {...highlightProps} keywordPhrases={phrases} /></td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
