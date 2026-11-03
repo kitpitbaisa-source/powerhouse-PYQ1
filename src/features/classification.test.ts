@@ -44,3 +44,15 @@ test("reapplying display normalization preserves the original source label for a
   assert.equal(withSubjectDisplay({ ...display, subjectClassification: null }).originalSubject, "Polity");
   assert.equal(withSubjectDisplay({ ...display, subjectClassification: null }).subject, NEEDS_CLASSIFICATION);
 });
+
+test("Mains syllabus is primary and unresolved mappings do not fall back to legacy labels", () => {
+  const question = {
+    subject: "History", originalSubject: "Old history label", classificationSource: "mains_syllabus",
+    topic: "Ancient & Medieval Indian History",
+    subjectClassification: { subjectId: "MAINS-GS1-HISTORY", subject: "History" },
+  };
+  assert.equal(withOriginalSubjectFallback(question).subject, "History");
+  assert.equal(withOriginalSubjectFallback(question).topic, question.topic);
+  assert.equal(withOriginalSubjectFallback({ ...question, subjectClassification: null }).subject, NEEDS_CLASSIFICATION);
+  assert.equal(withOriginalSubjectFallback({ ...question, subjectClassification: null }).originalSubject, "Old history label");
+});

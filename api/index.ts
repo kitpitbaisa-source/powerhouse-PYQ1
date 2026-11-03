@@ -11,6 +11,7 @@ import { toAdminFeedback } from "../features/similarity/feedback.js";
 import { similarityAttemptFields } from "../features/similarity/attempt.js";
 import { createSimilarityAttemptsAdminRouter } from "../features/similarity/attempt-admin.js";
 import { loadQuestionSubtopics } from "../features/similarity/subtopics.js";
+import { loadMainsSyllabusQuestions } from "../features/taxonomy/mains.js";
 import { createQuestionReviewRouter } from "../features/question-review.js";
 import { StatisticsService } from "../features/statistics/service.js";
 import { createLeaderboardRouter } from "../features/statistics/router.js";
@@ -544,7 +545,7 @@ async function getMainsQuestions() {
   const { resources } = await mainsQuestionsContainer.items
     .readAll({ maxItemCount: -1 })
     .fetchAll();
-  mainsCache = await loadQuestionSubtopics(database, "mains-questions", resources);
+  mainsCache = await loadMainsSyllabusQuestions(database, resources);
   mainsCacheTimestamp = now;
   return mainsCache;
 }
