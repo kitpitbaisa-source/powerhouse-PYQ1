@@ -6,6 +6,7 @@ import { CosmosClient } from "@azure/cosmos";
 import { getExamCategory } from "./src/exam-utils";
 import { createSimilarityRouter } from "./features/similarity/search";
 import { createSimilarityCacheAdminRouter } from "./features/similarity/cache";
+import { toAdminFeedback } from "./features/similarity/feedback";
 import { similarityAttemptFields } from "./features/similarity/attempt";
 import { createSimilarityAttemptsAdminRouter } from "./features/similarity/attempt-admin";
 import { loadQuestionSubtopics } from "./features/similarity/subtopics";
@@ -1957,6 +1958,7 @@ serverApp.post("/api/feedback", async (req, res) => {
     const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const item = {
       id,
+      feedbackType: "general",
       questionId: questionId ?? null,
       questionType: (questionType && String(questionType).trim()) || "global",
       comment: String(comment).trim().slice(0, 2000),
@@ -1978,7 +1980,7 @@ serverApp.get("/api/admin/feedback", async (_req, res) => {
     const { resources } = await feedbackContainer.items
       .query("SELECT * FROM c ORDER BY c.createdAt DESC OFFSET 0 LIMIT 500")
       .fetchAll();
-    res.json(resources);
+    res.json(resources.map(toAdminFeedback));
   } catch (error: any) {
     console.error("Error fetching feedback:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
