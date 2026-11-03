@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import type { Database } from "@azure/cosmos";
 import { saveSimilarityFeedback, similarityFeedbackDocument, similarityFeedbackId, toAdminFeedback, type SimilarityFeedback } from "./feedback";
 
@@ -94,3 +97,48 @@ test("admin feedback keeps legacy comments readable and exposes similarity pair,
   assert.ok(displayed.comment.endsWith(feedback.comment!));
   assert.equal(stored.comment, feedback.comment);
 });
+
+for (const entrypoint of ["server.ts", "api/index.ts"]) {
+  test(`${entrypoint} writes typed general feedback and lists both feedback types`, async () => {
+    const source = readFileSync(new URL(`../../${entrypoint}`, import.meta.url), "utf8");
+    const start = source.indexOf('serverApp.post("/api/feedback"');
+    const end = source.indexOf("// Admin: list all payments", start);
+    assert.ok(start >= 0 && end > start);
+    const documents: Record<string, any>[] = [
+      { id: "legacy", comment: "Existing comment", questionType: "prelims" },
+      similarityFeedbackDocument(feedback, "ranking", "2026-11-03T12:00:00.000Z"),
+    ];
+    const routes: Record<string, (...args: any[]) => Promise<void>> = {};
+    runInNewContext(ts.transpileModule(source.slice(start, end), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+    }).outputText, {
+      serverApp: {
+        post(route: string, handler: typeof routes[string]) { routes[`POST ${route}`] = handler; },
+        get(route: string, handler: typeof routes[string]) { routes[`GET ${route}`] = handler; },
+      },
+      ensureFeedbackContainer: async () => {},
+      feedbackContainer: {
+        items: {
+          async create(document: Record<string, any>) { documents.push(document); },
+          query() { return { async fetchAll() { return { resources: documents }; } }; },
+        },
+      },
+      toAdminFeedback, console,
+    });
+    let response: any;
+    const res = {
+      json(value: unknown) { response = value; },
+      status(code: number) { assert.fail(`Unexpected feedback status ${code}`); },
+    };
+    await routes["POST /api/feedback"]({ body: { comment: " New comment ", questionType: "csat" } }, res);
+    assert.equal(response.feedback.feedbackType, "general");
+    assert.equal(response.feedback.comment, "New comment");
+    assert.equal(response.feedback.questionType, "csat");
+    await routes["GET /api/admin/feedback"]({}, res);
+    assert.equal(response.find(document => document.id === "legacy").feedbackType, "general");
+    const similarity = response.find(document => document.feedbackType === "similarity");
+    assert.equal(similarity.questionType, "similarity");
+    assert.match(similarity.comment, /Reason: not related/);
+    assert.equal(documents[0].feedbackType, undefined);
+  });
+}
