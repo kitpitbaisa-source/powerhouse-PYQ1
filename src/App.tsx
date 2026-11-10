@@ -4126,15 +4126,36 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
         </div>
       </div>
 
-      <div className="mb-3 flex min-w-0">
-        <SubjectTopicLine
-          subject={question.subject}
-          topic={question.topic}
-          subtopics={question.subtopics}
-          subjectClassName={cn("ring-1 ring-inset tracking-wide transition-opacity", colorClasses)}
-          onSubjectClick={() => onSubjectClick?.(question.subject)}
-          onTopicClick={question.topic ? () => onTopicClick?.(question.topic!) : undefined}
-        />
+      <div className="mb-3 min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center">
+            <SubjectTopicLine
+              only={onOpenSimilarity ? "subject" : undefined}
+              subject={question.subject}
+              topic={question.topic}
+              subtopics={question.subtopics}
+              subjectClassName={cn("ring-1 ring-inset tracking-wide transition-opacity", colorClasses)}
+              onSubjectClick={() => onSubjectClick?.(question.subject)}
+              onTopicClick={question.topic ? () => onTopicClick?.(question.topic!) : undefined}
+            />
+          </div>
+          {onOpenSimilarity && (
+            <div className="flex shrink-0 items-center gap-1.5 pr-1">
+              <QuestionSimilarityActions onExplore={() => onOpenSimilarity(question)} />
+            </div>
+          )}
+        </div>
+        {onOpenSimilarity && question.topic && (
+          <div className="mt-2">
+            <SubjectTopicLine
+              only="topic"
+              subject={question.subject}
+              topic={question.topic}
+              subtopics={question.subtopics}
+              onTopicClick={() => onTopicClick?.(question.topic!)}
+            />
+          </div>
+        )}
       </div>
 
       <SourceQualityWarnings question={question} />
@@ -4167,9 +4188,6 @@ const MainsQuestionCard: React.FC<MainsQuestionCardProps> = ({
           </div>
           <span>{isAnswerVisible ? "Hide Model Answer" : "Show Model Answer"}</span>
         </div>
-        {onOpenSimilarity && (
-          <QuestionSimilarityActions onExplore={() => onOpenSimilarity(question)} />
-        )}
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(question.question)}`}
           target="_blank"
@@ -8754,6 +8772,7 @@ export default function App() {
                       onUpdateModelAnswer={updateMainsModelAnswer}
                       searchQuery={mainsSearchQuery}
                       onFeedback={() => openFeedback(q.id, 'mains')}
+                      onOpenSimilarity={question => setSimilarityExplorer({ question, scope: 'mains' })}
                       onSubjectClick={(subject) => {
                         setMainsSubjectFilter(subject);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
