@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test, type TestContext } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -3664,10 +3664,20 @@ test("the transpiled Vercel API starts in native Node ESM without a TypeScript l
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const output = await mkdtemp(path.join(root, ".vercel-esm-test-"));
   try {
-    const modules = (await readdir(path.join(root, "features", "similarity")))
-      .filter(name => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-      .map(name => path.join("features", "similarity", name));
-    for (const relative of [path.join("api", "index.ts"), path.join("features", "taxonomy", "master.ts"), ...modules]) {
+    // Follow relative imports from the API entry so every module Vercel ships is transpiled.
+    const pending = [path.join("api", "index.ts")];
+    const seen = new Set<string>();
+    while (pending.length > 0) {
+      const relative = pending.pop()!;
+      if (seen.has(relative)) continue;
+      seen.add(relative);
+      const source = await readFile(path.join(root, relative), "utf8");
+      for (const [, specifier] of source.matchAll(/(?:from|import)\s*\(?\s*"(\.{1,2}\/[^"]+)"/g)) {
+        const target = path.normalize(path.join(path.dirname(relative), specifier)).replace(/\.js$/, "");
+        pending.push(target.endsWith(".ts") ? target : `${target}.ts`);
+      }
+    }
+    for (const relative of seen) {
       const source = await readFile(path.join(root, relative), "utf8");
       const result = ts.transpileModule(source, {
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },

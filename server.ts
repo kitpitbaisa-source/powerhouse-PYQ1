@@ -2267,7 +2267,7 @@ async function setupVite() {
 // Start server (local dev only)
 if (!process.env.VERCEL) {
   setupVite();
-  serverApp.listen(PORT, "0.0.0.0", () => {
+  serverApp.listen(PORT, process.env.HOST || "127.0.0.1", () => {
     console.log(`Server running on port ${PORT}`);
   });
 }
